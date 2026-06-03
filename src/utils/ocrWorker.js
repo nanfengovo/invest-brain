@@ -1,5 +1,6 @@
-import { createWorker } from 'tesseract.js';
+import Tesseract, { createWorker } from 'tesseract.js';
 
+console.log('[Cache Bust] 2026-06-03 v3 OCR');
 let worker = null;
 let initialized = false;
 

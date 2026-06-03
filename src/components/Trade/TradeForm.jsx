@@ -49,6 +49,8 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
   const [selectedInfo, setSelectedInfo] = useState(null);
   const [ocrTrades, setOcrTrades] = useState([]);
   const [ocrSheetVisible, setOcrSheetVisible] = useState(false);
+  const [ocrCandidates, setOcrCandidates] = useState({ symbols: [], numbers: [] });
+  const [activeField, setActiveField] = useState(null);
   const [referenceImage, setReferenceImage] = useState(null);
 
   // Cleanup object URLs on unmount to avoid memory leaks
@@ -142,10 +144,14 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
     });
 
     try {
-      const trades = await parseTradeImage(file);
+      const { trades, candidates } = await parseTradeImage(file);
+      
+      if (candidates) {
+        setOcrCandidates(candidates);
+      }
 
       if (!trades || trades.length === 0) {
-        Toast.show({ icon: 'fail', content: '未识别到交易数据' });
+        Toast.show({ icon: 'fail', content: '未提取出完整的交易，请点击下方输入框使用智能提示' });
         return;
       }
 
@@ -290,11 +296,34 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
                 onClick={() => {
                   URL.revokeObjectURL(referenceImage);
                   setReferenceImage(null);
+                  setOcrCandidates({ symbols: [], numbers: [] });
                 }}
                 style={{ background: 'none', border: 'none', color: 'var(--color-text-muted)', fontSize: 18 }}
               >✕</button>
             </div>
             <img src={referenceImage} alt="Reference" style={{ width: '100%', maxHeight: '180px', objectFit: 'contain', borderRadius: 'var(--radius-md)' }} />
+          </div>
+        )}
+
+        {/* 智能候选词胶囊栏 */}
+        {(ocrCandidates.symbols?.length > 0 || ocrCandidates.numbers?.length > 0) && activeField && (
+          <div className="trade-form__candidates-bar">
+            <div className="trade-form__candidates-title">智能提取 (点击填入):</div>
+            <div className="trade-form__candidates-scroll">
+              {(activeField === 'symbol' ? ocrCandidates.symbols : ocrCandidates.numbers).map((item, idx) => (
+                <span 
+                  key={`${item}-${idx}`} 
+                  className="trade-form__candidate-tag"
+                  onMouseDown={(e) => {
+                    // Prevent input blur so we don't lose activeField
+                    e.preventDefault(); 
+                    form.setFieldsValue({ [activeField]: item });
+                  }}
+                >
+                  {item}
+                </span>
+              ))}
+            </div>
           </div>
         )}
 
@@ -327,7 +356,12 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
             rules={[{ required: true, message: '请输入代码' }]}
             className="trade-form__symbol-input"
           >
-            <Input placeholder="例如 AAPL" clearable />
+            <Input 
+              placeholder="例如 AAPL" 
+              clearable 
+              onFocus={() => setActiveField('symbol')}
+              onBlur={() => setTimeout(() => setActiveField(null), 150)}
+            />
           </Form.Item>
 
           <Form.Item name="asset_name" label="股票名称">
@@ -361,7 +395,14 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
             rules={[{ required: true, message: '请输入数量' }]}
             className="trade-form__number-input"
           >
-            <Input type="number" placeholder="0" inputMode="decimal" clearable />
+            <Input 
+              type="number" 
+              placeholder="0" 
+              inputMode="decimal" 
+              clearable 
+              onFocus={() => setActiveField('quantity')}
+              onBlur={() => setTimeout(() => setActiveField(null), 150)}
+            />
           </Form.Item>
 
           <Form.Item
@@ -370,7 +411,14 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
             rules={[{ required: true, message: '请输入价格' }]}
             className="trade-form__number-input"
           >
-            <Input type="number" placeholder="0.00" inputMode="decimal" clearable />
+            <Input 
+              type="number" 
+              placeholder="0.00" 
+              inputMode="decimal" 
+              clearable 
+              onFocus={() => setActiveField('price')}
+              onBlur={() => setTimeout(() => setActiveField(null), 150)}
+            />
           </Form.Item>
 
           <Form.Item
@@ -378,7 +426,12 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
             label="手续费"
             className="trade-form__number-input"
           >
-            <Input type="number" placeholder="0" inputMode="decimal" clearable />
+            <Input 
+              type="number" 
+              placeholder="0" 
+              inputMode="decimal" 
+              clearable 
+            />
           </Form.Item>
 
           {/* ── Option-specific Fields ── */}
@@ -396,6 +449,8 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
                   placeholder="0.00"
                   inputMode="decimal"
                   clearable
+                  onFocus={() => setActiveField('strike_price')}
+                  onBlur={() => setTimeout(() => setActiveField(null), 150)}
                 />
               </Form.Item>
 

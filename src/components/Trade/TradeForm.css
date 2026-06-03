@@ -237,3 +237,51 @@
   animation: slideUp var(--transition-normal) ease both;
 }
 .trade-form__reference-image { margin: 16px; padding: 12px; background: rgba(26,35,50,0.5); border: 1px solid var(--color-border); border-radius: var(--radius-lg); backdrop-filter: blur(10px); } .trade-form__reference-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+
+.trade-form__candidates-bar {
+  margin: 0 16px 16px;
+  padding: 12px;
+  background: rgba(99, 102, 241, 0.1);
+  border: 1px solid var(--color-accent-glow);
+  border-radius: var(--radius-md);
+  backdrop-filter: blur(12px);
+}
+
+.trade-form__candidates-title {
+  font-size: 12px;
+  color: var(--color-accent-light);
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.trade-form__candidates-scroll {
+  display: flex;
+  overflow-x: auto;
+  gap: 8px;
+  padding-bottom: 4px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.trade-form__candidates-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.trade-form__candidate-tag {
+  flex: 0 0 auto;
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+  padding: 6px 12px;
+  border-radius: var(--radius-full);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: var(--transition-fast);
+}
+
+.trade-form__candidate-tag:active {
+  transform: scale(0.95);
+  background: var(--color-accent);
+}
+

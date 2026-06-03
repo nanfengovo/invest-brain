@@ -30,7 +30,10 @@ export async function parseTradeImage(image) {
   const { data: { text } } = await worker.recognize(image);
   console.log('[OCR Raw Text]:', text);
 
-  return extractMultipleTrades(text);
+  return {
+    trades: extractMultipleTrades(text),
+    candidates: extractCandidates(text),
+  };
 }
 
 /**
@@ -279,4 +282,31 @@ function parseFallback(text) {
   if (ints.length > 0) result.quantity = ints[0];
 
   return (result.symbol || result.price) ? result : null;
+}
+
+/**
+ * Extract smart suggestions pools (ammunition for the UI).
+ * Grabs all possible symbols and numbers regardless of layout.
+ */
+function extractCandidates(text) {
+  const rawClean = text.replace(/,/g, ''); // Remove commas from numbers
+  
+  // 1. Symbols: all uppercase letter combinations 2-6 chars long
+  const NOISE = new Set(['ETF', 'US', 'HK', 'SH', 'SZ', 'CALL', 'PUT', 'PRO', 'ALL', 'THE']);
+  const allSymbols = [...text.matchAll(/\b([A-Z]{2,6})\b/g)]
+    .map(m => m[1])
+    .filter(t => !NOISE.has(t));
+  
+  // Also try to find explicit broker symbols like DRAM.US
+  const dotSymbols = [...text.matchAll(/\b([A-Z]{1,6}\.(US|HK|SH|SZ))\b/gi)]
+    .map(m => m[1].toUpperCase());
+
+  // 2. Numbers: match anything that looks like a price, quantity, or strike price
+  const allNumbers = [...rawClean.matchAll(/\b(\d+(\.\d+)?)\b/g)]
+    .map(m => m[1]);
+
+  return {
+    symbols: [...new Set([...dotSymbols, ...allSymbols])], // Deduplicate
+    numbers: [...new Set(allNumbers)],
+  };
 }

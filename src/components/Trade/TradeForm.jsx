@@ -8,6 +8,7 @@ import {
   TextArea,
   Toast,
   Picker,
+  ActionSheet,
 } from 'antd-mobile';
 import { useTradeStore } from '../../stores/useTradeStore';
 import { parseTradeImage } from '../../utils/ocrWorker';
@@ -46,6 +47,8 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
   const [selectedDecision, setSelectedDecision] = useState(null);
   const [infoPickerVisible, setInfoPickerVisible] = useState(false);
   const [selectedInfo, setSelectedInfo] = useState(null);
+  const [ocrTrades, setOcrTrades] = useState([]);
+  const [ocrSheetVisible, setOcrSheetVisible] = useState(false);
 
   const decisions = useTradeStore((s) => s.decisions);
   const refreshDecisions = useTradeStore((s) => s.refreshDecisions);
@@ -96,6 +99,26 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
     return [items.length > 0 ? items : [{ label: '暂无关联信息', value: '' }]];
   }, [informations]);
 
+  /** Fill form with a single OCR trade result */
+  const applyOcrTrade = (data) => {
+    const updates = {};
+    if (data.symbol) updates.symbol = data.symbol;
+    if (data.direction) updates.direction = [data.direction];
+    if (data.price) updates.price = data.price.toString();
+    if (data.quantity) updates.quantity = data.quantity.toString();
+    if (data.strike_price) updates.strike_price = data.strike_price.toString();
+
+    if (data.asset_type === 'OPTION') {
+      setAssetType(['OPTION']);
+      if (data.expiry_date) setExpiryDate(new Date(data.expiry_date));
+    }
+
+    if (Object.keys(updates).length > 0) {
+      form.setFieldsValue(updates);
+      Toast.show({ icon: 'success', content: '已填入表单' });
+    }
+  };
+
   const handleOcrInput = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -107,18 +130,20 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
     });
 
     try {
-      const data = await parseTradeImage(file);
-      const updates = {};
-      if (data.symbol) updates.symbol = data.symbol;
-      if (data.direction) updates.direction = [data.direction];
-      if (data.price) updates.price = data.price.toString();
-      if (data.quantity) updates.quantity = data.quantity.toString();
+      const trades = await parseTradeImage(file);
 
-      if (Object.keys(updates).length > 0) {
-        form.setFieldsValue(updates);
-        Toast.show({ icon: 'success', content: '提取成功' });
+      if (!trades || trades.length === 0) {
+        Toast.show({ icon: 'fail', content: '未识别到交易数据' });
+        return;
+      }
+
+      if (trades.length === 1) {
+        // Single trade — fill directly
+        applyOcrTrade(trades[0]);
       } else {
-        Toast.show({ icon: 'fail', content: '未识别到相关数据' });
+        // Multiple trades — show selection sheet
+        setOcrTrades(trades);
+        setOcrSheetVisible(true);
       }
     } catch (err) {
       console.error(err);
@@ -128,6 +153,23 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
       e.target.value = '';
     }
   };
+
+  /** Build ActionSheet actions from OCR trades */
+  const ocrActions = ocrTrades.map((t, i) => {
+    const dir = t.direction === 'BUY' ? '买入' : t.direction === 'SELL' ? '卖出' : '?';
+    const sym = t.symbol || '未知';
+    const price = t.price ? `$${t.price}` : '';
+    const qty = t.quantity ? `×${t.quantity}` : '';
+    const optTag = t.asset_type === 'OPTION' ? ' [期权]' : '';
+    return {
+      text: `${dir} ${sym} ${price} ${qty}${optTag}`,
+      key: String(i),
+      onClick: () => {
+        applyOcrTrade(t);
+        setOcrSheetVisible(false);
+      },
+    };
+  });
 
   const isOption = assetType[0] === 'OPTION';
 
@@ -342,27 +384,28 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
                 </span>
               </div>
 
-               <DatePicker
-                visible={expiryPickerVisible}
-                onClose={() => setExpiryPickerVisible(false)}
-                onConfirm={(val) => {
-                  setExpiryDate(val);
-                  setExpiryPickerVisible(false);
-                }}
-                value={expiryDate || new Date()}
-                defaultValue={expiryDate || new Date()}
-                title="到期日"
-                min={new Date(2020, 0, 1)}
-                max={new Date(2030, 11, 31)}
-                renderLabel={(type, data) => {
-                  switch (type) {
-                    case 'year': return data + '年';
-                    case 'month': return data + '月';
-                    case 'day': return data + '日';
-                    default: return data;
-                  }
-                }}
-              />
+               {expiryPickerVisible && (
+                <DatePicker
+                  visible={expiryPickerVisible}
+                  onClose={() => setExpiryPickerVisible(false)}
+                  onConfirm={(val) => {
+                    setExpiryDate(val);
+                    setExpiryPickerVisible(false);
+                  }}
+                  value={expiryDate || new Date()}
+                  title="到期日"
+                  min={new Date(2020, 0, 1)}
+                  max={new Date(2030, 11, 31)}
+                  renderLabel={(type, data) => {
+                    switch (type) {
+                      case 'year': return data + '年';
+                      case 'month': return data + '月';
+                      case 'day': return data + '日';
+                      default: return data;
+                    }
+                  }}
+                />
+               )}
             </div>
           )}
 
@@ -445,30 +488,31 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
             </span>
           </div>
 
-          <DatePicker
-            visible={datePickerVisible}
-            onClose={() => setDatePickerVisible(false)}
-            onConfirm={(val) => {
-              setTradeTime(val);
-              setDatePickerVisible(false);
-            }}
-            value={tradeTime}
-            defaultValue={tradeTime}
-            precision="minute"
-            title="交易时间"
-            min={new Date(2020, 0, 1)}
-            max={new Date(2030, 11, 31, 23, 59)}
-            renderLabel={(type, data) => {
-              switch (type) {
-                case 'year': return data + '年';
-                case 'month': return data + '月';
-                case 'day': return data + '日';
-                case 'hour': return data + '时';
-                case 'minute': return data + '分';
-                default: return data;
-              }
-            }}
-          />
+          {datePickerVisible && (
+            <DatePicker
+              visible={datePickerVisible}
+              onClose={() => setDatePickerVisible(false)}
+              onConfirm={(val) => {
+                setTradeTime(val);
+                setDatePickerVisible(false);
+              }}
+              value={tradeTime}
+              precision="minute"
+              title="交易时间"
+              min={new Date(2020, 0, 1)}
+              max={new Date(2030, 11, 31, 23, 59)}
+              renderLabel={(type, data) => {
+                switch (type) {
+                  case 'year': return data + '年';
+                  case 'month': return data + '月';
+                  case 'day': return data + '日';
+                  case 'hour': return data + '时';
+                  case 'minute': return data + '分';
+                  default: return data;
+                }
+              }}
+            />
+          )}
 
           <Form.Item name="note" label="备注">
             <TextArea
@@ -480,6 +524,15 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
           </Form.Item>
         </Form>
       </div>
+
+      {/* OCR Multi-Trade Selection Sheet */}
+      <ActionSheet
+        visible={ocrSheetVisible}
+        actions={ocrActions}
+        onClose={() => setOcrSheetVisible(false)}
+        cancelText="取消"
+        extra={<div style={{ textAlign: 'center', fontSize: 14, color: 'var(--color-text-secondary)', padding: '8px 0' }}>识别到 {ocrTrades.length} 笔交易，请选择一笔填入</div>}
+      />
     </div>
   );
 }

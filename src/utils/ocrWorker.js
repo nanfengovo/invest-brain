@@ -17,9 +17,10 @@ export async function initOcr() {
 }
 
 /**
- * Parse an image for trade information
+ * Parse an image for trade information.
+ * Returns an ARRAY of detected trades (may contain 1 or more).
  * @param {File|Blob|string} image - The image to parse
- * @returns {Promise<Object>} Extracted trade data
+ * @returns {Promise<Array<Object>>} Array of extracted trade data
  */
 export async function parseTradeImage(image) {
   if (!initialized) {
@@ -29,195 +30,253 @@ export async function parseTradeImage(image) {
   const { data: { text } } = await worker.recognize(image);
   console.log('[OCR Raw Text]:', text);
 
-  return extractTradeData(text);
+  return extractMultipleTrades(text);
 }
 
 /**
- * Extract trade data from raw OCR text.
- * Optimized for Longbridge / Tiger / Futu broker screenshots.
+ * Extract MULTIPLE trades from OCR text.
+ * 
+ * Longbridge list view format example:
+ *   已成交或已撤单 (2)
+ *   全部(2) 名称代码 订单价格 总数/已成
+ *   买入   Roundhill记忆E...  68.010   2
+ *   全部成交   DRAM.US                  2
+ *   卖出   STM CALL           8.00     1
+ *   全部成交   20260618 72.0            1
+ *
+ * Longbridge detail view format:
+ *   交易详情
+ *   交易方向   买入
+ *   名称代码   Roundhill记忆ETF  DRAM
+ *   订单数量/价格   2   68.010
  */
-function extractTradeData(text) {
-  const result = {};
-  
-  // Normalize: collapse whitespace, keep line breaks for structure
+function extractMultipleTrades(text) {
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
   const fullText = lines.join(' ');
   
   console.log('[OCR Lines]:', lines);
 
-  // ──────────────────────────────────────────────
-  // 1. Direction (买入/卖出)
-  // ──────────────────────────────────────────────
-  // Longbridge shows "买入" or "卖出" prominently
-  for (const line of lines) {
-    if (/买入/.test(line)) { result.direction = 'BUY'; break; }
-    if (/卖出/.test(line)) { result.direction = 'SELL'; break; }
-  }
-  // Fallback to full text
-  if (!result.direction) {
-    if (/买入|买进|buy/i.test(fullText)) result.direction = 'BUY';
-    else if (/卖出|卖|sell|平仓/i.test(fullText)) result.direction = 'SELL';
+  // ── Strategy 1: Detect multiple trades by direction markers ──
+  // Find all lines that start with or contain 买入/卖出
+  const tradeBlocks = splitIntoTradeBlocks(lines);
+  
+  if (tradeBlocks.length > 0) {
+    const trades = tradeBlocks.map(block => parseTradeBlock(block));
+    const validTrades = trades.filter(t => t.symbol || t.price || t.quantity);
+    if (validTrades.length > 0) {
+      console.log('[OCR] Found multiple trade blocks:', validTrades);
+      return validTrades;
+    }
   }
 
-  // ──────────────────────────────────────────────
-  // 2. Symbol / Ticker (e.g. DRAM, AAPL, TSLA, 00700)
-  // ──────────────────────────────────────────────
-  // Longbridge format: "名称代码  Roundhill记忆ETF\n DRAM"
-  // or shows ticker on its own line, or after ".US" / ".HK"
+  // ── Strategy 2: Single trade (detail view) ──
+  const single = parseSingleTradeDetail(lines, fullText);
+  if (single && (single.symbol || single.price)) {
+    return [single];
+  }
+
+  // ── Strategy 3: Fallback ──
+  const fallback = parseFallback(fullText);
+  return fallback ? [fallback] : [];
+}
+
+/**
+ * Split OCR lines into blocks, each block representing one trade.
+ * A new block starts when we see 买入 or 卖出.
+ */
+function splitIntoTradeBlocks(lines) {
+  const blocks = [];
+  let currentBlock = null;
   
-  // Try to find a line or text with common broker code patterns
-  // Pattern: standalone 1-6 uppercase letters (ticker), often on its own line
-  // Exclude common OCR noise like "ETF", "CALL", "PUT" as standalone symbols
-  const NOISE_SYMBOLS = new Set(['ETF', 'US', 'HK', 'SH', 'SZ', 'CALL', 'PUT', 'PRO']);
-  
-  // First: look for "XX.US" or "XX.HK" pattern (Longbridge style)
-  const dotMarketMatch = fullText.match(/\b([A-Z]{1,6})\.(US|HK|SH|SZ)\b/i);
-  if (dotMarketMatch) {
-    result.symbol = dotMarketMatch[1].toUpperCase();
+  for (const line of lines) {
+    // Check if this line marks the start of a new trade
+    const isDirection = /^(买入|卖出)/.test(line) || 
+                        /^\s*(买入|卖出)\s/.test(line);
+    
+    if (isDirection) {
+      if (currentBlock) blocks.push(currentBlock);
+      currentBlock = { directionLine: line, extraLines: [] };
+    } else if (currentBlock) {
+      currentBlock.extraLines.push(line);
+    }
   }
   
-  // Second: look for standalone ticker on its own line
+  if (currentBlock) blocks.push(currentBlock);
+  return blocks;
+}
+
+/**
+ * Parse a single trade block from the list view.
+ * 
+ * Block structure (Longbridge):
+ *   directionLine: "买入   Roundhill记忆E...  68.010   2"
+ *   extraLines: ["全部成交   DRAM.US                  2"]
+ */
+function parseTradeBlock(block) {
+  const result = {};
+  const allText = [block.directionLine, ...block.extraLines].join(' ');
+  
+  // 1. Direction
+  if (/买入/.test(block.directionLine)) result.direction = 'BUY';
+  else if (/卖出/.test(block.directionLine)) result.direction = 'SELL';
+
+  // 2. Symbol — look for TICKER.MARKET or standalone uppercase letters
+  // Try XX.US / XX.HK pattern first
+  const dotMatch = allText.match(/\b([A-Z]{1,6})\.(US|HK|SH|SZ)\b/i);
+  if (dotMatch) {
+    result.symbol = dotMatch[1].toUpperCase();
+  }
+  
+  // Try standalone uppercase ticker (2-5 letters, not noise words)
   if (!result.symbol) {
+    const NOISE = new Set(['ETF', 'US', 'HK', 'SH', 'SZ', 'CALL', 'PUT', 'PRO', 'ALL']);
+    const tickers = [...allText.matchAll(/\b([A-Z]{2,6})\b/g)]
+      .map(m => m[1])
+      .filter(t => !NOISE.has(t));
+    if (tickers.length > 0) result.symbol = tickers[0];
+  }
+
+  // 3. Detect if this is an option (contains CALL/PUT or date pattern like 20260618)
+  const isOption = /CALL|PUT/i.test(allText);
+  const expiryMatch = allText.match(/(\d{8})/);  // e.g. 20260618
+  const strikeMatch = allText.match(/(?:CALL|PUT)\s*\n?\s*(\d{8})\s+(\d+\.?\d*)/i) ||
+                      allText.match(/(\d{8})\s+(\d+\.?\d*)/);
+  
+  if (isOption) {
+    result.asset_type = 'OPTION';
+    result.option_type = /CALL/i.test(allText) ? 'CALL' : 'PUT';
+    
+    if (expiryMatch) {
+      const ds = expiryMatch[1];
+      result.expiry_date = `${ds.slice(0,4)}-${ds.slice(4,6)}-${ds.slice(6,8)}`;
+    }
+    if (strikeMatch) {
+      result.strike_price = parseFloat(strikeMatch[2]);
+    }
+  }
+
+  // 4. Price — look for decimal numbers in the trade line
+  // In Longbridge list: "买入  Roundhill记忆E...  68.010  2"
+  // The price is usually the decimal number
+  const priceNumbers = [...allText.matchAll(/\b(\d+\.\d{2,3})\b/g)]
+    .map(m => parseFloat(m[1]));
+  
+  if (priceNumbers.length > 0) {
+    // Filter out strike prices we already captured
+    const candidates = priceNumbers.filter(p => p !== result.strike_price);
+    if (candidates.length > 0) {
+      result.price = candidates[0];
+    } else {
+      result.price = priceNumbers[0];
+    }
+  }
+
+  // 5. Quantity — look for small integers
+  // In Longbridge: "总数/已成" column, or just standalone small numbers
+  // The directionLine often ends with the quantity
+  const qtyFromLabel = allText.match(/(?:总数|已成|数量)[\s/]*[:：]?\s*(\d+)/);
+  if (qtyFromLabel) {
+    result.quantity = parseInt(qtyFromLabel[1], 10);
+  }
+  
+  if (!result.quantity) {
+    // Get all integers from the text, excluding years (2020-2030) and dates (8-digit)
+    const allInts = [...allText.matchAll(/\b(\d{1,4})\b/g)]
+      .map(m => parseInt(m[1], 10))
+      .filter(n => n > 0 && n < 10000);
+    
+    // Remove price-related numbers  
+    const filtered = allInts.filter(n => {
+      if (result.price && Math.abs(n - result.price) < 0.01) return false;
+      if (result.strike_price && Math.abs(n - result.strike_price) < 0.01) return false;
+      return true;
+    });
+    
+    // The quantity is usually a small number (1-1000)
+    const smallInts = filtered.filter(n => n >= 1 && n <= 1000);
+    if (smallInts.length > 0) {
+      result.quantity = smallInts[0];
+    }
+  }
+
+  console.log('[OCR TradeBlock]:', result);
+  return result;
+}
+
+/**
+ * Parse single trade from Longbridge detail view.
+ */
+function parseSingleTradeDetail(lines, fullText) {
+  const result = {};
+
+  // Direction
+  if (/买入/.test(fullText)) result.direction = 'BUY';
+  else if (/卖出/.test(fullText)) result.direction = 'SELL';
+
+  // Symbol
+  const dotMatch = fullText.match(/\b([A-Z]{1,6})\.(US|HK|SH|SZ)\b/i);
+  if (dotMatch) result.symbol = dotMatch[1].toUpperCase();
+  
+  if (!result.symbol) {
+    const NOISE = new Set(['ETF', 'US', 'HK', 'SH', 'SZ', 'CALL', 'PUT', 'PRO']);
     for (const line of lines) {
       const cleaned = line.replace(/\s/g, '');
-      // Pure uppercase ticker line (1-6 chars)
-      if (/^[A-Z]{1,6}$/.test(cleaned) && !NOISE_SYMBOLS.has(cleaned)) {
+      if (/^[A-Z]{2,6}$/.test(cleaned) && !NOISE.has(cleaned)) {
         result.symbol = cleaned;
         break;
       }
     }
   }
-  
-  // Third: search within text for common patterns
+
   if (!result.symbol) {
-    // Look for ticker after "名称代码" or "代码" label
-    const codeMatch = fullText.match(/(?:名称代码|代码|股票代码)[\s:：]*(?:[^\s]*?)[\s]*([A-Z]{1,6})/i);
-    if (codeMatch && !NOISE_SYMBOLS.has(codeMatch[1].toUpperCase())) {
-      result.symbol = codeMatch[1].toUpperCase();
-    }
-  }
-  
-  // Fourth: any uppercase letter sequence that looks like a ticker
-  if (!result.symbol) {
-    const allTickers = [...fullText.matchAll(/\b([A-Z]{2,6})\b/g)]
-      .map(m => m[1])
-      .filter(t => !NOISE_SYMBOLS.has(t));
-    if (allTickers.length > 0) {
-      result.symbol = allTickers[0];
-    }
+    const codeMatch = fullText.match(/(?:名称代码|代码)[\s\S]{0,30}?([A-Z]{2,6})/);
+    if (codeMatch) result.symbol = codeMatch[1];
   }
 
-  // ──────────────────────────────────────────────
-  // 3. Price (成交价/均价/订单价格)
-  // ──────────────────────────────────────────────
-  // Longbridge shows:  "订单数量/价格    2\n68.010"
-  //                    "成交数量/均价    2\n68.010"
-  //                    "订单价格  68.010"
-  //                    "成交价格  68.010"
-  
+  // Price — keyword-based
   const pricePatterns = [
-    /(?:成交价|均价|成交均价|订单价格|成交价格|单价)[\s/]*[:：]?\s*(\d+\.?\d*)/,
-    /(?:订单数量\/价格|成交数量\/均价)[\s\S]{0,20}?(\d+\.\d{2,})/,
-    /(?:价格|Price)[\s:：]*(\d+\.?\d*)/i,
+    /(?:成交价|均价|成交均价|订单价格|成交价格)[\s/:：]*(\d+\.?\d*)/,
+    /(?:订单数量\/价格|成交数量\/均价)[\s\S]{0,30}?(\d+\.\d{2,})/,
+    /(?:价格)[\s:：]*(\d+\.?\d*)/,
   ];
-  
-  for (const pattern of pricePatterns) {
-    const match = fullText.match(pattern);
-    if (match) {
-      result.price = parseFloat(match[1]);
-      break;
-    }
-  }
-  
-  // Also try line-by-line for Longbridge's multiline format
-  if (!result.price) {
-    for (let i = 0; i < lines.length; i++) {
-      if (/价格|均价|成交价/.test(lines[i])) {
-        // Price might be on the same line or the next line
-        const sameLine = lines[i].match(/(\d+\.\d{2,})/);
-        if (sameLine) {
-          result.price = parseFloat(sameLine[1]);
-          break;
-        }
-        // Check next line
-        if (i + 1 < lines.length) {
-          const nextLine = lines[i + 1].match(/(\d+\.\d{2,})/);
-          if (nextLine) {
-            result.price = parseFloat(nextLine[1]);
-            break;
-          }
-        }
-      }
-    }
+  for (const p of pricePatterns) {
+    const m = fullText.match(p);
+    if (m) { result.price = parseFloat(m[1]); break; }
   }
 
-  // ──────────────────────────────────────────────
-  // 4. Quantity (成交数量/股数/总数)
-  // ──────────────────────────────────────────────
+  // Quantity — keyword-based
   const qtyPatterns = [
-    /(?:成交数量|订单数量|数量|总数|股数|已成)[\s/]*[:：]?\s*(\d+)/,
-    /(?:总数\/已成)[\s:：]*(\d+)/,
+    /(?:成交数量|订单数量|数量|总数|已成)[\s/:：]*(\d+)/,
   ];
-  
-  for (const pattern of qtyPatterns) {
-    const match = fullText.match(pattern);
-    if (match) {
-      result.quantity = parseInt(match[1], 10);
-      break;
-    }
-  }
-  
-  // Longbridge shows "总数/已成  2\n2" — try line-by-line
-  if (!result.quantity) {
-    for (let i = 0; i < lines.length; i++) {
-      if (/数量|总数|已成/.test(lines[i])) {
-        const sameLine = lines[i].match(/(\d+)\s*$/);
-        if (sameLine) {
-          result.quantity = parseInt(sameLine[1], 10);
-          break;
-        }
-        if (i + 1 < lines.length) {
-          const nextLine = lines[i + 1].match(/^(\d+)/);
-          if (nextLine) {
-            result.quantity = parseInt(nextLine[1], 10);
-            break;
-          }
-        }
-      }
-    }
+  for (const p of qtyPatterns) {
+    const m = fullText.match(p);
+    if (m) { result.quantity = parseInt(m[1], 10); break; }
   }
 
-  // ──────────────────────────────────────────────
-  // 5. Asset Name (e.g. "Roundhill记忆ETF")
-  // ──────────────────────────────────────────────
-  const nameMatch = fullText.match(/(?:名称代码|名称)[\s:：]*([^\n]{2,20}?)(?:\s+[A-Z]|\s*$)/);
-  if (nameMatch) {
-    result.asset_name = nameMatch[1].trim();
-  }
-
-  // ──────────────────────────────────────────────
-  // 6. Fallback: if no keyword-based extraction worked
-  // ──────────────────────────────────────────────
-  if (!result.price || !result.quantity) {
-    // Collect all numbers from the text
-    const allNumbers = [...fullText.matchAll(/\b(\d+\.?\d*)\b/g)]
-      .map(m => parseFloat(m[1]))
-      .filter(n => n > 0);
-    
-    const decimals = allNumbers.filter(n => !Number.isInteger(n));
-    const smallIntegers = allNumbers.filter(n => Number.isInteger(n) && n <= 10000 && n > 0);
-    
-    if (!result.price && decimals.length > 0) {
-      // Most likely the price is a decimal number
-      result.price = decimals[0];
-    }
-    
-    if (!result.quantity && smallIntegers.length > 0) {
-      // Most likely quantity is a small integer
-      result.quantity = smallIntegers[0];
-    }
-  }
-
-  console.log('[OCR Extracted]:', result);
   return result;
+}
+
+/**
+ * Last-resort fallback extraction.
+ */
+function parseFallback(text) {
+  const result = {};
+  
+  if (/买入|buy/i.test(text)) result.direction = 'BUY';
+  else if (/卖出|sell/i.test(text)) result.direction = 'SELL';
+
+  const tickers = [...text.matchAll(/\b([A-Z]{2,6})\b/g)].map(m => m[1]);
+  const NOISE = new Set(['ETF', 'US', 'HK', 'CALL', 'PUT', 'PRO']);
+  const validTickers = tickers.filter(t => !NOISE.has(t));
+  if (validTickers.length > 0) result.symbol = validTickers[0];
+
+  const decimals = [...text.matchAll(/\b(\d+\.\d{2,})\b/g)].map(m => parseFloat(m[1]));
+  if (decimals.length > 0) result.price = decimals[0];
+
+  const ints = [...text.matchAll(/\b(\d{1,4})\b/g)]
+    .map(m => parseInt(m[1], 10))
+    .filter(n => n > 0 && n <= 10000);
+  if (ints.length > 0) result.quantity = ints[0];
+
+  return (result.symbol || result.price) ? result : null;
 }

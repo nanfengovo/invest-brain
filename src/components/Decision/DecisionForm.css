@@ -1,0 +1,195 @@
+/* ============================================================
+   DecisionForm — Decision/thesis entry form
+   ============================================================ */
+
+/* ── Full-screen container ── */
+.decision-form {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  background: var(--color-bg-primary);
+  animation: fadeIn var(--transition-normal) ease;
+}
+
+/* ── Header Bar ── */
+.decision-form__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  padding-top: calc(var(--safe-area-top, 0px) + 12px);
+  background: var(--color-glass-nav);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-bottom: 1px solid var(--color-border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.decision-form__header-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  font-size: 20px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+  background: transparent;
+  border: none;
+  min-height: unset;
+  min-width: unset;
+}
+
+.decision-form__header-btn:active {
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+}
+
+.decision-form__title {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.decision-form__save-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 16px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-light) 100%);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 0 12px var(--color-accent-glow);
+  transition:
+    transform var(--transition-fast),
+    box-shadow var(--transition-fast);
+  min-height: unset;
+  min-width: unset;
+}
+
+.decision-form__save-btn:active {
+  transform: scale(0.95);
+  box-shadow: 0 0 20px var(--color-accent-glow);
+}
+
+.decision-form__save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Form Body ── */
+.decision-form__body {
+  flex: 1;
+  padding: 16px;
+  padding-bottom: calc(var(--safe-area-bottom, 0px) + 24px);
+  overflow-y: auto;
+}
+
+/* ── Section Titles ── */
+.decision-form__section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 20px;
+  margin-bottom: 12px;
+  padding-left: 4px;
+}
+
+.decision-form__section-title:first-child {
+  margin-top: 0;
+}
+
+/* ── Form Field Overrides ── */
+.decision-form .adm-form .adm-list-item {
+  background: var(--color-bg-input);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  margin-bottom: 10px;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.decision-form .adm-form .adm-list-item:focus-within {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-bg);
+}
+
+.decision-form .adm-form-item-label {
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.decision-form .adm-input-element,
+.decision-form .adm-text-area-element {
+  color: var(--color-text-primary);
+  font-size: 15px;
+}
+
+.decision-form .adm-input-element::placeholder,
+.decision-form .adm-text-area-element::placeholder {
+  color: var(--color-text-muted);
+}
+
+/* ── Sentiment Selector ── */
+.decision-form .adm-selector {
+  gap: 8px;
+}
+
+.decision-form .adm-selector .adm-selector-item {
+  flex: 1;
+  text-align: center;
+  padding: 10px 4px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* ── Star Rating ── */
+.decision-form__star-rating {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  background: var(--color-bg-input);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  margin-bottom: 10px;
+}
+
+.decision-form__star-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  margin-right: auto;
+}
+
+.decision-form__star {
+  font-size: 24px;
+  cursor: pointer;
+  transition: transform var(--transition-fast);
+  line-height: 1;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.decision-form__star:active {
+  transform: scale(1.3);
+}
+
+.decision-form__star--filled {
+  opacity: 1;
+}
+
+.decision-form__star--empty {
+  opacity: 0.2;
+  filter: grayscale(1);
+}

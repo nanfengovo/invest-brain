@@ -1,0 +1,62 @@
+/* ============================================================
+   TabBar — Bottom Navigation
+   ============================================================ */
+
+.tabbar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  z-index: 100;
+  background: var(--color-glass-nav);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-top: 1px solid var(--color-border);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* ── antd-mobile TabBar overrides ── */
+.tabbar .adm-tab-bar {
+  background: transparent;
+  border-top: none;
+  padding-bottom: 0;
+  --adm-color-primary: var(--color-accent);
+}
+
+.tabbar .adm-tab-bar-item {
+  color: var(--color-text-muted);
+  transition: color var(--transition-fast);
+  padding: 6px 0 4px;
+}
+
+.tabbar .adm-tab-bar-item-active {
+  color: var(--color-accent-light);
+}
+
+/* ── Icon sizing ── */
+.tabbar .adm-tab-bar-item-icon {
+  font-size: 24px;
+  height: 24px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tabbar .adm-tab-bar-item-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+/* ── Title styling ── */
+.tabbar .adm-tab-bar-item-title {
+  font-size: 10px;
+  font-weight: 500;
+  margin-top: 2px;
+  letter-spacing: 0.02em;
+}
+
+/* ── Active indicator glow ── */
+.tabbar .adm-tab-bar-item-active .adm-tab-bar-item-icon {
+  filter: drop-shadow(0 0 6px var(--color-accent-glow));
+}

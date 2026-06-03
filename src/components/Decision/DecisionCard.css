@@ -1,0 +1,194 @@
+/* ============================================================
+   DecisionCard — Single decision/thesis card
+   ============================================================ */
+
+/* ── Card Container ── */
+.decision-card {
+  position: relative;
+  background: var(--color-glass-card);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  box-shadow: var(--shadow-sm);
+  border-left: 3px solid transparent;
+  transition:
+    transform var(--transition-fast),
+    box-shadow var(--transition-normal),
+    border-color var(--transition-normal);
+  animation: slideUp var(--transition-slow) ease both;
+  cursor: pointer;
+}
+
+.decision-card:active {
+  transform: scale(0.98);
+  box-shadow: var(--shadow-md);
+}
+
+/* ── Sentiment-based left border ── */
+.decision-card--bullish {
+  border-left-color: var(--color-profit);
+}
+
+.decision-card--bearish {
+  border-left-color: var(--color-loss);
+}
+
+.decision-card--neutral {
+  border-left-color: var(--color-neutral);
+}
+
+/* ── Top Row: Emoji + Title ── */
+.decision-card__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.decision-card__sentiment-emoji {
+  font-size: 20px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.decision-card__title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+/* ── Content Preview ── */
+.decision-card__content {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  line-height: 1.55;
+  margin-top: 8px;
+}
+
+/* ── Bottom Row: Confidence + Status + Trades ── */
+.decision-card__footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-border);
+  flex-wrap: wrap;
+}
+
+.decision-card__confidence {
+  font-size: 14px;
+  line-height: 1;
+  letter-spacing: 1px;
+  flex-shrink: 0;
+}
+
+.decision-card__confidence-star {
+  opacity: 0.9;
+}
+
+.decision-card__confidence-star--empty {
+  opacity: 0.2;
+}
+
+/* ── Status Tag ── */
+.decision-card__status {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.decision-card__status--active {
+  background: var(--color-profit-bg);
+  color: var(--color-profit);
+  border: 1px solid rgba(0, 212, 170, 0.2);
+}
+
+.decision-card__status--closed {
+  background: rgba(136, 153, 170, 0.1);
+  color: var(--color-neutral);
+  border: 1px solid rgba(136, 153, 170, 0.12);
+}
+
+.decision-card__status--paused {
+  background: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+/* ── Trade Count Badge ── */
+.decision-card__trade-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 500;
+  background: var(--color-accent-bg);
+  color: var(--color-accent-light);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+}
+
+.decision-card__trade-count::before {
+  content: '📊';
+  font-size: 10px;
+}
+
+.decision-card__trade-count--loop::before {
+  content: none;
+}
+
+.decision-card__footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.decision-card__review-btn {
+  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-light) 100%);
+  color: #fff;
+  border: none;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+  box-shadow: 0 2px 8px var(--color-accent-glow);
+}
+
+.decision-card__review-btn:active {
+  transform: scale(0.95);
+  box-shadow: 0 0 12px var(--color-accent-glow);
+}
+
+/* ── Timestamp ── */
+.decision-card__time {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin-left: auto;
+}
+
+/* ── Swipe ── */
+.decision-card__swipe .adm-swipe-action-track {
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}

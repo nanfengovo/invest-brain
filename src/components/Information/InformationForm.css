@@ -1,0 +1,70 @@
+.info-form {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background-color: var(--color-bg-primary);
+}
+
+.info-form__content {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.info-form .adm-form {
+  --background-color: transparent;
+  --border-inner: 1px solid var(--color-border);
+  --border-top: none;
+  --border-bottom: none;
+}
+
+.info-form .adm-list-header {
+  color: var(--color-text-secondary);
+  font-size: 14px;
+}
+
+.info-form .adm-selector-item {
+  border-radius: 8px;
+  background: var(--color-glass-card);
+  border-color: var(--color-border);
+  color: var(--color-text-primary);
+}
+
+.info-form .adm-selector-item-active {
+  background: rgba(99, 102, 241, 0.1);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.info-form__upload {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.info-form__upload-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  background: var(--color-glass-card);
+  border: 1px dashed var(--color-border);
+  border-radius: 8px;
+  color: var(--color-accent);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.info-form__upload-btn input[type="file"] {
+  display: none;
+}
+
+.info-form__upload-btn:active {
+  opacity: 0.8;
+}
+
+.info-form__upload-path {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  word-break: break-all;
+}

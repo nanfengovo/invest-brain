@@ -1,0 +1,21 @@
+/* ============================================================
+   AppShell — Root Layout Wrapper
+   ============================================================ */
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  height: 100%;
+  background: var(--color-bg-primary);
+  overflow: hidden;
+}
+
+.app-shell__content {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+
+  /* Prevent content from peeking behind the tab bar when bouncing */
+  overscroll-behavior-y: contain;
+}

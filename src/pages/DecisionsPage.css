@@ -1,0 +1,164 @@
+/* ============================================================
+   DecisionsPage — Premium Dark Theme Styles
+   ============================================================ */
+
+.decisions-page {
+  padding: 16px;
+  padding-top: calc(var(--safe-area-top, 0px) + 16px);
+  padding-bottom: calc(var(--tabbar-height) + var(--safe-area-bottom, 0px) + 24px);
+}
+
+/* ── Header ── */
+.decisions-page__header {
+  margin-bottom: 16px;
+  animation: slideUp var(--transition-slow) ease both;
+}
+
+.decisions-page__title {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+/* ── Filter Tabs ── */
+.decisions-page__tabs {
+  margin-bottom: 16px;
+  animation: slideUp 0.4s ease both;
+  animation-delay: 60ms;
+}
+
+/* antd-mobile Tabs dark overrides */
+.decisions-page__tabs .adm-tabs-header {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.decisions-page__tabs .adm-tabs-tab {
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  padding: 10px 0;
+  transition: color var(--transition-fast);
+}
+
+.decisions-page__tabs .adm-tabs-tab-active {
+  color: var(--color-accent-light);
+  font-weight: 600;
+}
+
+.decisions-page__tabs .adm-tabs-tab-line {
+  background: var(--color-accent);
+  height: 2px;
+  border-radius: 1px;
+}
+
+/* ── Decision List ── */
+.decisions-page__list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Stagger animation */
+.decisions-page__list > * {
+  animation: slideUp 0.4s ease both;
+}
+
+.decisions-page__list > *:nth-child(1) { animation-delay: 0ms; }
+.decisions-page__list > *:nth-child(2) { animation-delay: 40ms; }
+.decisions-page__list > *:nth-child(3) { animation-delay: 80ms; }
+.decisions-page__list > *:nth-child(4) { animation-delay: 120ms; }
+.decisions-page__list > *:nth-child(5) { animation-delay: 160ms; }
+.decisions-page__list > *:nth-child(6) { animation-delay: 200ms; }
+.decisions-page__list > *:nth-child(7) { animation-delay: 240ms; }
+.decisions-page__list > *:nth-child(8) { animation-delay: 280ms; }
+
+/* ── Form Popup ── */
+.decisions-page__popup .adm-popup-body {
+  background: transparent;
+}
+
+.decisions-page__popup-content {
+  background: var(--color-bg-secondary);
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+  border: 1px solid var(--color-border-light);
+  border-bottom: none;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  min-height: 70vh;
+  max-height: 92vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0;
+}
+
+/* Popup handle bar */
+.decisions-page__popup-handle {
+  display: flex;
+  justify-content: center;
+  padding: 12px 0 8px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+}
+
+.decisions-page__popup-handle::after {
+  content: '';
+  width: 36px;
+  height: 4px;
+  background: var(--color-border-light);
+  border-radius: var(--radius-full);
+}
+
+.decisions-page__popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 20px 16px;
+}
+
+.decisions-page__popup-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.decisions-page__popup-close {
+  font-size: 22px;
+  color: var(--color-text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+  min-height: auto;
+  min-width: auto;
+  transition: color var(--transition-fast);
+}
+
+.decisions-page__popup-close:active {
+  color: var(--color-text-primary);
+}
+
+.decisions-page__popup-body {
+  padding: 0 20px 40px;
+}
+
+/* ── Loading ── */
+.decisions-page__loading {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 0;
+}
+
+/* ── Responsive ── */
+@media (prefers-reduced-motion: reduce) {
+  .decisions-page__list > *,
+  .decisions-page__tabs {
+    animation: none;
+  }
+}

@@ -1,0 +1,238 @@
+/* ============================================================
+   TradeForm — Trade entry form
+   ============================================================ */
+
+/* ── Full-screen container ── */
+.trade-form {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  background: var(--color-bg-primary);
+  animation: fadeIn var(--transition-normal) ease;
+}
+
+/* ── Header Bar ── */
+.trade-form__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  padding-top: calc(var(--safe-area-top, 0px) + 12px);
+  background: var(--color-glass-nav);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-bottom: 1px solid var(--color-border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.trade-form__header-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  font-size: 20px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+  background: transparent;
+  border: none;
+  min-height: unset;
+  min-width: unset;
+}
+
+.trade-form__header-btn:active {
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+}
+
+.trade-form__title {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.trade-form__save-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 16px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-light) 100%);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 0 12px var(--color-accent-glow);
+  transition:
+    transform var(--transition-fast),
+    box-shadow var(--transition-fast);
+  min-height: unset;
+  min-width: unset;
+}
+
+.trade-form__save-btn:active {
+  transform: scale(0.95);
+  box-shadow: 0 0 20px var(--color-accent-glow);
+}
+
+.trade-form__save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Form Body ── */
+.trade-form__body {
+  flex: 1;
+  padding: 16px;
+  padding-bottom: calc(var(--safe-area-bottom, 0px) + 24px);
+  overflow-y: auto;
+}
+
+/* ── Section Titles ── */
+.trade-form__section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 20px;
+  margin-bottom: 12px;
+}
+
+.trade-form__section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding-left: 4px;
+}
+
+.trade-form__section-title:first-child {
+  margin-top: 0;
+}
+
+/* ── OCR Button ── */
+.trade-form__ocr-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--color-accent);
+  background: var(--color-accent-bg);
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+.trade-form__ocr-btn:active {
+  background: var(--color-bg-elevated);
+}
+.trade-form__ocr-input {
+  display: none;
+}
+
+/* ── Form Field Overrides ── */
+.trade-form .adm-form .adm-list-item {
+  background: var(--color-bg-input);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  margin-bottom: 10px;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.trade-form .adm-form .adm-list-item:focus-within {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-bg);
+}
+
+.trade-form .adm-form-item-label {
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.trade-form .adm-input-element,
+.trade-form .adm-text-area-element {
+  color: var(--color-text-primary);
+  font-size: 15px;
+}
+
+.trade-form .adm-input-element::placeholder,
+.trade-form .adm-text-area-element::placeholder {
+  color: var(--color-text-muted);
+}
+
+/* ── Symbol Input Uppercase ── */
+.trade-form__symbol-input .adm-input-element {
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+/* ── Number Inputs ── */
+.trade-form__number-input .adm-input-element {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono',
+    Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Selector Overrides ── */
+.trade-form .adm-selector {
+  gap: 8px;
+}
+
+.trade-form .adm-selector .adm-selector-item {
+  flex: 1;
+  text-align: center;
+  padding: 8px 4px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* ── Picker Display ── */
+.trade-form__picker-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: var(--color-bg-input);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+}
+
+.trade-form__picker-trigger:active {
+  border-color: var(--color-accent);
+}
+
+.trade-form__picker-label {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.trade-form__picker-value {
+  font-size: 14px;
+  color: var(--color-text-primary);
+}
+
+.trade-form__picker-value--placeholder {
+  color: var(--color-text-muted);
+}
+
+.trade-form__picker-arrow {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  margin-left: 4px;
+}
+
+/* ── Option Fields (conditional) ── */
+.trade-form__option-fields {
+  animation: slideUp var(--transition-normal) ease both;
+}

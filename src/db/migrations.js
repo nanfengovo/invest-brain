@@ -1,0 +1,148 @@
+/**
+ * Database migrations for InvestBrain
+ * Each migration is an array of SQL statements to execute
+ */
+export const MIGRATIONS = [
+  {
+    version: 1,
+    description: 'Initial schema - core tables',
+    statements: [
+      // Migration tracking table
+      `CREATE TABLE IF NOT EXISTS _migrations (
+        version INTEGER PRIMARY KEY,
+        applied_at INTEGER NOT NULL
+      )`,
+
+      // 1. Assets table (stocks, options, ETFs)
+      `CREATE TABLE IF NOT EXISTS assets (
+        id TEXT PRIMARY KEY,
+        symbol TEXT NOT NULL,
+        name TEXT,
+        type TEXT NOT NULL DEFAULT 'STOCK',
+        sector TEXT,
+        strike_price REAL,
+        expiry_date TEXT,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+      )`,
+
+      // 2. Informations table (news, articles, videos)
+      `CREATE TABLE IF NOT EXISTS informations (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        type TEXT NOT NULL DEFAULT 'ARTICLE',
+        source TEXT,
+        url TEXT,
+        content TEXT,
+        file_path TEXT,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch())
+      )`,
+
+      // 3. Decisions / Investment thesis table
+      `CREATE TABLE IF NOT EXISTS decisions (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        content TEXT,
+        confidence INTEGER DEFAULT 3,
+        sentiment TEXT DEFAULT 'NEUTRAL',
+        status TEXT DEFAULT 'ACTIVE',
+        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+      )`,
+
+      // 4. Trades table (execution records)
+      `CREATE TABLE IF NOT EXISTS trades (
+        id TEXT PRIMARY KEY,
+        asset_id TEXT NOT NULL,
+        decision_id TEXT,
+        direction TEXT NOT NULL,
+        quantity REAL NOT NULL,
+        price REAL NOT NULL,
+        fee REAL DEFAULT 0,
+        account TEXT,
+        trade_time INTEGER NOT NULL,
+        note TEXT,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        FOREIGN KEY(asset_id) REFERENCES assets(id),
+        FOREIGN KEY(decision_id) REFERENCES decisions(id)
+      )`,
+
+      // 5. Decision-Information links (many-to-many)
+      `CREATE TABLE IF NOT EXISTS decision_info_links (
+        decision_id TEXT NOT NULL,
+        info_id TEXT NOT NULL,
+        PRIMARY KEY (decision_id, info_id),
+        FOREIGN KEY(decision_id) REFERENCES decisions(id),
+        FOREIGN KEY(info_id) REFERENCES informations(id)
+      )`,
+
+      // 6. Reviews table (post-mortem)
+      `CREATE TABLE IF NOT EXISTS reviews (
+        id TEXT PRIMARY KEY,
+        decision_id TEXT NOT NULL,
+        review_content TEXT NOT NULL,
+        is_successful INTEGER,
+        lessons TEXT,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        FOREIGN KEY(decision_id) REFERENCES decisions(id)
+      )`,
+
+      // Indexes for high-frequency queries
+      `CREATE INDEX IF NOT EXISTS idx_trades_asset ON trades(asset_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_trades_decision ON trades(decision_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_trades_time ON trades(trade_time DESC)`,
+      `CREATE INDEX IF NOT EXISTS idx_trades_account ON trades(account)`,
+      `CREATE INDEX IF NOT EXISTS idx_decisions_status ON decisions(status)`,
+      `CREATE INDEX IF NOT EXISTS idx_decisions_sentiment ON decisions(sentiment)`,
+      `CREATE INDEX IF NOT EXISTS idx_assets_symbol ON assets(symbol)`,
+      `CREATE INDEX IF NOT EXISTS idx_assets_type ON assets(type)`,
+
+      // Enable WAL mode for better concurrent read/write
+      `PRAGMA journal_mode=WAL`,
+    ],
+  },
+  {
+    version: 2,
+    description: 'Phase 2: Information loop and App Settings',
+    statements: [
+      // Add columns to informations
+      `ALTER TABLE informations ADD COLUMN asset_id TEXT REFERENCES assets(id)`,
+      `ALTER TABLE informations ADD COLUMN sector TEXT`,
+      
+      // Add viewpoints table for annotations
+      `CREATE TABLE IF NOT EXISTS viewpoints (
+        id TEXT PRIMARY KEY,
+        info_id TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        FOREIGN KEY(info_id) REFERENCES informations(id)
+      )`,
+
+      // Add info_id to trades to link directly to information (optional, if they bypass decision)
+      `ALTER TABLE trades ADD COLUMN info_id TEXT REFERENCES informations(id)`,
+
+      // Add result_pnl to reviews
+      `ALTER TABLE reviews ADD COLUMN result_pnl REAL`,
+
+      // Add app_settings table
+      `CREATE TABLE IF NOT EXISTS app_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT,
+        updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+      )`,
+
+      // Indexes
+      `CREATE INDEX IF NOT EXISTS idx_viewpoints_info ON viewpoints(info_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_informations_asset ON informations(asset_id)`
+    ]
+  }
+];
+
+/**
+ * Run all pending migrations
+ */
+export function getMigrationSQL(currentVersion) {
+  return MIGRATIONS.filter((m) => m.version > currentVersion).sort(
+    (a, b) => a.version - b.version
+  );
+}

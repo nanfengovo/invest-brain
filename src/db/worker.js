@@ -1,6 +1,7 @@
 /**
  * SQLite Web Worker for InvestBrain
  * Runs SQLite WASM with OPFS persistence in a dedicated Web Worker
+ * [Cache Bust 2026-06-03] Force new filename to bust SW cache for COEP headers
  */
 
 import sqlite3InitModule from '@sqlite.org/sqlite-wasm';

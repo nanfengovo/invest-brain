@@ -1,64 +1,82 @@
 /**
- * Origin Private File System (OPFS) Utilities
+ * IndexedDB Utilities (Replaces OPFS)
  * Handles saving and reading local files (images, pdfs) without a backend.
+ * Rewritten to use IndexedDB because iOS Safari does not support OPFS createWritable in main thread.
  */
 
+const DB_NAME = 'investBrainFiles';
+const STORE_NAME = 'files';
+
 /**
- * Save a File to OPFS
+ * Initialize IndexedDB
+ * @returns {Promise<IDBDatabase>}
+ */
+function getDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, 1);
+    
+    request.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME);
+      }
+    };
+    
+    request.onsuccess = (e) => resolve(e.target.result);
+    request.onerror = (e) => reject(e.target.error);
+  });
+}
+
+/**
+ * Save a File to IndexedDB (keeps OPFS naming for compatibility)
  * @param {File} file 
  * @param {string} prefix - Optional folder prefix
  * @returns {Promise<string>} The relative path to the saved file
  */
 export async function saveFileToOPFS(file, prefix = 'uploads') {
-  if (!navigator.storage || !navigator.storage.getDirectory) {
-    throw new Error('OPFS is not supported in this browser/mode.');
-  }
-
-  const root = await navigator.storage.getDirectory();
+  const db = await getDB();
+  const filename = `${prefix}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
   
-  // Try to create directory
-  let dirHandle = root;
-  try {
-    dirHandle = await root.getDirectoryHandle(prefix, { create: true });
-  } catch (e) {
-    console.warn('Could not create directory, using root');
-  }
-
-  const filename = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-  const fileHandle = await dirHandle.getFileHandle(filename, { create: true });
-  
-  // Write the file
-  const writable = await fileHandle.createWritable();
-  await writable.write(file);
-  await writable.close();
-
-  return `${prefix}/${filename}`;
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    
+    // Store the file blob with the filename as key
+    const request = store.put(file, filename);
+    
+    request.onsuccess = () => resolve(filename);
+    request.onerror = () => reject(request.error);
+  });
 }
 
 /**
- * Get an object URL for a file stored in OPFS
+ * Get an object URL for a file stored in IndexedDB (keeps OPFS naming for compatibility)
  * @param {string} path - The path returned by saveFileToOPFS
  * @returns {Promise<string>} Blob URL (needs to be revoked when done)
  */
 export async function getFileUrlFromOPFS(path) {
-  if (!path || !navigator.storage || !navigator.storage.getDirectory) {
-    return null;
-  }
-
-  const parts = path.split('/');
-  const root = await navigator.storage.getDirectory();
+  if (!path) return null;
   
   try {
-    let currentHandle = root;
-    for (let i = 0; i < parts.length - 1; i++) {
-      currentHandle = await currentHandle.getDirectoryHandle(parts[i]);
-    }
+    const db = await getDB();
     
-    const fileHandle = await currentHandle.getFileHandle(parts[parts.length - 1]);
-    const file = await fileHandle.getFile();
-    return URL.createObjectURL(file);
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readonly');
+      const store = tx.objectStore(STORE_NAME);
+      const request = store.get(path);
+      
+      request.onsuccess = () => {
+        if (request.result) {
+          resolve(URL.createObjectURL(request.result));
+        } else {
+          resolve(null);
+        }
+      };
+      request.onerror = () => reject(request.error);
+    });
   } catch (err) {
-    console.error('Failed to read file from OPFS:', err);
+    console.error('Failed to read file from IndexedDB:', err);
     return null;
   }
 }
+

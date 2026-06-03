@@ -46,10 +46,11 @@ function formatNumber(num) {
  * @param {object} props
  * @param {object} props.trade - Trade record object
  * @param {number} [props.index=0] - Index for stagger animation delay
- * @param {function} [props.onClick] - Optional tap handler
+ * @param {function} [props.onEdit] - Edit callback
  */
-export default function TradeCard({ trade, index = 0, onClick }) {
+export default function TradeCard({ trade, index = 0, onEdit }) {
   const deleteTrade = useTradeStore((s) => s.deleteTrade);
+  const [actionSheetVisible, setActionSheetVisible] = useState(false);
 
   const dir = DIRECTION_MAP[trade.direction] || { label: trade.direction, type: 'buy' };
   const isBuy = dir.type === 'buy';
@@ -60,7 +61,7 @@ export default function TradeCard({ trade, index = 0, onClick }) {
     return qty * price;
   }, [trade.quantity, trade.price]);
 
-  const animationDelay = `${index * 50}ms`;
+  const animationDelay = useMemo(() => `${Math.min(index * 0.05, 0.5)}s`, [index]);
 
   const handleDelete = useCallback(async () => {
     Dialog.show({
@@ -94,12 +95,26 @@ export default function TradeCard({ trade, index = 0, onClick }) {
     },
   ];
 
+  const actionSheetActions = [
+    { text: '编辑', key: 'edit' },
+    { text: '删除', key: 'delete', danger: true },
+  ];
+
+  const handleAction = (action) => {
+    setActionSheetVisible(false);
+    if (action.key === 'edit') {
+      onEdit?.(trade);
+    } else if (action.key === 'delete') {
+      handleDelete();
+    }
+  };
+
   return (
     <SwipeAction rightActions={swipeActions} className="trade-card__swipe">
       <div
         className={`trade-card ${isBuy ? 'trade-card--buy' : 'trade-card--sell'}`}
         style={{ animationDelay }}
-        onClick={onClick}
+        onClick={() => setActionSheetVisible(true)}
       >
         <div className="trade-card__body">
           {/* Left: Direction + Symbol */}
@@ -152,6 +167,14 @@ export default function TradeCard({ trade, index = 0, onClick }) {
           </div>
         )}
       </div>
+
+      <ActionSheet
+        visible={actionSheetVisible}
+        actions={actionSheetActions}
+        onClose={() => setActionSheetVisible(false)}
+        onAction={handleAction}
+        cancelText="取消"
+      />
     </SwipeAction>
   );
 }

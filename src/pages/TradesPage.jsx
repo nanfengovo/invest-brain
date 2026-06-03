@@ -8,6 +8,7 @@ import './TradesPage.css';
 
 export default function TradesPage() {
   const [showForm, setShowForm] = useState(false);
+  const [editingTrade, setEditingTrade] = useState(null);
 
   const { trades, tradesLoading, refreshTrades, refreshHoldings } =
     useTradeStore();
@@ -22,8 +23,14 @@ export default function TradesPage() {
 
   const handleTradeAdded = () => {
     setShowForm(false);
+    setEditingTrade(null);
     refreshTrades();
     refreshHoldings();
+  };
+
+  const handleEditTrade = (trade) => {
+    setEditingTrade(trade);
+    setShowForm(true);
   };
 
   return (
@@ -46,8 +53,8 @@ export default function TradesPage() {
           </div>
         ) : trades.length > 0 ? (
           <div className="trades-page__list">
-            {trades.map((trade) => (
-              <TradeCard key={trade.id} trade={trade} />
+            {trades.map((trade, idx) => (
+              <TradeCard key={trade.id} trade={trade} index={idx} onEdit={handleEditTrade} />
             ))}
           </div>
         ) : (
@@ -62,7 +69,10 @@ export default function TradesPage() {
       {/* ── FAB ── */}
       <button
         className="action-fab"
-        onClick={() => setShowForm(true)}
+        onClick={() => {
+          setEditingTrade(null);
+          setShowForm(true);
+        }}
         aria-label="添加交易"
       >
         +
@@ -71,7 +81,10 @@ export default function TradesPage() {
       {/* ── Trade Form Popup ── */}
       <Popup
         visible={showForm}
-        onMaskClick={() => setShowForm(false)}
+        onMaskClick={() => {
+          setShowForm(false);
+          setEditingTrade(null);
+        }}
         position="bottom"
         bodyClassName="trades-page__popup"
         destroyOnClose
@@ -79,16 +92,22 @@ export default function TradesPage() {
         <div className="trades-page__popup-content">
           <div className="trades-page__popup-handle" />
           <div className="trades-page__popup-header">
-            <span className="trades-page__popup-title">录入交易</span>
+            <span className="trades-page__popup-title">{editingTrade ? '编辑交易' : '录入交易'}</span>
             <button
               className="trades-page__popup-close"
-              onClick={() => setShowForm(false)}
+              onClick={() => {
+                setShowForm(false);
+                setEditingTrade(null);
+              }}
             >
               ✕
             </button>
           </div>
           <div className="trades-page__popup-body">
-            <TradeForm onSuccess={handleTradeAdded} />
+            <TradeForm onSuccess={handleTradeAdded} initialData={editingTrade} onClose={() => {
+              setShowForm(false);
+              setEditingTrade(null);
+            }} />
           </div>
         </div>
       </Popup>

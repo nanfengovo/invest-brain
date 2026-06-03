@@ -26,7 +26,7 @@ html {
 
 html,
 body {
-  height: 100%;
+  height: 100dvh;
   width: 100%;
   overflow: hidden;
   overscroll-behavior-y: none;
@@ -411,11 +411,10 @@ body {
    ---------------------------------------------------------- */
 
 /* ── Page Layout ── */
-/* ── Page Layout ── */
 .page {
   padding: 16px;
   padding-top: calc(var(--navbar-height) + var(--safe-area-top, 0px) + 12px);
-  padding-bottom: calc(var(--tabbar-height) + var(--safe-area-bottom, 0px) + 24px);
+  padding-bottom: calc(var(--tabbar-height) + var(--safe-area-bottom, 0px) + 8px);
 }
 
 .page--no-nav {

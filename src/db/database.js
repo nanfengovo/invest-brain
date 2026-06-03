@@ -240,6 +240,14 @@ export const db = {
     );
   },
 
+  async updateTrade(trade) {
+    const { id, asset_id, decision_id, direction, quantity, price, fee, account, trade_time, note } = trade;
+    return this.exec(
+      `UPDATE trades SET asset_id = ?, decision_id = ?, direction = ?, quantity = ?, price = ?, fee = ?, account = ?, trade_time = ?, note = ? WHERE id = ?`,
+      [asset_id, decision_id || null, direction, quantity, price, fee || 0, account || null, trade_time, note || null, id]
+    );
+  },
+
   async deleteTrade(id) {
     return this.exec('DELETE FROM trades WHERE id = ?', [id]);
   },

@@ -32,8 +32,9 @@ const DIRECTION_OPTIONS = [
  * @param {object} props
  * @param {function} props.onClose - Close the form
  * @param {function} props.onSuccess - Callback after successful save
+ * @param {object} props.initialData - Optional initial trade data for editing
  */
-export default function TradeForm({ onClose, onSuccess }) {
+export default function TradeForm({ onClose, onSuccess, initialData }) {
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const [assetType, setAssetType] = useState(['STOCK']);
@@ -56,6 +57,28 @@ export default function TradeForm({ onClose, onSuccess }) {
     refreshDecisions();
     refreshInformations();
   }, [refreshDecisions, refreshInformations]);
+
+  // Populate form if editing
+  useEffect(() => {
+    if (initialData) {
+      form.setFieldsValue({
+        symbol: initialData.symbol || '',
+        asset_name: initialData.asset_name || '',
+        quantity: initialData.quantity?.toString() || '',
+        price: initialData.price?.toString() || '',
+        fee: initialData.fee?.toString() || '0',
+        account: initialData.account || '',
+        note: initialData.note || '',
+        strike_price: initialData.strike_price?.toString() || '',
+        direction: initialData.direction ? [initialData.direction] : ['BUY'],
+      });
+      setAssetType([initialData.asset_type || 'STOCK']);
+      setSelectedDecision(initialData.decision_id || null);
+      setSelectedInfo(initialData.info_id || null);
+      if (initialData.trade_time) setTradeTime(new Date(initialData.trade_time));
+      if (initialData.expiry_date) setExpiryDate(new Date(initialData.expiry_date));
+    }
+  }, [initialData, form]);
 
   const decisionColumns = useMemo(() => {
     const items = decisions.map((d) => ({
@@ -127,7 +150,7 @@ export default function TradeForm({ onClose, onSuccess }) {
       }
 
       const trade = {
-        id: crypto.randomUUID(),
+        id: initialData ? initialData.id : crypto.randomUUID(),
         asset_id: assetId,
         symbol,
         asset_name: values.asset_name || '',
@@ -146,10 +169,12 @@ export default function TradeForm({ onClose, onSuccess }) {
         expiry_date: isOption && expiryDate ? expiryDate.toISOString().slice(0, 10) : null,
       };
 
-      const result = await useTradeStore.getState().addTrade(trade);
+      const result = initialData 
+        ? await useTradeStore.getState().updateTrade(trade)
+        : await useTradeStore.getState().addTrade(trade);
 
       if (result.success) {
-        Toast.show({ content: '交易已保存', icon: 'success' });
+        Toast.show({ content: initialData ? '更新成功' : '交易已保存', icon: 'success' });
         onSuccess?.();
         onClose?.();
       } else {
@@ -317,13 +342,14 @@ export default function TradeForm({ onClose, onSuccess }) {
                 </span>
               </div>
 
-              <DatePicker
+               <DatePicker
                 visible={expiryPickerVisible}
                 onClose={() => setExpiryPickerVisible(false)}
                 onConfirm={(val) => {
                   setExpiryDate(val);
                   setExpiryPickerVisible(false);
                 }}
+                value={expiryDate || new Date()}
                 title="到期日"
               />
             </div>
@@ -415,6 +441,7 @@ export default function TradeForm({ onClose, onSuccess }) {
               setTradeTime(val);
               setDatePickerVisible(false);
             }}
+            value={tradeTime}
             precision="minute"
             title="交易时间"
           />

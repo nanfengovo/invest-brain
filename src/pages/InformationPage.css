@@ -6,7 +6,7 @@
 }
 
 .info-page__header {
-  padding: 16px 20px 8px;
+  padding: calc(var(--safe-area-top, 0px) + 16px) 20px 8px;
   background: var(--color-glass-nav);
 }
 

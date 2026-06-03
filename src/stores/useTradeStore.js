@@ -52,6 +52,18 @@ export const useTradeStore = create((set, get) => ({
     }
   },
 
+  updateTrade: async (trade) => {
+    try {
+      await db.updateTrade(trade);
+      await get().refreshTrades();
+      await get().refreshHoldings();
+      return { success: true };
+    } catch (err) {
+      console.error('Failed to update trade:', err);
+      return { success: false, error: err.message };
+    }
+  },
+
   deleteTrade: async (id) => {
     try {
       await db.deleteTrade(id);

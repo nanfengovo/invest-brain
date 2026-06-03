@@ -38,12 +38,12 @@ export async function parseTradeImage(image) {
 function extractTradeData(text) {
   const result = {};
   
-  // Clean text
+  // Clean text: remove spaces between numbers and letters, but keep some structure
   const cleanText = text.replace(/\s+/g, ' ');
 
   // 1. Detect Direction
   if (/(买入|买|B|buy|买进)/i.test(cleanText)) result.direction = 'BUY';
-  else if (/(卖出|卖|S|sell)/i.test(cleanText)) result.direction = 'SELL';
+  else if (/(卖出|卖|S|sell|平仓)/i.test(cleanText)) result.direction = 'SELL';
 
   // 2. Detect Symbol (e.g. AAPL, TSLA, 00700)
   // Look for 2-5 uppercase letters or 5-6 digits
@@ -52,27 +52,39 @@ function extractTradeData(text) {
     result.symbol = symbolMatch[1];
   }
 
-  // 3. Detect Price and Quantity
-  // Looking for numbers. This is a naive implementation since broker UIs differ heavily.
-  // Generally, the quantity is an integer, price is a decimal.
-  const numbers = [...cleanText.matchAll(/\b\d+(\.\d+)?\b/g)].map(m => parseFloat(m[0]));
-  
-  if (numbers.length > 0) {
-    // Attempt to guess which is price and which is quantity.
-    // Usually quantity is an integer (e.g., 100, 200, 10).
-    const integers = numbers.filter(n => Number.isInteger(n) && n > 0);
-    const decimals = numbers.filter(n => !Number.isInteger(n));
-    
-    if (integers.length > 0) {
-      result.quantity = integers[0]; // Take first integer as quantity
-    }
-    
-    if (decimals.length > 0) {
-      result.price = decimals[0]; // Take first decimal as price
-    } else if (numbers.length > 1) {
-      // If all are integers or no decimals found, just take the first two
-      if (!result.quantity) result.quantity = numbers[0];
-      if (!result.price) result.price = numbers[1] || numbers[0];
+  // 3. Detect Price and Quantity via Keywords
+  // Check for common Chinese broker labels
+  const qtyRegex = /(?:数量|成交量|股数)[:：]?\s*(\d+)/;
+  const qtyMatch = cleanText.match(qtyRegex);
+  if (qtyMatch) {
+    result.quantity = parseInt(qtyMatch[1], 10);
+  }
+
+  const priceRegex = /(?:价格|均价|成交价|成本)[:：]?\s*(\d+(?:\.\d+)?)/;
+  const priceMatch = cleanText.match(priceRegex);
+  if (priceMatch) {
+    result.price = parseFloat(priceMatch[1]);
+  }
+
+  // Fallback if keywords fail
+  if (!result.quantity || !result.price) {
+    const numbers = [...cleanText.matchAll(/\b\d+(\.\d+)?\b/g)].map(m => parseFloat(m[0]));
+    if (numbers.length > 0) {
+      const integers = numbers.filter(n => Number.isInteger(n) && n > 0);
+      const decimals = numbers.filter(n => !Number.isInteger(n) && n > 0);
+      
+      if (!result.quantity && integers.length > 0) {
+        // Assume largest reasonable integer is quantity if no keywords match
+        result.quantity = integers.find(n => n >= 10) || integers[0]; 
+      }
+      
+      if (!result.price && decimals.length > 0) {
+        result.price = decimals[0];
+      } else if (!result.price && numbers.length > 1) {
+        // If all are integers or no decimals found, fallback
+        if (!result.quantity) result.quantity = numbers[0];
+        if (!result.price) result.price = numbers[1] || numbers[0];
+      }
     }
   }
 

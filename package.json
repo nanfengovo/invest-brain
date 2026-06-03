@@ -1,10 +1,11 @@
 {
   "name": "invest-brain",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.3",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "npm version patch --no-git-tag-version",
     "build": "vite build",
     "preview": "vite preview"
   },

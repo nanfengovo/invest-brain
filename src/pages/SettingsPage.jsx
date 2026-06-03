@@ -321,7 +321,7 @@ function SettingsPage() {
         <div className="settings-about">
           <div className="settings-about__logo">🧠</div>
           <div className="settings-about__name">InvestBrain</div>
-          <div className="settings-about__version">v1.0.1</div>
+          <div className="settings-about__version">v{typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.0.0'}</div>
           <div className="settings-about__build-time" style={{ fontSize: '11px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
             最后更新: {typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : 'Dev Mode'}
           </div>

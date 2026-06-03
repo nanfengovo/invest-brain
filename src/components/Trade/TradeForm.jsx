@@ -49,6 +49,14 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
   const [selectedInfo, setSelectedInfo] = useState(null);
   const [ocrTrades, setOcrTrades] = useState([]);
   const [ocrSheetVisible, setOcrSheetVisible] = useState(false);
+  const [referenceImage, setReferenceImage] = useState(null);
+
+  // Cleanup object URLs on unmount to avoid memory leaks
+  useEffect(() => {
+    return () => {
+      if (referenceImage) URL.revokeObjectURL(referenceImage);
+    };
+  }, [referenceImage]);
 
   const decisions = useTradeStore((s) => s.decisions);
   const refreshDecisions = useTradeStore((s) => s.refreshDecisions);
@@ -122,6 +130,10 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
   const handleOcrInput = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // 显示参考图 (对比录入法核心)
+    if (referenceImage) URL.revokeObjectURL(referenceImage);
+    setReferenceImage(URL.createObjectURL(file));
 
     const toastHandler = Toast.show({
       icon: 'loading',
@@ -268,6 +280,24 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
 
       {/* Form Body */}
       <div className="trade-form__body">
+        
+        {/* 对比录入区 (Phase 1 MVP) */}
+        {referenceImage && (
+          <div className="trade-form__reference-image">
+            <div className="trade-form__reference-header">
+              <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>参照截图 (可滑动查看下方表单)</span>
+              <button 
+                onClick={() => {
+                  URL.revokeObjectURL(referenceImage);
+                  setReferenceImage(null);
+                }}
+                style={{ background: 'none', border: 'none', color: 'var(--color-text-muted)', fontSize: 18 }}
+              >✕</button>
+            </div>
+            <img src={referenceImage} alt="Reference" style={{ width: '100%', maxHeight: '180px', objectFit: 'contain', borderRadius: 'var(--radius-md)' }} />
+          </div>
+        )}
+
         <Form
           form={form}
           layout="horizontal"

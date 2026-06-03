@@ -317,12 +317,14 @@ function SettingsPage() {
         </div>
       </div>
 
-      {/* About */}
       <div className="section">
         <div className="settings-about">
           <div className="settings-about__logo">🧠</div>
           <div className="settings-about__name">InvestBrain</div>
-          <div className="settings-about__version">v1.0.0 MVP</div>
+          <div className="settings-about__version">v1.0.1</div>
+          <div className="settings-about__build-time" style={{ fontSize: '11px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
+            最后更新: {typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : 'Dev Mode'}
+          </div>
           <div className="settings-about__desc">
             本地优先 · 纯单机 · PWA 投资决策闭环系统
           </div>

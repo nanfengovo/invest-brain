@@ -414,7 +414,7 @@ body {
 .page {
   padding: 16px;
   padding-top: calc(var(--navbar-height) + var(--safe-area-top, 0px) + 12px);
-  padding-bottom: calc(var(--tabbar-height) + var(--safe-area-bottom, 0px) + 8px);
+  padding-bottom: calc(var(--tabbar-height) + 16px);
 }
 
 .page--no-nav {
@@ -511,7 +511,7 @@ body {
 .action-fab {
   position: fixed;
   right: 20px;
-  bottom: calc(var(--tabbar-height) + var(--safe-area-bottom, 0px) + 20px);
+  bottom: calc(var(--tabbar-height) + 24px);
   width: 56px;
   height: 56px;
   border-radius: 50%;

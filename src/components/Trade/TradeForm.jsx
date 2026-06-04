@@ -594,7 +594,38 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
         actions={ocrActions}
         onClose={() => setOcrSheetVisible(false)}
         cancelText="取消"
-        extra={<div style={{ textAlign: 'center', fontSize: 14, color: 'var(--color-text-secondary)', padding: '8px 0' }}>识别到 {ocrTrades.length} 笔交易，请选择一笔填入</div>}
+        extra={
+          <div style={{ textAlign: 'center', padding: '8px 0' }}>
+            <div style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginBottom: 12 }}>
+              识别到 {ocrTrades.length} 笔交易
+            </div>
+            <Button 
+              color="primary" 
+              fill="solid" 
+              block 
+              onClick={async () => {
+                const addTrade = useTradeStore.getState().addTrade;
+                let count = 0;
+                for (const t of ocrTrades) {
+                  // Generate UUID for each trade
+                  const tradeToSave = { ...t, id: crypto.randomUUID() };
+                  if (!tradeToSave.trade_time) tradeToSave.trade_time = new Date().toISOString();
+                  const res = await addTrade(tradeToSave);
+                  if (res.success) count++;
+                }
+                Toast.show({ icon: 'success', content: `成功导入 ${count} 笔交易` });
+                setOcrSheetVisible(false);
+                onSuccess?.();
+                onClose?.();
+              }}
+            >
+              🚀 一键批量导入全部
+            </Button>
+            <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 12 }}>
+              或在下方选择单笔提取至表单
+            </div>
+          </div>
+        }
       />
     </div>
   );

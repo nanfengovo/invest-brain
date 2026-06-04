@@ -7,12 +7,42 @@
  */
 
 /**
- * Convert a File/Blob to a base64 data URL string.
+ * Compress and convert a File/Blob to a base64 JPEG data URL string.
  */
-function fileToBase64(file) {
+function compressImageToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX_DIMENSION = 1800; // 足够保持文字清晰度
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_DIMENSION) {
+            height = Math.round((height * MAX_DIMENSION) / width);
+            width = MAX_DIMENSION;
+          }
+        } else {
+          if (height > MAX_DIMENSION) {
+            width = Math.round((width * MAX_DIMENSION) / height);
+            height = MAX_DIMENSION;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        // 使用 0.85 质量的 JPEG，在清晰度和文件大小之间取得最佳平衡
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
@@ -25,8 +55,8 @@ function fileToBase64(file) {
  * @returns {Promise<{ trades: Array<Object>, candidates: { symbols: string[], numbers: string[] } }>}
  */
 export async function parseTradeImage(image) {
-  const dataUrl = await fileToBase64(image);
-  const mimeType = image.type || 'image/png';
+  const dataUrl = await compressImageToBase64(image);
+  const mimeType = 'image/jpeg';
 
   const response = await fetch('/api/ocr', {
     method: 'POST',

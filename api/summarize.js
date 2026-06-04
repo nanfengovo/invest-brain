@@ -162,8 +162,8 @@ export default async function handler(req, res) {
             body: JSON.stringify({
               contents: [{ parts }],
               generationConfig: {
-                temperature: 0.2,
-                maxOutputTokens: 100,
+                temperature: 0.3,
+                maxOutputTokens: 200,
               },
             }),
           });
@@ -181,8 +181,16 @@ export default async function handler(req, res) {
 
           const data = await geminiResponse.json();
           generatedTitle = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+          
+          // Validate: title must be at least 4 characters, otherwise try next model
+          if (generatedTitle.length < 4) {
+            console.warn(`[Summarize API] Model ${currentModel} returned too-short title: "${generatedTitle}", trying next`);
+            lastError = { status: 200, text: `Title too short: "${generatedTitle}"` };
+            break; // try next model
+          }
+          
           success = true;
-          console.log(`[Summarize API] Success with model: ${currentModel}`);
+          console.log(`[Summarize API] Success with model: ${currentModel}, title: "${generatedTitle}"`);
           break;
         } catch (err) {
           console.error(`[Summarize API] Model ${currentModel} exception:`, err);

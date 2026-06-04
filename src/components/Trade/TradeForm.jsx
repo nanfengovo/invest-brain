@@ -469,28 +469,26 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
                 </span>
               </div>
 
-               {expiryPickerVisible && (
-                <DatePicker
-                  visible={true}
-                  onClose={() => setExpiryPickerVisible(false)}
-                  onConfirm={(val) => {
-                    setExpiryDate(val);
-                    setExpiryPickerVisible(false);
-                  }}
-                  value={expiryDate || new Date()}
-                  title="到期日"
-                  min={new Date(2020, 0, 1)}
-                  max={new Date(2030, 11, 31)}
-                  renderLabel={(type, data) => {
-                    switch (type) {
-                      case 'year': return data + '年';
-                      case 'month': return data + '月';
-                      case 'day': return data + '日';
-                      default: return data;
-                    }
-                  }}
-                />
-               )}
+              <DatePicker
+                visible={expiryPickerVisible}
+                onClose={() => setExpiryPickerVisible(false)}
+                onConfirm={(val) => {
+                  setExpiryDate(val);
+                  setExpiryPickerVisible(false);
+                }}
+                value={expiryDate || new Date()}
+                title="到期日"
+                min={new Date(2020, 0, 1)}
+                max={new Date(2030, 11, 31)}
+                renderLabel={(type, data) => {
+                  switch (type) {
+                    case 'year': return data + '年';
+                    case 'month': return data + '月';
+                    case 'day': return data + '日';
+                    default: return data;
+                  }
+                }}
+              />
             </div>
           )}
 
@@ -573,31 +571,29 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
             </span>
           </div>
 
-          {datePickerVisible && (
-            <DatePicker
-              visible={true}
-              onClose={() => setDatePickerVisible(false)}
-              onConfirm={(val) => {
-                setTradeTime(val);
-                setDatePickerVisible(false);
-              }}
-              value={tradeTime}
-              precision="minute"
-              title="交易时间"
-              min={new Date(2020, 0, 1)}
-              max={new Date(2030, 11, 31, 23, 59)}
-              renderLabel={(type, data) => {
-                switch (type) {
-                  case 'year': return data + '年';
-                  case 'month': return data + '月';
-                  case 'day': return data + '日';
-                  case 'hour': return data + '时';
-                  case 'minute': return data + '分';
-                  default: return data;
-                }
-              }}
-            />
-          )}
+          <DatePicker
+            visible={datePickerVisible}
+            onClose={() => setDatePickerVisible(false)}
+            onConfirm={(val) => {
+              setTradeTime(val);
+              setDatePickerVisible(false);
+            }}
+            value={tradeTime}
+            precision="minute"
+            title="交易时间"
+            min={new Date(2020, 0, 1)}
+            max={new Date(2030, 11, 31, 23, 59)}
+            renderLabel={(type, data) => {
+              switch (type) {
+                case 'year': return data + '年';
+                case 'month': return data + '月';
+                case 'day': return data + '日';
+                case 'hour': return data + '时';
+                case 'minute': return data + '分';
+                default: return data;
+              }
+            }}
+          />
 
           <Form.Item name="note" label="备注">
             <TextArea

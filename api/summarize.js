@@ -102,30 +102,59 @@ export default async function handler(req, res) {
       parts.push({ text: '另外，参考上面这张图片的内容进行综合标题总结。' });
     }
 
-    // Call Gemini API
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-    console.log(`[Summarize API] Calling Gemini generateContent...`);
-    const geminiResponse = await fetch(geminiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts }],
-        generationConfig: {
-          temperature: 0.2,
-          maxOutputTokens: 100,
-        },
-      }),
-    });
+    // Call Gemini API with fallbacks
+    const summarizeModels = [
+      'gemini-2.5-flash',
+      'gemini-3.5-flash',
+      'gemini-3.1-flash-lite',
+    ];
 
-    if (!geminiResponse.ok) {
-      const errText = await geminiResponse.text();
-      console.error('[Summarize API] Gemini failed:', errText);
-      return res.status(502).json({ error: 'Gemini API error', details: errText });
+    let lastError = null;
+    let success = false;
+    let generatedTitle = '';
+
+    for (const currentModel of summarizeModels) {
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
+      console.log(`[Summarize API] Trying model: ${currentModel}`);
+      try {
+        const geminiResponse = await fetch(geminiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts }],
+            generationConfig: {
+              temperature: 0.2,
+              maxOutputTokens: 100,
+            },
+          }),
+        });
+
+        if (!geminiResponse.ok) {
+          const errText = await geminiResponse.text();
+          console.warn(`[Summarize API] Model ${currentModel} failed: ${errText}`);
+          lastError = { status: geminiResponse.status, text: errText };
+          continue; // Try next model
+        }
+
+        const data = await geminiResponse.json();
+        generatedTitle = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+        success = true;
+        console.log(`[Summarize API] Successfully summarized with model: ${currentModel}`);
+        break; // Stop loop on success
+      } catch (err) {
+        console.error(`[Summarize API] Model ${currentModel} exception:`, err);
+        lastError = { status: 500, text: err.message };
+        // continue loop
+      }
     }
 
-    const data = await geminiResponse.json();
-    const generatedTitle = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
-    
+    if (!success) {
+      return res.status(502).json({
+        error: 'Gemini API error (All summary models failed)',
+        details: lastError ? lastError.text : 'Unknown error'
+      });
+    }
+
     // Clean up title (remove double quotes, markdown bold, etc.)
     const cleanTitle = generatedTitle.replace(/^["'“”«]/, '').replace(/["'“”»]$/, '').replace(/\*\*?/g, '').trim();
 

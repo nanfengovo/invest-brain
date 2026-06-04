@@ -650,6 +650,8 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
 
                 for (const t of ocrTrades) {
                   const symbol = (t.symbol || '').toUpperCase().trim();
+                  if (!symbol) continue; // 必须有股票代码
+
                   const isOption = t.asset_type === 'OPTION';
                   let assetId = symbol;
 
@@ -670,6 +672,7 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
                     id: crypto.randomUUID(),
                     asset_id: assetId,
                     symbol: symbol,
+                    direction: t.direction || 'BUY', // 默认作为买入记录（如持仓图无交易方向）
                     quantity: parseFloat(t.quantity || 0),
                     price: parseFloat(t.price || 0),
                     fee: parseFloat(t.fee || 0),

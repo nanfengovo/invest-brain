@@ -89,73 +89,100 @@ export default async function handler(req, res) {
     }
 
     // Validate and select model
-    const model = ALLOWED_MODELS.includes(requestedModel) ? requestedModel : DEFAULT_MODEL;
-    console.log(`[OCR API] Using model: ${model}`);
+    const initialModel = ALLOWED_MODELS.includes(requestedModel) ? requestedModel : DEFAULT_MODEL;
+    
+    // Build priority list of models to try
+    const modelsToTry = [initialModel];
+    for (const m of ALLOWED_MODELS) {
+      if (!modelsToTry.includes(m)) {
+        modelsToTry.push(m);
+      }
+    }
 
     // Strip data URL prefix if present
     const base64Data = image.replace(/^data:image\/\w+;base64,/, '');
 
-    // Call Gemini API with selected model
-    const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                { text: SYSTEM_PROMPT },
-                {
-                  inlineData: {
-                    mimeType: mimeType,
-                    data: base64Data,
-                  },
-                },
-                { text: '请分析这张券商截图，提取所有可识别的交易记录。' },
-              ],
-            },
-          ],
-          generationConfig: {
-            temperature: 0.1,
-            maxOutputTokens: 4096,
-            responseMimeType: 'application/json',
-          },
-        }),
-      }
-    );
+    let lastError = null;
+    let success = false;
+    let parsedResult = null;
 
-    if (!geminiResponse.ok) {
-      const errorText = await geminiResponse.text();
-      console.error('[OCR API] Gemini error:', errorText);
-      return res.status(502).json({ error: 'Gemini API error', details: errorText });
+    for (const currentModel of modelsToTry) {
+      console.log(`[OCR API] Attempting model: ${currentModel}`);
+      try {
+        const geminiResponse = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [
+                {
+                  parts: [
+                    { text: SYSTEM_PROMPT },
+                    {
+                      inlineData: {
+                        mimeType: mimeType,
+                        data: base64Data,
+                      },
+                    },
+                    { text: '请分析这张券商截图，提取所有可识别的交易记录。' },
+                  ],
+                },
+              ],
+              generationConfig: {
+                temperature: 0.1,
+                maxOutputTokens: 4096,
+                responseMimeType: 'application/json',
+              },
+            }),
+          }
+        );
+
+        if (!geminiResponse.ok) {
+          const errorText = await geminiResponse.text();
+          console.warn(`[OCR API] Model ${currentModel} failed with status ${geminiResponse.status}: ${errorText}`);
+          lastError = { status: geminiResponse.status, text: errorText };
+          continue; // Try next model
+        }
+
+        const geminiData = await geminiResponse.json();
+        const textContent = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+        // Parse JSON from Gemini's response
+        try {
+          // Try direct parse first
+          parsedResult = JSON.parse(textContent);
+        } catch {
+          // Try extracting JSON from markdown code blocks
+          const jsonMatch = textContent.match(/```(?:json)?\s*([\s\S]*?)```/);
+          if (jsonMatch) {
+            parsedResult = JSON.parse(jsonMatch[1].trim());
+          } else {
+            // Last resort: find the first { ... } block
+            const braceMatch = textContent.match(/\{[\s\S]*\}/);
+            if (braceMatch) {
+              parsedResult = JSON.parse(braceMatch[0]);
+            } else {
+              throw new Error('Could not parse Gemini response as JSON');
+            }
+          }
+        }
+
+        success = true;
+        console.log(`[OCR API] Successful extraction with model: ${currentModel}`);
+        break; // Stop loop on success
+      } catch (err) {
+        console.error(`[OCR API] Model ${currentModel} exception:`, err);
+        lastError = { status: 500, text: err.message };
+        // continue loop
+      }
     }
 
-    const geminiData = await geminiResponse.json();
-
-    // Extract the text response
-    const textContent =
-      geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '';
-
-    // Parse JSON from Gemini's response
-    let parsedResult;
-    try {
-      // Try direct parse first
-      parsedResult = JSON.parse(textContent);
-    } catch {
-      // Try extracting JSON from markdown code blocks
-      const jsonMatch = textContent.match(/```(?:json)?\s*([\s\S]*?)```/);
-      if (jsonMatch) {
-        parsedResult = JSON.parse(jsonMatch[1].trim());
-      } else {
-        // Last resort: find the first { ... } block
-        const braceMatch = textContent.match(/\{[\s\S]*\}/);
-        if (braceMatch) {
-          parsedResult = JSON.parse(braceMatch[0]);
-        } else {
-          throw new Error('Could not parse Gemini response as JSON');
-        }
-      }
+    if (!success) {
+      return res.status(502).json({
+        error: 'Gemini API error',
+        details: lastError ? lastError.text : 'All fallback models failed'
+      });
     }
 
     return res.status(200).json(parsedResult);

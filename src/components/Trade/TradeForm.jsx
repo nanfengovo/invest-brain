@@ -110,14 +110,25 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
   const applyOcrTrade = (data) => {
     const updates = {};
     if (data.symbol) updates.symbol = data.symbol;
+    if (data.asset_name) updates.asset_name = data.asset_name;
     if (data.direction) updates.direction = [data.direction];
     if (data.price) updates.price = data.price.toString();
     if (data.quantity) updates.quantity = data.quantity.toString();
     if (data.strike_price) updates.strike_price = data.strike_price.toString();
+    if (data.fee) updates.fee = data.fee.toString();
+    if (data.broker) updates.account = data.broker;
 
     if (data.asset_type === 'OPTION') {
       setAssetType(['OPTION']);
-      if (data.expiry_date) setExpiryDate(new Date(data.expiry_date));
+      if (data.expiry_date) setExpiryDate(new Date(data.expiry_date + 'T00:00:00'));
+    } else if (data.asset_type === 'ETF') {
+      setAssetType(['ETF']);
+    }
+
+    if (data.trade_time) {
+      try {
+        setTradeTime(new Date(data.trade_time));
+      } catch { /* ignore invalid dates */ }
     }
 
     if (Object.keys(updates).length > 0) {

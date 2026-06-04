@@ -8,8 +8,11 @@ import './DecisionsPage.css';
 
 const FILTER_TABS = [
   { key: 'ALL', title: '全部' },
-  { key: 'ACTIVE', title: '活跃' },
-  { key: 'VERIFIED', title: '已验证' },
+  { key: 'DRAFT', title: '观点' },
+  { key: 'WATCH', title: '观望' },
+  { key: 'ACTIVE', title: '持仓中' },
+  { key: 'CLOSED', title: '已完结' },
+  { key: 'ABANDONED', title: '已放弃' },
 ];
 
 export default function DecisionsPage() {
@@ -41,8 +44,11 @@ export default function DecisionsPage() {
 
   const emptyMessages = {
     ALL: { title: '还没有投资决策', subtitle: '记录你的投资逻辑和判断' },
-    ACTIVE: { title: '没有活跃的决策', subtitle: '活跃决策会显示在这里' },
-    VERIFIED: { title: '没有已验证的决策', subtitle: '验证后的决策会显示在这里' },
+    DRAFT: { title: '没有观点草稿', subtitle: '看完财报、会议所作的初步投资观点会在这里显示' },
+    WATCH: { title: '没有观望中的计划', subtitle: '等待回调或特定事件触发的决策计划会显示在这里' },
+    ACTIVE: { title: '没有执行持仓中的决策', subtitle: '目前正在持仓、执行过程中的决策会显示在这里' },
+    CLOSED: { title: '没有已完结的决策', subtitle: '已结束并完成复盘归档的交易决策会显示在这里' },
+    ABANDONED: { title: '没有已放弃的决策', subtitle: '逻辑破产或主动放弃追踪的计划会显示在这里' },
   };
 
   return (
@@ -81,14 +87,15 @@ export default function DecisionsPage() {
               key={decision.id} 
               decision={decision} 
               onEdit={() => handleEdit(decision)} 
+              onRefresh={refreshDecisions}
             />
           ))}
         </div>
       ) : (
         <EmptyState
           icon="🧠"
-          title={emptyMessages[activeFilter].title}
-          subtitle={emptyMessages[activeFilter].subtitle}
+          title={emptyMessages[activeFilter]?.title || '暂无内容'}
+          subtitle={emptyMessages[activeFilter]?.subtitle || ''}
         />
       )}
 
@@ -99,12 +106,11 @@ export default function DecisionsPage() {
           setEditingDecision(null);
           setShowForm(true);
         }}
-        aria-label="新建决策"
       >
-        +
+        <span>+</span>
       </button>
 
-      {/* ── Decision Form Popup ── */}
+      {/* ── Add/Edit Popup ── */}
       <Popup
         visible={showForm}
         onMaskClick={() => {
@@ -112,22 +118,16 @@ export default function DecisionsPage() {
           setEditingDecision(null);
         }}
         position="bottom"
-        bodyClassName="decisions-page__popup"
-        destroyOnClose
+        bodyStyle={{ height: '90vh' }}
       >
-        <div className="decisions-page__popup-content">
-          <div className="decisions-page__popup-handle" />
-          <div className="decisions-page__popup-body">
-            <DecisionForm 
-              initialData={editingDecision}
-              onSuccess={handleDecisionAdded} 
-              onClose={() => {
-                setShowForm(false);
-                setEditingDecision(null);
-              }}
-            />
-          </div>
-        </div>
+        <DecisionForm
+          onClose={() => {
+            setShowForm(false);
+            setEditingDecision(null);
+          }}
+          onSuccess={handleDecisionAdded}
+          initialData={editingDecision}
+        />
       </Popup>
     </div>
   );

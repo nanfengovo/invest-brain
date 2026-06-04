@@ -132,6 +132,24 @@
   border: 1px solid rgba(245, 158, 11, 0.2);
 }
 
+.decision-card__status--draft {
+  background: rgba(136, 153, 170, 0.15);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+}
+
+.decision-card__status--watch {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.decision-card__status--abandoned {
+  background: var(--color-loss-bg);
+  color: var(--color-loss);
+  border: 1px solid rgba(255, 77, 106, 0.2);
+}
+
 /* ── Trade Count Badge ── */
 .decision-card__trade-count {
   display: inline-flex;

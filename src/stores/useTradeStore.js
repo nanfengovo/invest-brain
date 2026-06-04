@@ -150,6 +150,20 @@ export const useTradeStore = create((set, get) => ({
     }
   },
 
+  addReview: async (review) => {
+    try {
+      await db.addReview(review);
+      await db.updateDecision(review.decision_id, { status: 'CLOSED' });
+      await get().refreshDecisions();
+      await get().refreshHoldings();
+      triggerAutoBackup().catch((e) => console.error('[AutoBackup] Error:', e));
+      return { success: true };
+    } catch (err) {
+      console.error('Failed to add review:', err);
+      return { success: false, error: err.message };
+    }
+  },
+
   // ==========================================
   // Information actions
   // ==========================================

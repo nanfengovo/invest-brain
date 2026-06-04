@@ -9,6 +9,14 @@ const SENTIMENT_OPTIONS = [
   { label: '⚖️ 中性', value: 'NEUTRAL' },
 ];
 
+const STATUS_OPTIONS = [
+  { label: '📝 观点草稿', value: 'DRAFT' },
+  { label: '👀 观望计划', value: 'WATCH' },
+  { label: '🚀 进行中/持仓', value: 'ACTIVE' },
+  { label: '✅ 已完结', value: 'CLOSED' },
+  { label: '🗑️ 已放弃', value: 'ABANDONED' },
+];
+
 /**
  * Interactive star rating component (1–5).
  */
@@ -52,6 +60,7 @@ export default function DecisionForm({ onClose, onSuccess, initialData }) {
       setSaving(true);
 
       const sentiment = values.sentiment?.[0] || 'NEUTRAL';
+      const status = values.status?.[0] || 'ACTIVE';
       const store = useTradeStore.getState();
 
       if (initialData) {
@@ -61,6 +70,7 @@ export default function DecisionForm({ onClose, onSuccess, initialData }) {
           content: values.content || '',
           sentiment,
           confidence,
+          status,
         };
         const result = await store.updateDecision(initialData.id, updates);
         if (result.success) {
@@ -78,7 +88,7 @@ export default function DecisionForm({ onClose, onSuccess, initialData }) {
           content: values.content || '',
           sentiment,
           confidence,
-          status: 'ACTIVE',
+          status,
           created_at: new Date().toISOString(),
         };
 
@@ -129,9 +139,11 @@ export default function DecisionForm({ onClose, onSuccess, initialData }) {
                   title: initialData.title,
                   content: initialData.content,
                   sentiment: [initialData.sentiment],
+                  status: [initialData.status || 'ACTIVE'],
                 }
               : {
                   sentiment: ['NEUTRAL'],
+                  status: ['ACTIVE'],
                 }
           }
           footer={null}
@@ -155,7 +167,11 @@ export default function DecisionForm({ onClose, onSuccess, initialData }) {
             />
           </Form.Item>
 
-          <div className="decision-form__section-title">判断与信心</div>
+          <div className="decision-form__section-title">状态与判断</div>
+
+          <Form.Item name="status" label="当前状态">
+            <Selector options={STATUS_OPTIONS} />
+          </Form.Item>
 
           <Form.Item name="sentiment" label="情绪方向">
             <Selector options={SENTIMENT_OPTIONS} />

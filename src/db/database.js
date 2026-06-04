@@ -271,8 +271,10 @@ export const db = {
     if (status) {
       return this.query(
         `SELECT d.*, 
-                (SELECT COUNT(*) FROM trades WHERE decision_id = d.id) as trade_count
+                (SELECT COUNT(*) FROM trades WHERE decision_id = d.id) as trade_count,
+                r.id as review_id, r.is_successful, r.result_pnl, r.lessons, r.review_content
          FROM decisions d
+         LEFT JOIN reviews r ON r.decision_id = d.id
          WHERE d.status = ?
          ORDER BY d.created_at DESC`,
         [status]
@@ -280,8 +282,10 @@ export const db = {
     }
     return this.query(
       `SELECT d.*, 
-              (SELECT COUNT(*) FROM trades WHERE decision_id = d.id) as trade_count
+              (SELECT COUNT(*) FROM trades WHERE decision_id = d.id) as trade_count,
+              r.id as review_id, r.is_successful, r.result_pnl, r.lessons, r.review_content
        FROM decisions d
+       LEFT JOIN reviews r ON r.decision_id = d.id
        ORDER BY d.created_at DESC`
     );
   },
@@ -289,8 +293,10 @@ export const db = {
   async getDecisionById(id) {
     const results = await this.query(
       `SELECT d.*, 
-              (SELECT COUNT(*) FROM trades WHERE decision_id = d.id) as trade_count
+              (SELECT COUNT(*) FROM trades WHERE decision_id = d.id) as trade_count,
+              r.id as review_id, r.is_successful, r.result_pnl, r.lessons, r.review_content
        FROM decisions d
+       LEFT JOIN reviews r ON r.decision_id = d.id
        WHERE d.id = ?`,
       [id]
     );
@@ -329,6 +335,19 @@ export const db = {
     await this.exec('DELETE FROM decision_info_links WHERE decision_id = ?', [id]);
     await this.exec('DELETE FROM reviews WHERE decision_id = ?', [id]);
     return this.exec('DELETE FROM decisions WHERE id = ?', [id]);
+  },
+
+  // ==========================================
+  // Review operations
+  // ==========================================
+
+  async addReview(review) {
+    const { id, decision_id, review_content, is_successful, lessons, result_pnl } = review;
+    return this.exec(
+      `INSERT OR REPLACE INTO reviews (id, decision_id, review_content, is_successful, lessons, result_pnl)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [id, decision_id, review_content, is_successful, lessons, result_pnl]
+    );
   },
 
   // ==========================================

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Tabs, FloatingBubble, Popup, Card, Tag, Button } from 'antd-mobile';
 import { AddOutline, LinkOutline, PictureOutline, VideoOutline, FileOutline } from 'antd-mobile-icons';
 import { useNavigate } from 'react-router-dom';

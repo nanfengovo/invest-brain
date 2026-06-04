@@ -1,5 +1,5 @@
-import { useMemo, useCallback } from 'react';
-import { SwipeAction, Dialog, Toast } from 'antd-mobile';
+import { useState, useMemo, useCallback } from 'react';
+import { SwipeAction, Dialog, Toast, ActionSheet } from 'antd-mobile';
 import { useTradeStore } from '../../stores/useTradeStore';
 import './TradeCard.css';
 
@@ -142,7 +142,7 @@ export default function TradeCard({ trade, index = 0, onEdit }) {
               {formatNumber(trade.price)} × {trade.quantity}
             </div>
             <div className="trade-card__total">
-              ¤ {formatNumber(total)}
+              $ {formatNumber(total)}
             </div>
             <div className="trade-card__time">
               {formatTimeAgo(trade.trade_time)}

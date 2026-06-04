@@ -36,11 +36,11 @@ export default function DashboardPage() {
 
   const activeDecisions = decisions.filter(d => d.status !== 'CLOSED' && d.status !== 'ENDED');
 
-  const totalInvested = summary?.totalInvested ?? 0;
-  const totalPnl = summary?.totalPnl ?? 0;
-  const holdingsCount = stats?.holdingsCount ?? holdings.length ?? 0;
-  const tradesCount = stats?.tradesCount ?? 0;
-  const decisionsCount = stats?.decisionsCount ?? 0;
+  const totalInvested = Number(summary?.total_buys) || 0;
+  const totalPnl = (Number(summary?.total_sells) || 0) - totalInvested;
+  const holdingsCount = stats?.asset_count ?? holdings.length ?? 0;
+  const tradesCount = stats?.trade_count ?? 0;
+  const decisionsCount = stats?.decision_count ?? 0;
 
   const pnlClass =
     totalPnl > 0 ? 'profit' : totalPnl < 0 ? 'loss' : 'neutral';
@@ -71,10 +71,10 @@ export default function DashboardPage() {
         <div className="dashboard__overview glass-card">
           <div className="dashboard__overview-label">资产总览</div>
           <div className="dashboard__total-amount text-mono">
-            ¥{formatCurrency(totalInvested)}
+            ${formatCurrency(totalInvested)}
           </div>
           <div className={`dashboard__total-pnl dashboard__total-pnl--${pnlClass}`}>
-            {pnlPrefix}¥{formatCurrency(totalPnl)}
+            {pnlPrefix}${formatCurrency(totalPnl)}
           </div>
 
           <div className="dashboard__mini-stats">

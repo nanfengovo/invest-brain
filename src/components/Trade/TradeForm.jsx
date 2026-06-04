@@ -477,7 +477,7 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
                     setExpiryDate(val);
                     setExpiryPickerVisible(false);
                   }}
-                  defaultValue={expiryDate || new Date()}
+                  value={expiryDate || new Date()}
                   title="到期日"
                   min={new Date(2020, 0, 1)}
                   max={new Date(2030, 11, 31)}
@@ -581,7 +581,7 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
                 setTradeTime(val);
                 setDatePickerVisible(false);
               }}
-              defaultValue={tradeTime}
+              value={tradeTime}
               precision="minute"
               title="交易时间"
               min={new Date(2020, 0, 1)}

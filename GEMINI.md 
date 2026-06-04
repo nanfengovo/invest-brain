@@ -1,0 +1,10 @@
+# 每次任务全局规则
+
+## 开发约束
+- 每次提交或部署前，必须确保版本号（Package.json 中的 version）完成自动累加（+1）。
+- 所有的日期选择器必须使用 conditional rendering 以确保 defaultValue 生效，防止回显 bug。
+_ 每次开发完buil通过后自动推送github 确保最新代码在github上
+
+## 代码风格与架构
+- 前端 UI 采用 100% 适配移动端的 Dark Glassmorphism（暗色毛玻璃）风格。
+- 数据持久化采用 SQLite WASM + OPFS 方案，严禁修改可能导致用户数据丢失的代码。

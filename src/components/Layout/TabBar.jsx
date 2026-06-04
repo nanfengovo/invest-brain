@@ -17,9 +17,24 @@ const BulbIcon = () => (
   </svg>
 );
 
+/**
+ * Custom pie chart icon for Holdings tab.
+ */
+const PieIcon = () => (
+  <svg
+    viewBox="0 0 1024 1024"
+    width="1em"
+    height="1em"
+    fill="currentColor"
+  >
+    <path d="M512 64C264.6 64 64 264.6 64 512s200.6 448 448 448 448-200.6 448-448S759.4 64 512 64zm0 820c-205.4 0-372-166.6-372-372 0-205.4 166.6-372 372-372V512l263.1 263.1C707.7 843.4 614.3 884 512 884z" />
+  </svg>
+);
+
 const tabs = [
   { key: '/', title: '看板', icon: <AppOutline /> },
   { key: '/trades', title: '交易', icon: <HistogramOutline /> },
+  { key: '/holdings', title: '持仓', icon: <PieIcon /> },
   { key: '/information', title: '情报', icon: <CompassOutline /> },
   { key: '/decisions', title: '决策', icon: <BulbIcon /> },
   { key: '/settings', title: '设置', icon: <SetOutline /> },

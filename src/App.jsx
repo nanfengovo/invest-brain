@@ -10,6 +10,7 @@ import DecisionsPage from './pages/DecisionsPage';
 import SettingsPage from './pages/SettingsPage';
 import InformationPage from './pages/InformationPage';
 import InformationDetail from './pages/InformationDetail';
+import HoldingsPage from './pages/HoldingsPage';
 import LoadingSpinner from './components/common/LoadingSpinner';
 
 function App({ onReady }) {
@@ -77,6 +78,7 @@ function App({ onReady }) {
       <Routes>
         <Route path="/" element={<DashboardPage />} />
         <Route path="/trades" element={<TradesPage />} />
+        <Route path="/holdings" element={<HoldingsPage />} />
         <Route path="/decisions" element={<DecisionsPage />} />
         <Route path="/information" element={<InformationPage />} />
         <Route path="/information/:id" element={<InformationDetail />} />

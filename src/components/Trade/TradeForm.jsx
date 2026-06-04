@@ -156,15 +156,35 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
     if (referenceImage) URL.revokeObjectURL(referenceImage);
     setReferenceImage(URL.createObjectURL(file));
 
+    // 分阶段 loading 动画：让用户感知 AI 在做什么
+    const phases = [
+      '🔍 AI 识别提取中...',
+      '🧠 深度分析截图内容...',
+      '⏳ 模型繁忙，排队等待中...',
+      '🔄 尝试备用模型...',
+    ];
+    let currentPhase = 0;
     const toastHandler = Toast.show({
       icon: 'loading',
-      content: '提取中...',
+      content: phases[0],
       duration: 0,
     });
+    const phaseInterval = setInterval(() => {
+      currentPhase++;
+      if (currentPhase < phases.length) {
+        toastHandler.close();
+        Object.assign(toastHandler, Toast.show({
+          icon: 'loading',
+          content: phases[currentPhase],
+          duration: 0,
+        }));
+      }
+    }, 3500);
 
     try {
       const { trades, candidates } = await parseTradeImage(file, ocrModel);
-      toastHandler.close(); // Close loading toast before showing other toasts
+      clearInterval(phaseInterval);
+      toastHandler.close();
       
       if (candidates) {
         setOcrCandidates(candidates);
@@ -183,7 +203,8 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
       }
     } catch (err) {
       console.error(err);
-      toastHandler.close(); // Close loading toast
+      clearInterval(phaseInterval);
+      toastHandler.close();
       Toast.show({ 
         icon: 'fail', 
         content: err.message.includes('429') 
@@ -677,6 +698,7 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
                     price: parseFloat(t.price || 0),
                     fee: parseFloat(t.fee || 0),
                     trade_time: t.trade_time || new Date().toISOString(),
+                    broker: t.broker || null,
                   };
 
                   const res = await addTrade(tradeToSave);

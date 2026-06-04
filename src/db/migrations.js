@@ -135,6 +135,13 @@ export const MIGRATIONS = [
       `CREATE INDEX IF NOT EXISTS idx_viewpoints_info ON viewpoints(info_id)`,
       `CREATE INDEX IF NOT EXISTS idx_informations_asset ON informations(asset_id)`
     ]
+  },
+  {
+    version: 3,
+    description: 'Phase 3: Add broker field to trades',
+    statements: [
+      `ALTER TABLE trades ADD COLUMN broker TEXT`,
+    ]
   }
 ];
 

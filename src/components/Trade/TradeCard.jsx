@@ -150,9 +150,12 @@ export default function TradeCard({ trade, index = 0, onEdit }) {
           </div>
         </div>
 
-        {/* Footer: Decision Tag / Account / Note */}
-        {(trade.decision_title || trade.account || trade.note) && (
+        {/* Footer: Decision Tag / Broker / Account / Note */}
+        {(trade.decision_title || trade.account || trade.note || trade.broker) && (
           <div className="trade-card__footer">
+            {trade.broker && (
+              <span className="trade-card__broker-tag">{trade.broker}</span>
+            )}
             {trade.decision_title && (
               <span className="trade-card__decision-tag">
                 {trade.decision_title}

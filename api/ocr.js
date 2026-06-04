@@ -17,7 +17,7 @@ const ALLOWED_MODELS = [
 const DEFAULT_MODEL = 'gemini-3.5-flash';
 
 export const config = {
-  maxDuration: 30,
+  maxDuration: 60,
 };
 
 const SYSTEM_PROMPT = `你是一个专业的证券交易记录 OCR 系统。你需要从用户提供的券商 App 截图中提取交易记录信息。
@@ -88,104 +88,122 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'No image provided' });
     }
 
-    // Validate and select model
-    const initialModel = ALLOWED_MODELS.includes(requestedModel) ? requestedModel : DEFAULT_MODEL;
+    // Validate and select preferred model
+    const preferredModel = ALLOWED_MODELS.includes(requestedModel) ? requestedModel : DEFAULT_MODEL;
     
-    // Build priority list of models to try
-    const modelsToTry = [initialModel];
-    for (const m of ALLOWED_MODELS) {
-      if (!modelsToTry.includes(m)) {
-        modelsToTry.push(m);
-      }
-    }
+    // Build fallback list (excluding preferred)
+    const fallbackModels = ALLOWED_MODELS.filter(m => m !== preferredModel);
 
     // Strip data URL prefix if present
     const base64Data = image.replace(/^data:image\/\w+;base64,/, '');
 
-    let lastError = null;
-    let success = false;
-    let parsedResult = null;
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-    for (const currentModel of modelsToTry) {
-      console.log(`[OCR API] Attempting model: ${currentModel}`);
-      try {
-        const geminiResponse = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [
-                {
-                  parts: [
-                    { text: SYSTEM_PROMPT },
-                    {
-                      inlineData: {
-                        mimeType: mimeType,
-                        data: base64Data,
-                      },
-                    },
-                    { text: '请分析这张券商截图，提取所有可识别的交易记录。' },
-                  ],
-                },
-              ],
-              generationConfig: {
-                temperature: 0.1,
-                maxOutputTokens: 4096,
-                responseMimeType: 'application/json',
+    /**
+     * Attempt a single Gemini API call. Returns { success, data } or { success: false, error }.
+     */
+    async function tryModel(model) {
+      console.log(`[OCR API] Trying model: ${model}`);
+      const geminiResponse = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  { text: SYSTEM_PROMPT },
+                  { inlineData: { mimeType, data: base64Data } },
+                  { text: '请分析这张券商截图，提取所有可识别的交易记录。' },
+                ],
               },
-            }),
-          }
-        );
-
-        if (!geminiResponse.ok) {
-          const errorText = await geminiResponse.text();
-          console.warn(`[OCR API] Model ${currentModel} failed with status ${geminiResponse.status}: ${errorText}`);
-          lastError = { status: geminiResponse.status, text: errorText };
-          continue; // Try next model
+            ],
+            generationConfig: {
+              temperature: 0.1,
+              maxOutputTokens: 4096,
+              responseMimeType: 'application/json',
+            },
+          }),
         }
+      );
 
-        const geminiData = await geminiResponse.json();
-        const textContent = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      if (!geminiResponse.ok) {
+        const errorText = await geminiResponse.text();
+        console.warn(`[OCR API] Model ${model} HTTP ${geminiResponse.status}`);
+        return { success: false, status: geminiResponse.status, error: errorText };
+      }
 
-        // Parse JSON from Gemini's response
-        try {
-          // Try direct parse first
-          parsedResult = JSON.parse(textContent);
-        } catch {
-          // Try extracting JSON from markdown code blocks
-          const jsonMatch = textContent.match(/```(?:json)?\s*([\s\S]*?)```/);
-          if (jsonMatch) {
-            parsedResult = JSON.parse(jsonMatch[1].trim());
+      const geminiData = await geminiResponse.json();
+      const textContent = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+      let parsed;
+      try {
+        parsed = JSON.parse(textContent);
+      } catch {
+        const jsonMatch = textContent.match(/```(?:json)?\s*([\s\S]*?)```/);
+        if (jsonMatch) {
+          parsed = JSON.parse(jsonMatch[1].trim());
+        } else {
+          const braceMatch = textContent.match(/\{[\s\S]*\}/);
+          if (braceMatch) {
+            parsed = JSON.parse(braceMatch[0]);
           } else {
-            // Last resort: find the first { ... } block
-            const braceMatch = textContent.match(/\{[\s\S]*\}/);
-            if (braceMatch) {
-              parsedResult = JSON.parse(braceMatch[0]);
-            } else {
-              throw new Error('Could not parse Gemini response as JSON');
-            }
+            throw new Error('Could not parse Gemini response as JSON');
           }
         }
+      }
 
-        success = true;
-        console.log(`[OCR API] Successful extraction with model: ${currentModel}`);
-        break; // Stop loop on success
+      console.log(`[OCR API] Success with model: ${model}`);
+      return { success: true, data: parsed, modelUsed: model };
+    }
+
+    // Strategy: Retry preferred model up to 3 times (with 3s delays), then try fallbacks
+    let lastError = null;
+    const MAX_PREFERRED_RETRIES = 3;
+
+    for (let attempt = 0; attempt < MAX_PREFERRED_RETRIES; attempt++) {
+      try {
+        const result = await tryModel(preferredModel);
+        if (result.success) {
+          result.data.modelUsed = result.modelUsed;
+          return res.status(200).json(result.data);
+        }
+        lastError = result.error;
+        // If 503/429, wait 3 seconds before retry
+        if (result.status === 503 || result.status === 429) {
+          console.log(`[OCR API] Preferred model ${preferredModel} overloaded, retrying in 3s (attempt ${attempt + 1}/${MAX_PREFERRED_RETRIES})`);
+          await sleep(3000);
+        } else {
+          // Other errors (400, 404, etc.) — don't retry, go to fallback
+          break;
+        }
       } catch (err) {
-        console.error(`[OCR API] Model ${currentModel} exception:`, err);
-        lastError = { status: 500, text: err.message };
-        // continue loop
+        console.error(`[OCR API] Preferred model exception:`, err);
+        lastError = err.message;
+        break;
       }
     }
 
-    if (!success) {
-      return res.status(502).json({
-        error: 'Gemini API error',
-        details: lastError ? lastError.text : 'All fallback models failed'
-      });
+    // Fallback to alternative models (no retries, just try each once)
+    for (const fbModel of fallbackModels) {
+      try {
+        const result = await tryModel(fbModel);
+        if (result.success) {
+          result.data.modelUsed = result.modelUsed;
+          return res.status(200).json(result.data);
+        }
+        lastError = result.error;
+      } catch (err) {
+        console.error(`[OCR API] Fallback model ${fbModel} exception:`, err);
+        lastError = err.message;
+      }
     }
 
-    return res.status(200).json(parsedResult);
+    return res.status(502).json({
+      error: 'Gemini API error',
+      details: typeof lastError === 'string' ? lastError : 'All models failed after retries'
+    });
   } catch (err) {
     console.error('[OCR API] Error:', err);
     return res.status(500).json({ error: err.message });

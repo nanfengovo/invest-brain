@@ -265,6 +265,10 @@
   margin-top: 24px;
 }
 
+.dashboard__actions--3col {
+  grid-template-columns: repeat(3, 1fr);
+}
+
 .dashboard__action-btn {
   display: flex;
   align-items: center;

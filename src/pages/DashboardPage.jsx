@@ -149,13 +149,20 @@ export default function DashboardPage() {
 
       {/* ── Quick Actions ── */}
       <div className="dashboard__section">
-        <div className="dashboard__actions">
+        <div className="dashboard__actions dashboard__actions--3col">
           <button
             className="dashboard__action-btn dashboard__action-btn--primary"
             onClick={() => navigate('/trades')}
           >
             <span className="dashboard__action-icon">📝</span>
             录入交易
+          </button>
+          <button
+            className="dashboard__action-btn dashboard__action-btn--secondary"
+            onClick={() => navigate('/holdings')}
+          >
+            <span className="dashboard__action-icon">📊</span>
+            查看持仓
           </button>
           <button
             className="dashboard__action-btn dashboard__action-btn--secondary"

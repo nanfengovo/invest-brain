@@ -208,7 +208,7 @@ export const db = {
   async getTrades(limit = 100, offset = 0) {
     return this.query(
       `SELECT t.*, a.symbol, a.name as asset_name, a.type as asset_type,
-              d.title as decision_title
+              d.title as decision_title, t.broker
        FROM trades t
        LEFT JOIN assets a ON t.asset_id = a.id
        LEFT JOIN decisions d ON t.decision_id = d.id
@@ -232,19 +232,19 @@ export const db = {
   },
 
   async addTrade(trade) {
-    const { id, asset_id, decision_id, direction, quantity, price, fee, account, trade_time, note } = trade;
+    const { id, asset_id, decision_id, direction, quantity, price, fee, account, trade_time, note, broker } = trade;
     return this.exec(
-      `INSERT INTO trades (id, asset_id, decision_id, direction, quantity, price, fee, account, trade_time, note)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, asset_id, decision_id || null, direction, quantity, price, fee || 0, account || null, trade_time, note || null]
+      `INSERT INTO trades (id, asset_id, decision_id, direction, quantity, price, fee, account, trade_time, note, broker)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, asset_id, decision_id || null, direction, quantity, price, fee || 0, account || null, trade_time, note || null, broker || null]
     );
   },
 
   async updateTrade(trade) {
-    const { id, asset_id, decision_id, direction, quantity, price, fee, account, trade_time, note } = trade;
+    const { id, asset_id, decision_id, direction, quantity, price, fee, account, trade_time, note, broker } = trade;
     return this.exec(
-      `UPDATE trades SET asset_id = ?, decision_id = ?, direction = ?, quantity = ?, price = ?, fee = ?, account = ?, trade_time = ?, note = ? WHERE id = ?`,
-      [asset_id, decision_id || null, direction, quantity, price, fee || 0, account || null, trade_time, note || null, id]
+      `UPDATE trades SET asset_id = ?, decision_id = ?, direction = ?, quantity = ?, price = ?, fee = ?, account = ?, trade_time = ?, note = ?, broker = ? WHERE id = ?`,
+      [asset_id, decision_id || null, direction, quantity, price, fee || 0, account || null, trade_time, note || null, broker || null, id]
     );
   },
 

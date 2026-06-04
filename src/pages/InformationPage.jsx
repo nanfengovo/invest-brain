@@ -84,7 +84,7 @@ export default function InformationPage() {
                   <span>观点: {info.viewpoint_count || 0}</span>
                   {info.asset_id && <span>关联: {info.asset_id}</span>}
                   <span className="info-card__date">
-                    {new Date(info.created_at).toLocaleDateString()}
+                    {new Date(info.created_at * 1000).toLocaleDateString()}
                   </span>
                 </div>
               </div>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { NavBar, Button, Toast, Tag, TextArea, Divider, List } from 'antd-mobile';
 import { LinkOutline, AppstoreOutline } from 'antd-mobile-icons';
@@ -22,6 +22,70 @@ const TYPE_COLORS = {
   BOOK: 'warning',
 };
 
+/**
+ * Convert a Unix timestamp (seconds) to locale date string.
+ */
+function formatTimestamp(ts) {
+  if (!ts) return '—';
+  // created_at is stored as seconds (unixepoch), JS Date needs milliseconds
+  const d = new Date(ts * 1000);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleString('zh-CN');
+}
+
+/**
+ * Extract a displayable domain from a URL.
+ */
+function extractDomain(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * Try to parse a YouTube video ID from a URL.
+ * Supports: youtube.com/watch?v=, youtu.be/, youtube.com/embed/
+ */
+function getYouTubeId(url) {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes('youtube.com')) {
+      return u.searchParams.get('v') || u.pathname.split('/embed/')[1] || null;
+    }
+    if (u.hostname === 'youtu.be') {
+      return u.pathname.slice(1) || null;
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+/**
+ * Try to parse a Bilibili BV ID from a URL.
+ * Supports: bilibili.com/video/BVxxxxxx
+ */
+function getBilibiliId(url) {
+  if (!url) return null;
+  try {
+    const match = url.match(/bilibili\.com\/video\/(BV[\w]+)/i);
+    return match ? match[1] : null;
+  } catch { /* ignore */ }
+  return null;
+}
+
+/**
+ * Check if URL is from X/Twitter.
+ */
+function isTwitterUrl(url) {
+  if (!url) return false;
+  try {
+    const host = new URL(url).hostname;
+    return host === 'x.com' || host === 'twitter.com' || host.endsWith('.x.com');
+  } catch { return false; }
+}
+
 export default function InformationDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -29,6 +93,7 @@ export default function InformationDetail() {
   const [loading, setLoading] = useState(true);
   const [viewpoints, setViewpoints] = useState([]);
   const [fileUrl, setFileUrl] = useState(null);
+  const [contentExpanded, setContentExpanded] = useState(false);
   
   const [newViewpoint, setNewViewpoint] = useState('');
   const [submittingVp, setSubmittingVp] = useState(false);
@@ -99,6 +164,18 @@ export default function InformationDetail() {
     navigate(`/decisions?info_id=${id}`);
   };
 
+  // Determine embed type
+  const youtubeId = useMemo(() => info?.url ? getYouTubeId(info.url) : null, [info?.url]);
+  const bilibiliId = useMemo(() => info?.url ? getBilibiliId(info.url) : null, [info?.url]);
+  const isTwitter = useMemo(() => isTwitterUrl(info?.url), [info?.url]);
+
+  // Content truncation
+  const CONTENT_LIMIT = 300;
+  const shouldTruncate = info?.content && info.content.length > CONTENT_LIMIT;
+  const displayContent = shouldTruncate && !contentExpanded
+    ? info.content.slice(0, CONTENT_LIMIT) + '...'
+    : info?.content;
+
   if (loading) return <LoadingSpinner />;
   if (!info) return null;
 
@@ -123,25 +200,90 @@ export default function InformationDetail() {
               <Tag color="success" fill="outline">{info.sector}</Tag>
             )}
           </div>
-          {info.url && (
-            <div className="info-detail__url">
-              <LinkOutline /> 
-              <a href={info.url} target="_blank" rel="noreferrer">
-                {info.url}
-              </a>
-            </div>
-          )}
           <div className="info-detail__date">
-            创建于 {new Date(info.created_at).toLocaleString()}
+            创建于 {formatTimestamp(info.created_at)}
           </div>
         </div>
 
+        {/* ── Video Embed (YouTube / Bilibili) ── */}
+        {youtubeId && (
+          <div className="info-detail__embed">
+            <div className="info-detail__embed-player">
+              <iframe
+                src={`https://www.youtube.com/embed/${youtubeId}`}
+                title="YouTube player"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+            </div>
+          </div>
+        )}
+
+        {bilibiliId && (
+          <div className="info-detail__embed">
+            <div className="info-detail__embed-player">
+              <iframe
+                src={`https://player.bilibili.com/player.html?bvid=${bilibiliId}&high_quality=1&danmaku=0`}
+                title="Bilibili player"
+                allowFullScreen
+                scrolling="no"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* ── Link Preview Card ── */}
+        {info.url && !youtubeId && !bilibiliId && (
+          <div className="info-detail__link-card">
+            <div className="info-detail__link-card-icon">
+              <img
+                src={`https://www.google.com/s2/favicons?domain=${extractDomain(info.url)}&sz=32`}
+                alt=""
+                width="20"
+                height="20"
+                onError={(e) => { e.target.style.display = 'none'; }}
+              />
+            </div>
+            <div className="info-detail__link-card-body">
+              <div className="info-detail__link-card-domain">{extractDomain(info.url)}</div>
+              <div className="info-detail__link-card-url">{info.url}</div>
+            </div>
+            <a
+              href={info.url}
+              target="_blank"
+              rel="noreferrer"
+              className="info-detail__link-card-btn"
+            >
+              {isTwitter ? '打开 𝕏' : '打开链接'}
+            </a>
+          </div>
+        )}
+
+        {/* ── Uploaded Media (OPFS file) ── */}
         {fileUrl && (
           <div className="info-detail__media">
             {info.type === 'VIDEO' ? (
               <video src={fileUrl} controls className="info-detail__video" />
             ) : (
               <img src={fileUrl} alt="附件" className="info-detail__image" />
+            )}
+          </div>
+        )}
+
+        {/* ── Content Body ── */}
+        {info.content && (
+          <div className="info-detail__body glass-card">
+            <div className="info-detail__body-label">正文内容</div>
+            <div className="info-detail__body-text">
+              {displayContent}
+            </div>
+            {shouldTruncate && (
+              <button
+                className="info-detail__body-toggle"
+                onClick={() => setContentExpanded(!contentExpanded)}
+              >
+                {contentExpanded ? '收起 ▲' : '展开全文 ▼'}
+              </button>
             )}
           </div>
         )}
@@ -157,7 +299,7 @@ export default function InformationDetail() {
                 <List.Item key={vp.id} className="vp-item">
                   <div className="vp-item__content">{vp.content}</div>
                   <div className="vp-item__date">
-                    {new Date(vp.created_at).toLocaleString()}
+                    {formatTimestamp(vp.created_at)}
                   </div>
                 </List.Item>
               ))}

@@ -8,7 +8,7 @@
  */
 
 export const config = {
-  maxDuration: 30,
+  maxDuration: 60,
 };
 
 export default async function handler(req, res) {
@@ -40,42 +40,54 @@ export default async function handler(req, res) {
     let summaryPromptText = '';
     const parts = [];
 
-    // 1. If URL is provided, try parsing it
+    // 1. If URL is provided, try parsing it (with graceful fallback)
     if (url) {
-      let pageDetails = '';
-      try {
-        console.log(`[Summarize API] Fetching metadata for URL: ${url}`);
-        const response = await fetch(url, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          },
-          signal: AbortSignal.timeout(5000), // Timeout after 5s
-        });
+      let pageDetails = `URL: ${url}\n`;
+      
+      // Skip fetch for known SPA/anti-scrape domains
+      const skipFetchDomains = ['x.com', 'twitter.com', 'instagram.com', 'threads.net'];
+      const urlHost = (() => {
+        try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; }
+      })();
+      const shouldSkipFetch = skipFetchDomains.some(d => urlHost === d || urlHost.endsWith('.' + d));
+      
+      if (shouldSkipFetch) {
+        pageDetails += `该链接来自 ${urlHost}，无法服务端抓取，请根据 URL 格式和你的知识推断内容。`;
+      } else {
+        try {
+          console.log(`[Summarize API] Fetching metadata for URL: ${url}`);
+          const response = await fetch(url, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+              'Accept': 'text/html,application/xhtml+xml',
+              'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+            },
+            signal: AbortSignal.timeout(8000),
+            redirect: 'follow',
+          });
 
-        if (response.ok) {
-          const htmlText = await response.text();
+          if (response.ok) {
+            const htmlText = await response.text();
 
-          // Extract title tag
-          const titleMatch = htmlText.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-          const rawTitle = titleMatch ? titleMatch[1].trim() : '';
+            const titleMatch = htmlText.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+            const rawTitle = titleMatch ? titleMatch[1].trim() : '';
 
-          // Extract og:title
-          const ogTitleMatch = htmlText.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i) ||
-                               htmlText.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i);
-          const ogTitle = ogTitleMatch ? ogTitleMatch[1].trim() : '';
+            const ogTitleMatch = htmlText.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i) ||
+                                 htmlText.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i);
+            const ogTitle = ogTitleMatch ? ogTitleMatch[1].trim() : '';
 
-          // Extract description
-          const descMatch = htmlText.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i) ||
-                            htmlText.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i);
-          const desc = descMatch ? descMatch[1].trim() : '';
+            const descMatch = htmlText.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i) ||
+                              htmlText.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i);
+            const desc = descMatch ? descMatch[1].trim() : '';
 
-          pageDetails = `URL: ${url}\n网页原始标题: ${rawTitle}\n社交网络标题(og): ${ogTitle}\n描述信息: ${desc}`;
-        } else {
-          pageDetails = `URL: ${url}\n抓取网页失败，状态码: ${response.status}`;
+            pageDetails += `网页原始标题: ${rawTitle}\n社交网络标题(og): ${ogTitle}\n描述信息: ${desc}`;
+          } else {
+            pageDetails += `抓取网页失败（状态码 ${response.status}），请根据 URL 格式推断内容。`;
+          }
+        } catch (e) {
+          console.warn(`[Summarize API] URL fetch failed (expected for SPAs):`, e.message);
+          pageDetails += `无法抓取网页（${e.message}），请根据 URL 格式和你的知识推断内容。`;
         }
-      } catch (e) {
-        console.error(`[Summarize API] URL fetch error:`, e);
-        pageDetails = `URL: ${url}\n抓取网页发生异常: ${e.message}`;
       }
       summaryPromptText += `【用户提供了来源链接信息】\n${pageDetails}\n\n`;
     }
@@ -102,50 +114,60 @@ export default async function handler(req, res) {
       parts.push({ text: '另外，参考上面这张图片的内容进行综合标题总结。' });
     }
 
-    // Call Gemini API with fallbacks
+    // Call Gemini API with retry + fallback
     const summarizeModels = [
       'gemini-2.5-flash',
       'gemini-3.5-flash',
       'gemini-3.1-flash-lite',
     ];
 
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     let lastError = null;
     let success = false;
     let generatedTitle = '';
 
     for (const currentModel of summarizeModels) {
       const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
-      console.log(`[Summarize API] Trying model: ${currentModel}`);
-      try {
-        const geminiResponse = await fetch(geminiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts }],
-            generationConfig: {
-              temperature: 0.2,
-              maxOutputTokens: 100,
-            },
-          }),
-        });
+      
+      // Retry up to 2 times for each model on 503/429
+      for (let attempt = 0; attempt < 2; attempt++) {
+        console.log(`[Summarize API] Trying model: ${currentModel} (attempt ${attempt + 1})`);
+        try {
+          const geminiResponse = await fetch(geminiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts }],
+              generationConfig: {
+                temperature: 0.2,
+                maxOutputTokens: 100,
+              },
+            }),
+          });
 
-        if (!geminiResponse.ok) {
-          const errText = await geminiResponse.text();
-          console.warn(`[Summarize API] Model ${currentModel} failed: ${errText}`);
-          lastError = { status: geminiResponse.status, text: errText };
-          continue; // Try next model
+          if (!geminiResponse.ok) {
+            const errText = await geminiResponse.text();
+            console.warn(`[Summarize API] Model ${currentModel} HTTP ${geminiResponse.status}`);
+            lastError = { status: geminiResponse.status, text: errText };
+            if ((geminiResponse.status === 503 || geminiResponse.status === 429) && attempt === 0) {
+              await sleep(3000);
+              continue; // retry same model
+            }
+            break; // move to next model
+          }
+
+          const data = await geminiResponse.json();
+          generatedTitle = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+          success = true;
+          console.log(`[Summarize API] Success with model: ${currentModel}`);
+          break;
+        } catch (err) {
+          console.error(`[Summarize API] Model ${currentModel} exception:`, err);
+          lastError = { status: 500, text: err.message };
+          break;
         }
-
-        const data = await geminiResponse.json();
-        generatedTitle = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
-        success = true;
-        console.log(`[Summarize API] Successfully summarized with model: ${currentModel}`);
-        break; // Stop loop on success
-      } catch (err) {
-        console.error(`[Summarize API] Model ${currentModel} exception:`, err);
-        lastError = { status: 500, text: err.message };
-        // continue loop
       }
+      if (success) break;
     }
 
     if (!success) {

@@ -44,15 +44,38 @@ export default async function handler(req, res) {
     if (url) {
       let pageDetails = `URL: ${url}\n`;
       
-      // Skip fetch for known SPA/anti-scrape domains
-      const skipFetchDomains = ['x.com', 'twitter.com', 'instagram.com', 'threads.net'];
       const urlHost = (() => {
         try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; }
       })();
-      const shouldSkipFetch = skipFetchDomains.some(d => urlHost === d || urlHost.endsWith('.' + d));
       
-      if (shouldSkipFetch) {
-        pageDetails += `该链接来自 ${urlHost}，无法服务端抓取，请根据 URL 格式和你的知识推断内容。`;
+      // Special handling for X/Twitter: use public oEmbed API to get tweet text
+      const isTwitter = ['x.com', 'twitter.com'].some(d => urlHost === d || urlHost.endsWith('.' + d));
+      
+      if (isTwitter) {
+        try {
+          console.log(`[Summarize API] Using X oEmbed API for: ${url}`);
+          const oembedUrl = `https://publish.twitter.com/oembed?url=${encodeURIComponent(url)}&omit_script=true`;
+          const oembedResp = await fetch(oembedUrl, { signal: AbortSignal.timeout(8000) });
+          if (oembedResp.ok) {
+            const oembedData = await oembedResp.json();
+            // Extract plain text from HTML blockquote
+            const tweetText = (oembedData.html || '')
+              .replace(/<[^>]+>/g, ' ')  // strip HTML tags
+              .replace(/&mdash;/g, '—')
+              .replace(/&amp;/g, '&')
+              .replace(/&lt;/g, '<')
+              .replace(/&gt;/g, '>')
+              .replace(/\s+/g, ' ')
+              .trim();
+            const author = oembedData.author_name || '';
+            pageDetails += `来源平台: X/Twitter\n作者: ${author}\n推文内容: ${tweetText}`;
+          } else {
+            pageDetails += `来源平台: X/Twitter\n无法获取推文内容（oEmbed 返回 ${oembedResp.status}），请根据 URL 推断。`;
+          }
+        } catch (e) {
+          console.warn(`[Summarize API] X oEmbed failed:`, e.message);
+          pageDetails += `来源平台: X/Twitter\n无法获取推文内容（${e.message}）。`;
+        }
       } else {
         try {
           console.log(`[Summarize API] Fetching metadata for URL: ${url}`);

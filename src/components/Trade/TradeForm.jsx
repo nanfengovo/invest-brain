@@ -471,13 +471,13 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
 
                {expiryPickerVisible && (
                 <DatePicker
-                  visible={expiryPickerVisible}
+                  visible={true}
                   onClose={() => setExpiryPickerVisible(false)}
                   onConfirm={(val) => {
                     setExpiryDate(val);
                     setExpiryPickerVisible(false);
                   }}
-                  value={expiryDate || new Date()}
+                  defaultValue={expiryDate || new Date()}
                   title="到期日"
                   min={new Date(2020, 0, 1)}
                   max={new Date(2030, 11, 31)}
@@ -575,13 +575,13 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
 
           {datePickerVisible && (
             <DatePicker
-              visible={datePickerVisible}
+              visible={true}
               onClose={() => setDatePickerVisible(false)}
               onConfirm={(val) => {
                 setTradeTime(val);
                 setDatePickerVisible(false);
               }}
-              value={tradeTime}
+              defaultValue={tradeTime}
               precision="minute"
               title="交易时间"
               min={new Date(2020, 0, 1)}

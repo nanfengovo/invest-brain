@@ -232,6 +232,39 @@
   margin-left: 4px;
 }
 
+/* ── Native Date Input (replaces antd-mobile DatePicker) ── */
+.trade-form__picker-trigger--native {
+  cursor: default;
+}
+
+.trade-form__native-date-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--color-text-primary);
+  font-size: 14px;
+  font-family: inherit;
+  text-align: right;
+  -webkit-appearance: none;
+  appearance: none;
+  min-height: 24px;
+  padding: 0;
+}
+
+/* Style the calendar/clock icon in WebKit browsers (Safari, Chrome) */
+.trade-form__native-date-input::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(0.7);
+  opacity: 0.6;
+  cursor: pointer;
+  padding: 4px;
+}
+
+/* Firefox - hide default icon, let text be visible */
+.trade-form__native-date-input::-moz-focus-inner {
+  border: 0;
+}
+
 /* ── Option Fields (conditional) ── */
 .trade-form__option-fields {
   animation: slideUp var(--transition-normal) ease both;

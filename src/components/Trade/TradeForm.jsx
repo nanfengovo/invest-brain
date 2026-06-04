@@ -4,7 +4,6 @@ import {
   Input,
   Button,
   Selector,
-  DatePicker,
   TextArea,
   Toast,
   Picker,
@@ -40,8 +39,6 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
   const [saving, setSaving] = useState(false);
   const [assetType, setAssetType] = useState(['STOCK']);
   const [decisionPickerVisible, setDecisionPickerVisible] = useState(false);
-  const [datePickerVisible, setDatePickerVisible] = useState(false);
-  const [expiryPickerVisible, setExpiryPickerVisible] = useState(false);
   const [tradeTime, setTradeTime] = useState(new Date());
   const [expiryDate, setExpiryDate] = useState(null);
   const [selectedDecision, setSelectedDecision] = useState(null);
@@ -267,6 +264,19 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
     });
   };
 
+  // Convert Date to native input value strings
+  const toDateTimeLocal = (date) => {
+    if (!date) return '';
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  };
+
+  const toDateValue = (date) => {
+    if (!date) return '';
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  };
+
   return (
     <div className="trade-form">
       {/* Header */}
@@ -454,41 +464,21 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
                 />
               </Form.Item>
 
-              <div
-                className="trade-form__picker-trigger"
-                onClick={() => setExpiryPickerVisible(true)}
-              >
+              <div className="trade-form__picker-trigger trade-form__picker-trigger--native">
                 <span className="trade-form__picker-label">到期日</span>
-                <span
-                  className={`trade-form__picker-value ${
-                    !expiryDate ? 'trade-form__picker-value--placeholder' : ''
-                  }`}
-                >
-                  {expiryDate ? formatDateShort(expiryDate) : '请选择'}
-                  <span className="trade-form__picker-arrow"> ›</span>
-                </span>
+                <input
+                  type="date"
+                  className="trade-form__native-date-input"
+                  value={toDateValue(expiryDate)}
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      setExpiryDate(new Date(e.target.value + 'T00:00:00'));
+                    }
+                  }}
+                  min="2020-01-01"
+                  max="2030-12-31"
+                />
               </div>
-
-              <DatePicker
-                visible={expiryPickerVisible}
-                onClose={() => setExpiryPickerVisible(false)}
-                onConfirm={(val) => {
-                  setExpiryDate(val);
-                  setExpiryPickerVisible(false);
-                }}
-                value={expiryDate || new Date()}
-                title="到期日"
-                min={new Date(2020, 0, 1)}
-                max={new Date(2030, 11, 31)}
-                renderLabel={(type, data) => {
-                  switch (type) {
-                    case 'year': return data + '年';
-                    case 'month': return data + '月';
-                    case 'day': return data + '日';
-                    default: return data;
-                  }
-                }}
-              />
             </div>
           )}
 
@@ -559,41 +549,22 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
             title="关联信息"
           />
 
-          {/* Trade Time Picker */}
-          <div
-            className="trade-form__picker-trigger"
-            onClick={() => setDatePickerVisible(true)}
-          >
+          {/* Trade Time Picker — native input for reliable mobile UX */}
+          <div className="trade-form__picker-trigger trade-form__picker-trigger--native">
             <span className="trade-form__picker-label">交易时间</span>
-            <span className="trade-form__picker-value">
-              {formatDate(tradeTime)}
-              <span className="trade-form__picker-arrow"> ›</span>
-            </span>
+            <input
+              type="datetime-local"
+              className="trade-form__native-date-input"
+              value={toDateTimeLocal(tradeTime)}
+              onChange={(e) => {
+                if (e.target.value) {
+                  setTradeTime(new Date(e.target.value));
+                }
+              }}
+              min="2020-01-01T00:00"
+              max="2030-12-31T23:59"
+            />
           </div>
-
-          <DatePicker
-            visible={datePickerVisible}
-            onClose={() => setDatePickerVisible(false)}
-            onConfirm={(val) => {
-              setTradeTime(val);
-              setDatePickerVisible(false);
-            }}
-            value={tradeTime}
-            precision="minute"
-            title="交易时间"
-            min={new Date(2020, 0, 1)}
-            max={new Date(2030, 11, 31, 23, 59)}
-            renderLabel={(type, data) => {
-              switch (type) {
-                case 'year': return data + '年';
-                case 'month': return data + '月';
-                case 'day': return data + '日';
-                case 'hour': return data + '时';
-                case 'minute': return data + '分';
-                default: return data;
-              }
-            }}
-          />
 
           <Form.Item name="note" label="备注">
             <TextArea

@@ -147,35 +147,34 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
 
     const toastHandler = Toast.show({
       icon: 'loading',
-      content: '识别中...',
+      content: '提取中...',
       duration: 0,
     });
 
     try {
       const { trades, candidates } = await parseTradeImage(file);
+      toastHandler.close(); // Close loading toast before showing other toasts
       
       if (candidates) {
         setOcrCandidates(candidates);
       }
 
       if (!trades || trades.length === 0) {
-        Toast.show({ icon: 'fail', content: '未提取出完整的交易，请点击下方输入框使用智能提示' });
+        Toast.show({ icon: 'fail', content: '未提取出完整的交易数据' });
         return;
       }
 
       if (trades.length === 1) {
-        // Single trade — fill directly
         applyOcrTrade(trades[0]);
       } else {
-        // Multiple trades — show selection sheet
         setOcrTrades(trades);
         setOcrSheetVisible(true);
       }
     } catch (err) {
       console.error(err);
-      Toast.show({ icon: 'fail', content: '识别失败' });
+      toastHandler.close(); // Close loading toast
+      Toast.show({ icon: 'fail', content: err.message.includes('429') ? 'API 额度超限，请检查 Key' : '识别失败，请检查网络或 API Key' });
     } finally {
-      toastHandler.close();
       e.target.value = '';
     }
   };

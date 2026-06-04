@@ -318,3 +318,59 @@
   background: var(--color-accent);
 }
 
+/* ── OCR Model Selector ── */
+.trade-form__ocr-model-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 16px 10px;
+}
+
+.trade-form__ocr-model-label {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.trade-form__ocr-model-selector {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.trade-form__ocr-model-tag {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--color-bg-elevated);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.trade-form__ocr-model-tag--active {
+  background: var(--color-accent-bg);
+  color: var(--color-accent-light);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 8px var(--color-accent-glow);
+}
+
+.trade-form__ocr-model-tag:active {
+  transform: scale(0.95);
+}
+
+.trade-form__ocr-model-desc {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
+.trade-form__ocr-model-tag--active .trade-form__ocr-model-desc {
+  color: var(--color-accent-light);
+  opacity: 0.7;
+}

@@ -2,9 +2,19 @@
  * Vercel Serverless Function — /api/ocr
  *
  * Receives a broker screenshot (base64) and uses
- * Gemini 2.0 Flash multimodal to extract structured trade data.
+ * Gemini multimodal models to extract structured trade data.
+ * Supports model selection from the frontend.
  * Supports: 复星, 长桥, 盈立, 盈透, 嘉信, and more.
  */
+
+const ALLOWED_MODELS = [
+  'gemini-3.5-flash',
+  'gemini-3.1-flash-lite',
+  'gemini-3-flash-preview',
+  'gemini-2.0-flash',
+];
+
+const DEFAULT_MODEL = 'gemini-3.5-flash';
 
 export const config = {
   maxDuration: 30,
@@ -72,18 +82,22 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { image, mimeType = 'image/png' } = req.body;
+    const { image, mimeType = 'image/png', model: requestedModel } = req.body;
 
     if (!image) {
       return res.status(400).json({ error: 'No image provided' });
     }
 
+    // Validate and select model
+    const model = ALLOWED_MODELS.includes(requestedModel) ? requestedModel : DEFAULT_MODEL;
+    console.log(`[OCR API] Using model: ${model}`);
+
     // Strip data URL prefix if present
     const base64Data = image.replace(/^data:image\/\w+;base64,/, '');
 
-    // Call Gemini 2.0 Flash API
+    // Call Gemini API with selected model
     const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

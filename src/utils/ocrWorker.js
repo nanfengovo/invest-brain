@@ -52,19 +52,20 @@ function compressImageToBase64(file) {
  * Parse an image for trade information using Gemini Vision API.
  *
  * @param {File|Blob} image - The image to parse
+ * @param {string} [model] - Gemini model to use (e.g. 'gemini-3.5-flash')
  * @returns {Promise<{ trades: Array<Object>, candidates: { symbols: string[], numbers: string[] } }>}
  */
-export async function parseTradeImage(image) {
+export async function parseTradeImage(image, model) {
   const dataUrl = await compressImageToBase64(image);
   const mimeType = 'image/jpeg';
+
+  const body = { image: dataUrl, mimeType };
+  if (model) body.model = model;
 
   const response = await fetch('/api/ocr', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      image: dataUrl,
-      mimeType,
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {

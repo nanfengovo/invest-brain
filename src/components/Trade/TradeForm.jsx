@@ -26,6 +26,11 @@ const DIRECTION_OPTIONS = [
   { label: '平仓', value: 'CLOSE' },
 ];
 
+const OCR_MODEL_OPTIONS = [
+  { label: '3.5 Flash', value: 'gemini-3.5-flash', description: '高精度' },
+  { label: '3.1 Lite', value: 'gemini-3.1-flash-lite', description: '高配额' },
+];
+
 /**
  * TradeForm — Full-screen trade entry form.
  *
@@ -49,6 +54,7 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
   const [ocrCandidates, setOcrCandidates] = useState({ symbols: [], numbers: [] });
   const [activeField, setActiveField] = useState(null);
   const [referenceImage, setReferenceImage] = useState(null);
+  const [ocrModel, setOcrModel] = useState('gemini-3.5-flash');
 
   // Cleanup object URLs on unmount to avoid memory leaks
   useEffect(() => {
@@ -152,7 +158,7 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
     });
 
     try {
-      const { trades, candidates } = await parseTradeImage(file);
+      const { trades, candidates } = await parseTradeImage(file, ocrModel);
       toastHandler.close(); // Close loading toast before showing other toasts
       
       if (candidates) {
@@ -368,6 +374,24 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
                 className="trade-form__ocr-input"
               />
             </label>
+          </div>
+
+          {/* OCR Model Selector */}
+          <div className="trade-form__ocr-model-row">
+            <span className="trade-form__ocr-model-label">识别模型</span>
+            <div className="trade-form__ocr-model-selector">
+              {OCR_MODEL_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  className={`trade-form__ocr-model-tag${ocrModel === opt.value ? ' trade-form__ocr-model-tag--active' : ''}`}
+                  onClick={() => setOcrModel(opt.value)}
+                  type="button"
+                >
+                  {opt.label}
+                  <span className="trade-form__ocr-model-desc">{opt.description}</span>
+                </button>
+              ))}
+            </div>
           </div>
 
           <Form.Item

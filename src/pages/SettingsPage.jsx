@@ -124,12 +124,57 @@ function SettingsPage() {
         if (!confirmed) return;
 
         Toast.show({ icon: 'loading', content: '正在导入...' });
+        let successCount = 0;
+        let failCount = 0;
+        const errors = [];
+
         for (const trade of trades) {
-          await db.addTrade(trade);
+          try {
+            await db.upsertAsset({
+              id: trade.asset_id,
+              symbol: trade.symbol,
+              name: trade.asset_name || '',
+              type: trade.asset_type || 'STOCK',
+            });
+            await db.addTrade(trade);
+            successCount++;
+          } catch (err) {
+            failCount++;
+            errors.push(`${trade.symbol}: ${err.message || '写入失败'}`);
+          }
         }
         await refreshAll();
 
-        Toast.show({ icon: 'success', content: `成功导入 ${trades.length} 条记录` });
+        if (failCount === 0) {
+          Toast.show({ icon: 'success', content: `成功导入 ${successCount} 条记录` });
+        } else if (successCount > 0) {
+          Toast.show({ icon: 'success', content: `导入完成: 成功 ${successCount} 条, 失败 ${failCount} 条` });
+          Dialog.alert({
+            header: <span style={{ color: 'var(--color-loss)' }}>部分导入失败</span>,
+            content: (
+              <div style={{ textAlign: 'left', maxHeight: '200px', overflowY: 'auto' }}>
+                <p>以下记录导入失败：</p>
+                <ul style={{ paddingLeft: '20px', margin: '8px 0', color: 'var(--color-text-secondary)' }}>
+                  {errors.map((err, idx) => <li key={idx}>{err}</li>)}
+                </ul>
+              </div>
+            ),
+            confirmText: '我知道了',
+          });
+        } else {
+          Dialog.alert({
+            header: <span style={{ color: 'var(--color-loss)' }}>导入失败</span>,
+            content: (
+              <div style={{ textAlign: 'left' }}>
+                <p>全部 ${failCount} 条记录导入失败：</p>
+                <ul style={{ paddingLeft: '20px', margin: '8px 0', color: 'var(--color-text-secondary)' }}>
+                  {errors.map((err, idx) => <li key={idx}>{err}</li>)}
+                </ul>
+              </div>
+            ),
+            confirmText: '关闭',
+          });
+        }
       } catch (err) {
         Toast.show({ icon: 'fail', content: '导入失败: ' + err.message });
       }

@@ -8,6 +8,7 @@ import {
   Toast,
   Picker,
   ActionSheet,
+  Dialog,
 } from 'antd-mobile';
 import { useTradeStore } from '../../stores/useTradeStore';
 import { parseTradeImage } from '../../utils/ocrWorker';
@@ -129,6 +130,10 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
       if (data.expiry_date) setExpiryDate(new Date(data.expiry_date + 'T00:00:00'));
     } else if (data.asset_type === 'ETF') {
       setAssetType(['ETF']);
+      setExpiryDate(null);
+    } else {
+      setAssetType(['STOCK']);
+      setExpiryDate(null);
     }
 
     if (data.trade_time) {
@@ -179,7 +184,12 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
     } catch (err) {
       console.error(err);
       toastHandler.close(); // Close loading toast
-      Toast.show({ icon: 'fail', content: err.message.includes('429') ? 'API 额度超限，请检查 Key' : '识别失败，请检查网络或 API Key' });
+      Toast.show({ 
+        icon: 'fail', 
+        content: err.message.includes('429') 
+          ? 'API 额度超限，请检查 Key' 
+          : `识别失败: ${err.message || '请检查网络或 API Key'}` 
+      });
     } finally {
       e.target.value = '';
     }
@@ -628,18 +638,91 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
               block 
               onClick={async () => {
                 const addTrade = useTradeStore.getState().addTrade;
-                let count = 0;
+                let successCount = 0;
+                let failCount = 0;
+                const errors = [];
+
+                const loadingToast = Toast.show({
+                  icon: 'loading',
+                  content: '正在导入...',
+                  duration: 0,
+                });
+
                 for (const t of ocrTrades) {
-                  // Generate UUID for each trade
-                  const tradeToSave = { ...t, id: crypto.randomUUID() };
-                  if (!tradeToSave.trade_time) tradeToSave.trade_time = new Date().toISOString();
+                  const symbol = (t.symbol || '').toUpperCase().trim();
+                  const isOption = t.asset_type === 'OPTION';
+                  let assetId = symbol;
+
+                  if (isOption && t.strike_price) {
+                    let expStr = '';
+                    if (t.expiry_date) {
+                      try {
+                        expStr = new Date(t.expiry_date).toISOString().slice(0, 10);
+                      } catch {
+                        expStr = String(t.expiry_date);
+                      }
+                    }
+                    assetId = `${symbol}_${t.strike_price}_${expStr}`;
+                  }
+
+                  const tradeToSave = {
+                    ...t,
+                    id: crypto.randomUUID(),
+                    asset_id: assetId,
+                    symbol: symbol,
+                    quantity: parseFloat(t.quantity || 0),
+                    price: parseFloat(t.price || 0),
+                    fee: parseFloat(t.fee || 0),
+                    trade_time: t.trade_time || new Date().toISOString(),
+                  };
+
                   const res = await addTrade(tradeToSave);
-                  if (res.success) count++;
+                  if (res.success) {
+                    successCount++;
+                  } else {
+                    failCount++;
+                    errors.push(`${symbol}: ${res.error || '写入失败'}`);
+                  }
                 }
-                Toast.show({ icon: 'success', content: `成功导入 ${count} 笔交易` });
-                setOcrSheetVisible(false);
-                onSuccess?.();
-                onClose?.();
+
+                loadingToast.close();
+
+                if (failCount === 0) {
+                  Toast.show({ icon: 'success', content: `成功导入 ${successCount} 笔交易` });
+                  setOcrSheetVisible(false);
+                  onSuccess?.();
+                  onClose?.();
+                } else if (successCount > 0) {
+                  Toast.show({ icon: 'success', content: `导入完成: 成功 ${successCount} 笔, 失败 ${failCount} 笔` });
+                  Dialog.alert({
+                    header: <span style={{ color: 'var(--color-loss)' }}>部分导入失败</span>,
+                    content: (
+                      <div style={{ textAlign: 'left', maxHeight: '200px', overflowY: 'auto' }}>
+                        <p>以下交易导入失败：</p>
+                        <ul style={{ paddingLeft: '20px', margin: '8px 0', color: 'var(--color-text-secondary)' }}>
+                          {errors.map((err, idx) => <li key={idx}>{err}</li>)}
+                        </ul>
+                      </div>
+                    ),
+                    confirmText: '我知道了',
+                  });
+                  setOcrSheetVisible(false);
+                  onSuccess?.();
+                  onClose?.();
+                } else {
+                  Dialog.alert({
+                    header: <span style={{ color: 'var(--color-loss)' }}>导入失败</span>,
+                    content: (
+                      <div style={{ textAlign: 'left' }}>
+                        <p>全部 ${failCount} 笔交易导入失败，原因如下：</p>
+                        <ul style={{ paddingLeft: '20px', margin: '8px 0', color: 'var(--color-text-secondary)' }}>
+                          {errors.map((err, idx) => <li key={idx}>{err}</li>)}
+                        </ul>
+                      </div>
+                    ),
+                    confirmText: '关闭',
+                  });
+                }
               }}
             >
               🚀 一键批量导入全部

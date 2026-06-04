@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Form, Input, Button, Selector, Toast, NavBar, TextArea } from 'antd-mobile';
 import { useTradeStore } from '../../stores/useTradeStore';
 import { useAppStore } from '../../stores/useAppStore';
 import { saveFileToOPFS } from '../../utils/opfsUtils';
+import { db } from '../../db/database';
 import './InformationForm.css';
 
 const TYPE_OPTIONS = [
@@ -16,10 +17,18 @@ export default function InformationForm({ onClose }) {
   const [form] = Form.useForm();
   const [uploading, setUploading] = useState(false);
   const [filePath, setFilePath] = useState(null);
-  const [uploadedFile, setUploadedFile] = useState(null); // Keep original file for AI image analysis
+  const [uploadedFile, setUploadedFile] = useState(null);
   const [summarizing, setSummarizing] = useState(false);
+  const [saving, setSaving] = useState(false);
   
   const addInformation = useTradeStore((s) => s.addInformation);
+
+  // Reset form state when component mounts (each time popup opens)
+  useEffect(() => {
+    form.resetFields();
+    setFilePath(null);
+    setUploadedFile(null);
+  }, [form]);
 
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
@@ -45,6 +54,12 @@ export default function InformationForm({ onClose }) {
     } finally {
       setUploading(false);
     }
+  };
+
+  const handleRemoveFile = () => {
+    setFilePath(null);
+    setUploadedFile(null);
+    Toast.show({ content: '附件已移除' });
   };
 
   const fileToBase64 = (file) => {
@@ -113,7 +128,6 @@ export default function InformationForm({ onClose }) {
     } catch (err) {
       console.error('[AI Summarize Error]:', err);
       toast.close();
-      // Fail silently or show subtle toast so we don't block user flow
       Toast.show({ icon: 'fail', content: '提炼失败: ' + err.message });
     } finally {
       setSummarizing(false);
@@ -121,23 +135,55 @@ export default function InformationForm({ onClose }) {
   };
 
   const onFinish = async (values) => {
-    const info = {
-      id: crypto.randomUUID(), // Fix: Explicitly generate UUID for primary key
-      title: values.title,
-      type: values.type ? values.type[0] : 'ARTICLE',
-      url: values.url || null,
-      content: values.content || null,
-      asset_id: values.asset_id ? values.asset_id.toUpperCase().trim() : null,
-      sector: values.sector || null,
-      file_path: filePath,
-    };
-    
-    const res = await addInformation(info);
-    if (res.success) {
-      Toast.show({ icon: 'success', content: '保存成功' });
-      onClose();
-    } else {
-      Toast.show({ icon: 'fail', content: '保存失败: ' + (res.error || '数据库约束错误') });
+    setSaving(true);
+    try {
+      let assetId = null;
+
+      // If user provided an asset code, upsert the asset record first
+      if (values.asset_id) {
+        const symbol = values.asset_id.toUpperCase().trim();
+        assetId = symbol; // Use symbol as ID
+        try {
+          await db.upsertAsset({
+            id: symbol,
+            symbol: symbol,
+            name: symbol,
+            type: 'STOCK',
+            sector: values.sector || null,
+          });
+        } catch (err) {
+          console.warn('[InformationForm] Asset upsert failed:', err);
+          // Don't block save — just set assetId to null
+          assetId = null;
+        }
+      }
+
+      const info = {
+        id: crypto.randomUUID(),
+        title: values.title,
+        type: values.type ? values.type[0] : 'ARTICLE',
+        url: values.url || null,
+        content: values.content || null,
+        asset_id: assetId,
+        sector: values.sector || null,
+        file_path: filePath,
+      };
+      
+      const res = await addInformation(info);
+      if (res.success) {
+        Toast.show({ icon: 'success', content: '保存成功' });
+        // Reset form for next entry
+        form.resetFields();
+        setFilePath(null);
+        setUploadedFile(null);
+        onClose();
+      } else {
+        Toast.show({ icon: 'fail', content: '保存失败: ' + (res.error || '未知错误') });
+      }
+    } catch (err) {
+      Toast.show({ icon: 'fail', content: '保存失败: ' + err.message });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -149,7 +195,7 @@ export default function InformationForm({ onClose }) {
           form={form}
           onFinish={onFinish}
           footer={
-            <Button block type="submit" color="primary" size="large">
+            <Button block type="submit" color="primary" size="large" loading={saving}>
               保存
             </Button>
           }
@@ -219,8 +265,17 @@ export default function InformationForm({ onClose }) {
                 {uploading ? '上传中...' : '选择图片或PDF文件'}
               </label>
               {filePath && (
-                <div className="info-form__upload-path">
-                  已上传: {filePath.split('/').pop()}
+                <div className="info-form__upload-info">
+                  <div className="info-form__upload-path">
+                    📎 {filePath.split('/').pop()}
+                  </div>
+                  <button
+                    type="button"
+                    className="info-form__upload-remove"
+                    onClick={handleRemoveFile}
+                  >
+                    ✕ 移除
+                  </button>
                 </div>
               )}
             </div>

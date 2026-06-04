@@ -1,15 +1,31 @@
 import { useState, useEffect } from 'react';
-import { List, Dialog, Toast, Button, Selector } from 'antd-mobile';
+import { List, Dialog, Toast, Button, Selector, Input } from 'antd-mobile';
 import { db } from '../db/database';
 import { useAppStore } from '../stores/useAppStore';
 import { useTradeStore } from '../stores/useTradeStore';
 import { parseTradesFile } from '../utils/importTrades';
+import { restoreAutoBackup } from '../utils/autoBackup';
 import './SettingsPage.css';
 
 function SettingsPage() {
-  const { isDbPersistent, theme, colorConvention, setTheme, setColorConvention } = useAppStore();
+  const { 
+    isDbPersistent, 
+    theme, 
+    colorConvention, 
+    setTheme, 
+    setColorConvention,
+    geminiApiKey,
+    saveGeminiApiKey
+  } = useAppStore();
+
   const { stats, refreshAll } = useTradeStore();
   const [storageInfo, setStorageInfo] = useState(null);
+  const [apiKeyInput, setApiKeyInput] = useState(geminiApiKey);
+  const [lastBackupTime, setLastBackupTime] = useState(localStorage.getItem('ib_last_autobackup_time'));
+
+  useEffect(() => {
+    setApiKeyInput(geminiApiKey);
+  }, [geminiApiKey]);
 
   useEffect(() => {
     // Get storage estimate
@@ -212,6 +228,42 @@ function SettingsPage() {
     });
   }
 
+  async function handleSaveApiKey() {
+    try {
+      await saveGeminiApiKey(apiKeyInput.trim());
+      Toast.show({ icon: 'success', content: 'API Key 保存成功' });
+    } catch (e) {
+      Toast.show({ icon: 'fail', content: '保存失败: ' + e.message });
+    }
+  }
+
+  async function handleRestoreRedundantBackup() {
+    const confirmed = await Dialog.confirm({
+      title: '确认从冗余备份恢复？',
+      content: '该操作将以您设备上最后一次自动备份的数据覆盖当前的数据库。此操作不可撤销，是否继续？',
+      confirmText: '确认恢复',
+      cancelText: '取消',
+    });
+
+    if (!confirmed) return;
+
+    try {
+      Toast.show({ icon: 'loading', content: '正在恢复数据...' });
+      const res = await restoreAutoBackup();
+      if (res.success) {
+        await refreshAll();
+        Toast.show({ icon: 'success', content: res.message });
+        setLastBackupTime(localStorage.getItem('ib_last_autobackup_time'));
+      }
+    } catch (err) {
+      Dialog.alert({
+        header: <span style={{ color: 'var(--color-loss)' }}>恢复失败</span>,
+        content: err.message || '未找到可用的自动备份，或恢复过程中发生错误。',
+        confirmText: '我知道了',
+      });
+    }
+  }
+
   return (
     <div className="page settings-page">
       <div className="page-header">
@@ -280,9 +332,45 @@ function SettingsPage() {
         </div>
       </div>
 
+      {/* API Key Configuration */}
+      <div className="section">
+        <div className="section__title">大模型 API 配置 (OCR与智能总结)</div>
+        <div className="settings-card glass-card">
+          <div className="settings-card__row" style={{ cursor: 'default' }}>
+            <span className="settings-card__icon">🔑</span>
+            <div className="settings-card__content">
+              <div className="settings-card__label">本地 Gemini API Key</div>
+              <div className="settings-card__desc">
+                配有内置 Key，在此处配置您私有的 Key 可享受独立配额（优先存储于本地 SQLite 中，留空则默认使用内置 Key）
+              </div>
+            </div>
+          </div>
+          <div className="settings-card__input-row">
+            <div className="settings-card__input-wrapper">
+              <Input
+                placeholder="输入以 AIzaSy 开头的 Key..."
+                value={apiKeyInput}
+                onChange={setApiKeyInput}
+                type="password"
+                clearable
+              />
+            </div>
+            <Button
+              color="primary"
+              size="small"
+              fill="solid"
+              onClick={handleSaveApiKey}
+              style={{ borderRadius: '6px' }}
+            >
+              保存
+            </Button>
+          </div>
+        </div>
+      </div>
+
       {/* Backup & Restore */}
       <div className="section">
-        <div className="section__title">数据备份</div>
+        <div className="section__title">数据备份与冗余</div>
         <div className="settings-card glass-card">
           <div className="settings-card__row" onClick={handleExport}>
             <span className="settings-card__icon">📤</span>
@@ -307,6 +395,21 @@ function SettingsPage() {
             <div className="settings-card__content">
               <div className="settings-card__label">导入交易记录 (CSV/Excel)</div>
               <div className="settings-card__desc">批量导入历史交易数据</div>
+            </div>
+            <span className="settings-card__arrow">›</span>
+          </div>
+          <div className="settings-card__divider" />
+          <div className="settings-card__row" onClick={handleRestoreRedundantBackup}>
+            <span className="settings-card__icon">🛡️</span>
+            <div className="settings-card__content">
+              <div className="settings-card__label">从冗余备份恢复 (IndexedDB)</div>
+              <div className="settings-card__desc">
+                {lastBackupTime ? (
+                  <span className="text-profit">自动同步中，最后备份: {new Date(lastBackupTime).toLocaleString()}</span>
+                ) : (
+                  <span>暂无自动备份数据（写入数据时将自动触发）</span>
+                )}
+              </div>
             </div>
             <span className="settings-card__arrow">›</span>
           </div>

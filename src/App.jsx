@@ -26,6 +26,9 @@ function App({ onReady }) {
         if (!mounted) return;
         setDbReady(true, result.persistent);
 
+        // Load settings
+        await useAppStore.getState().loadGeminiApiKey();
+
         // Load initial data
         await refreshAll();
 

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { db } from '../db/database';
+import { triggerAutoBackup } from '../utils/autoBackup';
 
 export const useTradeStore = create((set, get) => ({
   // Trade data
@@ -45,6 +46,7 @@ export const useTradeStore = create((set, get) => ({
       await db.addTrade(trade);
       await get().refreshTrades();
       await get().refreshHoldings();
+      triggerAutoBackup().catch((e) => console.error('[AutoBackup] Error:', e));
       return { success: true };
     } catch (err) {
       console.error('Failed to add trade:', err);
@@ -57,6 +59,7 @@ export const useTradeStore = create((set, get) => ({
       await db.updateTrade(trade);
       await get().refreshTrades();
       await get().refreshHoldings();
+      triggerAutoBackup().catch((e) => console.error('[AutoBackup] Error:', e));
       return { success: true };
     } catch (err) {
       console.error('Failed to update trade:', err);
@@ -69,6 +72,7 @@ export const useTradeStore = create((set, get) => ({
       await db.deleteTrade(id);
       await get().refreshTrades();
       await get().refreshHoldings();
+      triggerAutoBackup().catch((e) => console.error('[AutoBackup] Error:', e));
       return { success: true };
     } catch (err) {
       console.error('Failed to delete trade:', err);
@@ -114,6 +118,7 @@ export const useTradeStore = create((set, get) => ({
     try {
       await db.addDecision(decision);
       await get().refreshDecisions();
+      triggerAutoBackup().catch((e) => console.error('[AutoBackup] Error:', e));
       return { success: true };
     } catch (err) {
       console.error('Failed to add decision:', err);
@@ -125,6 +130,7 @@ export const useTradeStore = create((set, get) => ({
     try {
       await db.updateDecision(id, updates);
       await get().refreshDecisions();
+      triggerAutoBackup().catch((e) => console.error('[AutoBackup] Error:', e));
       return { success: true };
     } catch (err) {
       console.error('Failed to update decision:', err);
@@ -136,6 +142,7 @@ export const useTradeStore = create((set, get) => ({
     try {
       await db.deleteDecision(id);
       await get().refreshDecisions();
+      triggerAutoBackup().catch((e) => console.error('[AutoBackup] Error:', e));
       return { success: true };
     } catch (err) {
       console.error('Failed to delete decision:', err);
@@ -165,6 +172,7 @@ export const useTradeStore = create((set, get) => ({
     try {
       await db.addInformation(info);
       await get().refreshInformations();
+      triggerAutoBackup().catch((e) => console.error('[AutoBackup] Error:', e));
       return { success: true };
     } catch (err) {
       console.error('Failed to add information:', err);
@@ -176,6 +184,7 @@ export const useTradeStore = create((set, get) => ({
     try {
       await db.deleteInformation(id);
       await get().refreshInformations();
+      triggerAutoBackup().catch((e) => console.error('[AutoBackup] Error:', e));
       return { success: true };
     } catch (err) {
       console.error('Failed to delete information:', err);
@@ -191,6 +200,7 @@ export const useTradeStore = create((set, get) => ({
     try {
       await db.addViewpoint(vp);
       await get().refreshInformations(); // updates viewpoint_count
+      triggerAutoBackup().catch((e) => console.error('[AutoBackup] Error:', e));
       return { success: true };
     } catch (err) {
       console.error('Failed to add viewpoint:', err);
@@ -202,6 +212,7 @@ export const useTradeStore = create((set, get) => ({
     try {
       await db.deleteViewpoint(id);
       await get().refreshInformations();
+      triggerAutoBackup().catch((e) => console.error('[AutoBackup] Error:', e));
       return { success: true };
     } catch (err) {
       console.error('Failed to delete viewpoint:', err);

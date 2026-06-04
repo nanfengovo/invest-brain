@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Form, Input, Button, Selector, Toast, NavBar } from 'antd-mobile';
+import { Form, Input, Button, Selector, Toast, NavBar, TextArea } from 'antd-mobile';
 import { useTradeStore } from '../../stores/useTradeStore';
+import { useAppStore } from '../../stores/useAppStore';
 import { saveFileToOPFS } from '../../utils/opfsUtils';
 import './InformationForm.css';
 
@@ -15,6 +16,8 @@ export default function InformationForm({ onClose }) {
   const [form] = Form.useForm();
   const [uploading, setUploading] = useState(false);
   const [filePath, setFilePath] = useState(null);
+  const [uploadedFile, setUploadedFile] = useState(null); // Keep original file for AI image analysis
+  const [summarizing, setSummarizing] = useState(false);
   
   const addInformation = useTradeStore((s) => s.addInformation);
 
@@ -22,11 +25,21 @@ export default function InformationForm({ onClose }) {
     const file = e.target.files[0];
     if (!file) return;
     
+    setUploadedFile(file);
     setUploading(true);
     try {
       const path = await saveFileToOPFS(file, 'informations');
       setFilePath(path);
+      
+      // Auto trigger change to type "IMAGE" if the uploaded file is an image
+      if (file.type.startsWith('image/')) {
+        form.setFieldsValue({ type: ['IMAGE'] });
+      }
+
       Toast.show({ icon: 'success', content: '上传成功' });
+      
+      // Auto-summarize since a file has been uploaded
+      setTimeout(() => triggerAiSummarize(file, path), 300);
     } catch (err) {
       Toast.show({ icon: 'fail', content: '上传失败: ' + err.message });
     } finally {
@@ -34,12 +47,87 @@ export default function InformationForm({ onClose }) {
     }
   };
 
+  const fileToBase64 = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = (error) => reject(error);
+    });
+  };
+
+  const triggerAiSummarize = async (fileObj = null, pathVal = null) => {
+    const urlVal = form.getFieldValue('url');
+    const contentVal = form.getFieldValue('content');
+    const targetFile = fileObj || uploadedFile;
+
+    if (!urlVal && !contentVal && !targetFile) {
+      return; // Nothing to summarize
+    }
+
+    setSummarizing(true);
+    const toast = Toast.show({
+      icon: 'loading',
+      content: 'AI 智能提炼标题...',
+      duration: 0,
+    });
+
+    try {
+      let base64Image = null;
+      let mimeType = 'image/png';
+      
+      if (targetFile && targetFile.type.startsWith('image/')) {
+        base64Image = await fileToBase64(targetFile);
+        mimeType = targetFile.type;
+      }
+
+      const localApiKey = useAppStore.getState().geminiApiKey;
+      const headers = { 'Content-Type': 'application/json' };
+      if (localApiKey) {
+        headers['x-gemini-api-key'] = localApiKey;
+      }
+
+      const response = await fetch('/api/summarize', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          url: urlVal || undefined,
+          content: contentVal || undefined,
+          image: base64Image || undefined,
+          mimeType,
+        }),
+      });
+
+      toast.close();
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `HTTP ${response.status}`);
+      }
+
+      const result = await response.json();
+      if (result.title) {
+        form.setFieldsValue({ title: result.title });
+        Toast.show({ icon: 'success', content: '标题自动提炼成功' });
+      }
+    } catch (err) {
+      console.error('[AI Summarize Error]:', err);
+      toast.close();
+      // Fail silently or show subtle toast so we don't block user flow
+      Toast.show({ icon: 'fail', content: '提炼失败: ' + err.message });
+    } finally {
+      setSummarizing(false);
+    }
+  };
+
   const onFinish = async (values) => {
     const info = {
+      id: crypto.randomUUID(), // Fix: Explicitly generate UUID for primary key
       title: values.title,
       type: values.type ? values.type[0] : 'ARTICLE',
       url: values.url || null,
-      asset_id: values.asset_id || null,
+      content: values.content || null,
+      asset_id: values.asset_id ? values.asset_id.toUpperCase().trim() : null,
       sector: values.sector || null,
       file_path: filePath,
     };
@@ -49,7 +137,7 @@ export default function InformationForm({ onClose }) {
       Toast.show({ icon: 'success', content: '保存成功' });
       onClose();
     } else {
-      Toast.show({ icon: 'fail', content: '保存失败' });
+      Toast.show({ icon: 'fail', content: '保存失败: ' + (res.error || '数据库约束错误') });
     }
   };
 
@@ -69,8 +157,19 @@ export default function InformationForm({ onClose }) {
         >
           <Form.Header>基础信息</Form.Header>
           <Form.Item name="title" label="标题" rules={[{ required: true, message: '请输入标题' }]}>
-            <Input placeholder="输入情报标题" clearable />
+            <Input placeholder="输入情报标题，或使用下方智能提炼" clearable />
           </Form.Item>
+          
+          <div className="info-form__ai-summarize-row">
+            <button
+              type="button"
+              className="info-form__ai-summarize-btn"
+              onClick={() => triggerAiSummarize()}
+              disabled={summarizing}
+            >
+              {summarizing ? '🤖 正在提炼...' : '✨ AI 智能提炼标题'}
+            </button>
+          </div>
           
           <Form.Item name="type" label="类型">
             <Selector
@@ -81,7 +180,21 @@ export default function InformationForm({ onClose }) {
           </Form.Item>
           
           <Form.Item name="url" label="来源链接 (可选)">
-            <Input placeholder="输入文章或视频的网址" clearable />
+            <Input 
+              placeholder="输入文章或视频的网址" 
+              clearable 
+              onBlur={() => triggerAiSummarize()}
+            />
+          </Form.Item>
+
+          <Form.Item name="content" label="情报内容 (可选)">
+            <TextArea 
+              placeholder="输入正文内容、摘录或您的看法，输入完毕可自动提炼标题..." 
+              rows={4} 
+              showCount 
+              maxLength={2000}
+              onBlur={() => triggerAiSummarize()}
+            />
           </Form.Item>
           
           <Form.Header>关联数据</Form.Header>

@@ -426,10 +426,11 @@ export const db = {
 
   async addInformation(info) {
     const { id, title, type, source, url, content, file_path, asset_id, sector } = info;
+    const finalId = id || crypto.randomUUID();
     return this.exec(
       `INSERT INTO informations (id, title, type, source, url, content, file_path, asset_id, sector)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, title, type || 'ARTICLE', source || null, url || null, content || null, file_path || null, asset_id || null, sector || null]
+      [finalId, title, type || 'ARTICLE', source || null, url || null, content || null, file_path || null, asset_id || null, sector || null]
     );
   },
 
@@ -460,6 +461,22 @@ export const db = {
 
   async deleteViewpoint(id) {
     return this.exec('DELETE FROM viewpoints WHERE id = ?', [id]);
+  },
+
+  // ==========================================
+  // Settings operations
+  // ==========================================
+
+  async getSetting(key) {
+    const results = await this.query('SELECT value FROM app_settings WHERE key = ?', [key]);
+    return results[0] ? results[0].value : null;
+  },
+
+  async setSetting(key, value) {
+    return this.exec(
+      'INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES (?, ?, unixepoch())',
+      [key, value]
+    );
   },
 
   // ==========================================

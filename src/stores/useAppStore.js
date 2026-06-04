@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { db } from '../db/database';
 
 export const useAppStore = create((set) => ({
   // Database state
@@ -9,6 +10,27 @@ export const useAppStore = create((set) => ({
   setDbReady: (ready, persistent = false) =>
     set({ isDbReady: ready, isDbPersistent: persistent }),
   setDbError: (error) => set({ dbError: error }),
+
+  // Gemini API Key state
+  geminiApiKey: '',
+  setGeminiApiKey: (key) => set({ geminiApiKey: key }),
+  loadGeminiApiKey: async () => {
+    try {
+      const key = await db.getSetting('gemini_api_key');
+      set({ geminiApiKey: key || '' });
+    } catch (e) {
+      console.error('Failed to load geminiApiKey from DB', e);
+    }
+  },
+  saveGeminiApiKey: async (key) => {
+    try {
+      await db.setSetting('gemini_api_key', key);
+      set({ geminiApiKey: key });
+    } catch (e) {
+      console.error('Failed to save geminiApiKey to DB', e);
+      throw e;
+    }
+  },
 
   // Active tab
   activeTab: '/',

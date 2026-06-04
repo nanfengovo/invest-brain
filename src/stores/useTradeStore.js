@@ -171,10 +171,10 @@ export const useTradeStore = create((set, get) => ({
   informations: [],
   informationsLoading: false,
 
-  refreshInformations: async () => {
+  refreshInformations: async (status = null) => {
     set({ informationsLoading: true });
     try {
-      const informations = await db.getInformations();
+      const informations = await db.getInformations(status);
       set({ informations, informationsLoading: false });
     } catch (err) {
       console.error('Failed to load informations:', err);
@@ -190,6 +190,18 @@ export const useTradeStore = create((set, get) => ({
       return { success: true };
     } catch (err) {
       console.error('Failed to add information:', err);
+      return { success: false, error: err.message };
+    }
+  },
+
+  updateInformation: async (info) => {
+    try {
+      await db.updateInformation(info);
+      await get().refreshInformations();
+      triggerAutoBackup().catch((e) => console.error('[AutoBackup] Error:', e));
+      return { success: true };
+    } catch (err) {
+      console.error('Failed to update information:', err);
       return { success: false, error: err.message };
     }
   },
@@ -218,6 +230,17 @@ export const useTradeStore = create((set, get) => ({
       return { success: true };
     } catch (err) {
       console.error('Failed to add viewpoint:', err);
+      return { success: false, error: err.message };
+    }
+  },
+
+  updateViewpoint: async (vp) => {
+    try {
+      await db.updateViewpoint(vp);
+      triggerAutoBackup().catch((e) => console.error('[AutoBackup] Error:', e));
+      return { success: true };
+    } catch (err) {
+      console.error('Failed to update viewpoint:', err);
       return { success: false, error: err.message };
     }
   },

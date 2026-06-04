@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Tabs, FloatingBubble, Popup, Card, Tag } from 'antd-mobile';
+import { Tabs, FloatingBubble, Popup, Card, Tag, Button } from 'antd-mobile';
 import { AddOutline, LinkOutline, PictureOutline, VideoOutline, FileOutline } from 'antd-mobile-icons';
 import { useNavigate } from 'react-router-dom';
 import { useTradeStore } from '../stores/useTradeStore';
@@ -36,9 +36,16 @@ const TYPE_LABELS = {
 export default function InformationPage() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('ALL');
+  const [viewMode, setViewMode] = useState('INBOX'); // 'INBOX' or 'ARCHIVED'
   const [showAdd, setShowAdd] = useState(false);
   
   const informations = useTradeStore((s) => s.informations);
+  const refreshInformations = useTradeStore((s) => s.refreshInformations);
+
+  // Fetch data based on viewMode
+  useEffect(() => {
+    refreshInformations(viewMode === 'ARCHIVED' ? 'ARCHIVED' : null);
+  }, [viewMode, refreshInformations]);
 
   const filteredInfo = activeTab === 'ALL' 
     ? informations 
@@ -48,6 +55,26 @@ export default function InformationPage() {
     <div className="info-page">
       <div className="info-page__header">
         <h1>情报与资讯</h1>
+        <div className="info-page__view-toggle">
+          <Button 
+            size="mini" 
+            color={viewMode === 'INBOX' ? 'primary' : 'default'} 
+            fill={viewMode === 'INBOX' ? 'solid' : 'outline'}
+            onClick={() => setViewMode('INBOX')}
+            style={{ borderRadius: '4px 0 0 4px', borderRight: 'none' }}
+          >
+            收件箱
+          </Button>
+          <Button 
+            size="mini" 
+            color={viewMode === 'ARCHIVED' ? 'primary' : 'default'}
+            fill={viewMode === 'ARCHIVED' ? 'solid' : 'outline'}
+            onClick={() => setViewMode('ARCHIVED')}
+            style={{ borderRadius: '0 4px 4px 0' }}
+          >
+            已归档
+          </Button>
+        </div>
       </div>
 
       <div className="info-page__tabs">

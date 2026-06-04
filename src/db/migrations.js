@@ -142,6 +142,14 @@ export const MIGRATIONS = [
     statements: [
       `ALTER TABLE trades ADD COLUMN broker TEXT`,
     ]
+  },
+  {
+    version: 4,
+    description: 'Phase 4: Information lifecycle status',
+    statements: [
+      `ALTER TABLE informations ADD COLUMN status TEXT DEFAULT 'UNPROCESSED'`,
+      `CREATE INDEX IF NOT EXISTS idx_informations_status ON informations(status)`
+    ]
   }
 ];
 

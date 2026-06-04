@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { NavBar, Button, Toast, Tag, TextArea, Divider, List } from 'antd-mobile';
-import { LinkOutline, AppstoreOutline } from 'antd-mobile-icons';
+import { NavBar, Button, Toast, Tag, TextArea, Divider, List, ActionSheet, SwipeAction, Modal } from 'antd-mobile';
+import { LinkOutline, AppstoreOutline, MoreOutline } from 'antd-mobile-icons';
 import { db } from '../db/database';
 import { useTradeStore } from '../stores/useTradeStore';
 import { getFileUrlFromOPFS } from '../utils/opfsUtils';
@@ -176,12 +176,58 @@ export default function InformationDetail() {
     ? info.content.slice(0, CONTENT_LIMIT) + '...'
     : info?.content;
 
+  const [actionSheetVisible, setActionSheetVisible] = useState(false);
+  const deleteInformation = useTradeStore(s => s.deleteInformation);
+  const updateInformation = useTradeStore(s => s.updateInformation);
+
+  const handleAction = async (action) => {
+    setActionSheetVisible(false);
+    if (action.key === 'archive') {
+      const res = await updateInformation({ ...info, status: 'ARCHIVED' });
+      if (res.success) {
+        Toast.show({ icon: 'success', content: '已归档' });
+        navigate(-1);
+      }
+    } else if (action.key === 'delete') {
+      Modal.confirm({
+        content: '确定要删除这条情报及所有关联观点吗？',
+        onConfirm: async () => {
+          const res = await deleteInformation(info.id);
+          if (res.success) {
+            Toast.show({ icon: 'success', content: '已删除' });
+            navigate(-1);
+          } else {
+            Toast.show({ icon: 'fail', content: '删除失败' });
+          }
+        },
+      });
+    }
+  };
+
+  const actionSheetActions = [
+    { text: '归档', key: 'archive' },
+    { text: '删除', key: 'delete', danger: true },
+  ];
+
   if (loading) return <LoadingSpinner />;
   if (!info) return null;
 
   return (
     <div className="info-detail">
-      <NavBar onBack={() => navigate(-1)}>情报详情</NavBar>
+      <NavBar 
+        onBack={() => navigate(-1)}
+        right={<MoreOutline style={{ fontSize: 24 }} onClick={() => setActionSheetVisible(true)} />}
+      >
+        情报详情
+      </NavBar>
+
+      <ActionSheet
+        visible={actionSheetVisible}
+        actions={actionSheetActions}
+        onClose={() => setActionSheetVisible(false)}
+        onAction={handleAction}
+        cancelText="取消"
+      />
       
       <div className="info-detail__content">
         <div className="info-detail__header">
@@ -296,12 +342,33 @@ export default function InformationDetail() {
           ) : (
             <List>
               {viewpoints.map(vp => (
-                <List.Item key={vp.id} className="vp-item">
-                  <div className="vp-item__content">{vp.content}</div>
-                  <div className="vp-item__date">
-                    {formatTimestamp(vp.created_at)}
-                  </div>
-                </List.Item>
+                <SwipeAction
+                  key={vp.id}
+                  rightActions={[
+                    {
+                      key: 'delete',
+                      text: '删除',
+                      color: 'danger',
+                      onClick: async () => {
+                        const res = await useTradeStore.getState().deleteViewpoint(vp.id);
+                        if (res.success) {
+                          Toast.show({ icon: 'success', content: '观点已删除' });
+                          const newVps = await db.getViewpoints(id);
+                          setViewpoints(newVps || []);
+                        } else {
+                          Toast.show({ icon: 'fail', content: '删除失败' });
+                        }
+                      },
+                    },
+                  ]}
+                >
+                  <List.Item className="vp-item">
+                    <div className="vp-item__content">{vp.content}</div>
+                    <div className="vp-item__date">
+                      {formatTimestamp(vp.created_at)}
+                    </div>
+                  </List.Item>
+                </SwipeAction>
               ))}
             </List>
           )}

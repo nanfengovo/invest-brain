@@ -422,14 +422,23 @@ export const db = {
   // Information operations
   // ==========================================
 
-  async getInformations() {
-    return this.query(
-      `SELECT i.*, a.symbol as asset_symbol,
+  async getInformations(status = null) {
+    let sql = `SELECT i.*, a.symbol as asset_symbol,
         (SELECT COUNT(*) FROM viewpoints WHERE info_id = i.id) as viewpoint_count
        FROM informations i
-       LEFT JOIN assets a ON i.asset_id = a.id
-       ORDER BY i.created_at DESC`
-    );
+       LEFT JOIN assets a ON i.asset_id = a.id`;
+    
+    const params = [];
+    if (status) {
+      sql += ` WHERE i.status = ?`;
+      params.push(status);
+    } else {
+      // By default exclude ARCHIVED unless explicitly requested
+      sql += ` WHERE i.status != 'ARCHIVED' OR i.status IS NULL`;
+    }
+    
+    sql += ` ORDER BY i.created_at DESC`;
+    return this.query(sql, params);
   },
 
   async getInformationById(id) {
@@ -444,12 +453,20 @@ export const db = {
   },
 
   async addInformation(info) {
-    const { id, title, type, source, url, content, file_path, asset_id, sector } = info;
+    const { id, title, type, source, url, content, file_path, asset_id, sector, status } = info;
     const finalId = id || crypto.randomUUID();
     return this.exec(
-      `INSERT INTO informations (id, title, type, source, url, content, file_path, asset_id, sector)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [finalId, title, type || 'ARTICLE', source || null, url || null, content || null, file_path || null, asset_id || null, sector || null]
+      `INSERT INTO informations (id, title, type, source, url, content, file_path, asset_id, sector, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [finalId, title, type || 'ARTICLE', source || null, url || null, content || null, file_path || null, asset_id || null, sector || null, status || 'UNPROCESSED']
+    );
+  },
+
+  async updateInformation(info) {
+    const { id, title, type, source, url, content, file_path, asset_id, sector, status } = info;
+    return this.exec(
+      `UPDATE informations SET title = ?, type = ?, source = ?, url = ?, content = ?, file_path = ?, asset_id = ?, sector = ?, status = ? WHERE id = ?`,
+      [title, type, source || null, url || null, content || null, file_path || null, asset_id || null, sector || null, status || 'UNPROCESSED', id]
     );
   },
 
@@ -475,6 +492,14 @@ export const db = {
     return this.exec(
       'INSERT INTO viewpoints (id, info_id, content) VALUES (?, ?, ?)',
       [id, info_id, content]
+    );
+  },
+
+  async updateViewpoint(vp) {
+    const { id, content } = vp;
+    return this.exec(
+      'UPDATE viewpoints SET content = ? WHERE id = ?',
+      [content, id]
     );
   },
 

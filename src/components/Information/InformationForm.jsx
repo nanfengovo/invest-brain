@@ -123,7 +123,28 @@ export default function InformationForm({ onClose }) {
       const result = await response.json();
       if (result.title) {
         form.setFieldsValue({ title: result.title });
-        Toast.show({ icon: 'success', content: '标题自动提炼成功' });
+        
+        // If API extracted content (like from X oEmbed), append it to the content textarea
+        if (result.content) {
+          const currentContent = form.getFieldValue('content') || '';
+          let newContentText = '';
+          if (result.author) {
+            newContentText = `作者: ${result.author}\n${result.content}`;
+          } else {
+            newContentText = result.content;
+          }
+          
+          if (!currentContent.includes(result.content)) {
+            form.setFieldsValue({
+              content: currentContent ? `${currentContent}\n\n---\n\n${newContentText}` : newContentText
+            });
+            Toast.show({ icon: 'success', content: '标题与推文正文已提取' });
+          } else {
+            Toast.show({ icon: 'success', content: '标题自动提炼成功' });
+          }
+        } else {
+          Toast.show({ icon: 'success', content: '标题自动提炼成功' });
+        }
       }
     } catch (err) {
       console.error('[AI Summarize Error]:', err);

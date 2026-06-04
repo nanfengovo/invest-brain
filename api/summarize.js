@@ -39,6 +39,8 @@ export default async function handler(req, res) {
 
     let summaryPromptText = '';
     const parts = [];
+    let extractedContent = null;
+    let extractedAuthor = null;
 
     // 1. If URL is provided, try parsing it (with graceful fallback)
     if (url) {
@@ -69,6 +71,8 @@ export default async function handler(req, res) {
               .trim();
             const author = oembedData.author_name || '';
             pageDetails += `来源平台: X/Twitter\n作者: ${author}\n推文内容: ${tweetText}`;
+            extractedContent = tweetText;
+            extractedAuthor = author;
           } else {
             pageDetails += `来源平台: X/Twitter\n无法获取推文内容（oEmbed 返回 ${oembedResp.status}），请根据 URL 推断。`;
           }
@@ -211,7 +215,11 @@ export default async function handler(req, res) {
     // Clean up title (remove double quotes, markdown bold, etc.)
     const cleanTitle = generatedTitle.replace(/^["'“”«]/, '').replace(/["'“”»]$/, '').replace(/\*\*?/g, '').trim();
 
-    return res.status(200).json({ title: cleanTitle || '未命名情报' });
+    return res.status(200).json({ 
+      title: cleanTitle || '未命名情报',
+      content: extractedContent,
+      author: extractedAuthor
+    });
   } catch (err) {
     console.error('[Summarize API] Exception:', err);
     return res.status(500).json({ error: err.message });

@@ -6,15 +6,35 @@
 }
 
 .info-page__header {
-  padding: calc(var(--safe-area-top, 0px) + 16px) 20px 8px;
-  background: var(--color-glass-nav);
+  padding: 16px;
+  background: var(--color-glass-card);
+  border-bottom: 1px solid var(--color-border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .info-page__header h1 {
   margin: 0;
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 600;
-  color: var(--color-text-primary);
+  background: linear-gradient(135deg, var(--color-text-primary) 0%, var(--color-text-secondary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.info-page__view-toggle {
+  display: flex;
+  align-items: center;
+}
+
+.info-page__view-toggle .adm-button {
+  padding: 4px 12px;
+  font-size: 13px;
+  --border-radius: 0;
 }
 
 .info-page__tabs {

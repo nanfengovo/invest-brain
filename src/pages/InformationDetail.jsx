@@ -6,7 +6,12 @@ import { db } from '../db/database';
 import { useTradeStore } from '../stores/useTradeStore';
 import { getFileUrlFromOPFS } from '../utils/opfsUtils';
 import LoadingSpinner from '../components/common/LoadingSpinner';
+import { Document, Page, pdfjs } from 'react-pdf';
+import 'react-pdf/dist/Page/AnnotationLayer.css';
+import 'react-pdf/dist/Page/TextLayer.css';
 import './InformationDetail.css';
+
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 const TYPE_LABELS = {
   ARTICLE: '文章',
@@ -129,6 +134,10 @@ export default function InformationDetail() {
   const [viewpoints, setViewpoints] = useState([]);
   const [fileUrl, setFileUrl] = useState(null);
   const [contentCollapsed, setContentCollapsed] = useState(false);
+  
+  // PDF state
+  const [pdfNumPages, setPdfNumPages] = useState(null);
+  const [pdfPageNumber, setPdfPageNumber] = useState(1);
   
   const [newViewpoint, setNewViewpoint] = useState('');
   const [newVpTags, setNewVpTags] = useState([]);
@@ -269,6 +278,7 @@ export default function InformationDetail() {
   const youtubeId = useMemo(() => info?.url ? getYouTubeId(info.url) : null, [info?.url]);
   const bilibiliId = useMemo(() => info?.url ? getBilibiliId(info.url) : null, [info?.url]);
   const isTwitter = useMemo(() => isTwitterUrl(info?.url), [info?.url]);
+  const isPdf = useMemo(() => info?.file_path?.toLowerCase().endsWith('.pdf'), [info?.file_path]);
 
   // Content: show full by default, allow collapse for very long content
   const COLLAPSE_THRESHOLD = 800;
@@ -581,7 +591,44 @@ export default function InformationDetail() {
         {/* ── Uploaded Media (OPFS file) ── */}
         {fileUrl && (
           <div className="info-detail__media">
-            {info.type === 'VIDEO' ? (
+            {isPdf ? (
+              <div className="info-detail__pdf-wrapper">
+                <Document
+                  file={fileUrl}
+                  onLoadSuccess={({ numPages }) => setPdfNumPages(numPages)}
+                  loading={<div className="info-detail__pdf-loading">加载 PDF 中...</div>}
+                >
+                  <Page
+                    pageNumber={pdfPageNumber}
+                    width={window.innerWidth - 32 - 32} // padding adjustments
+                    renderTextLayer={false}
+                    renderAnnotationLayer={false}
+                    className="info-detail__pdf-page"
+                  />
+                </Document>
+                {pdfNumPages && (
+                  <div className="info-detail__pdf-controls">
+                    <Button 
+                      size="mini" 
+                      disabled={pdfPageNumber <= 1} 
+                      onClick={() => setPdfPageNumber(p => p - 1)}
+                    >
+                      上一页
+                    </Button>
+                    <span className="info-detail__pdf-page-info">
+                      {pdfPageNumber} / {pdfNumPages}
+                    </span>
+                    <Button 
+                      size="mini" 
+                      disabled={pdfPageNumber >= pdfNumPages} 
+                      onClick={() => setPdfPageNumber(p => p + 1)}
+                    >
+                      下一页
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ) : info.type === 'VIDEO' ? (
               <video src={fileUrl} controls className="info-detail__video" />
             ) : (
               <img src={fileUrl} alt="附件" className="info-detail__image" />

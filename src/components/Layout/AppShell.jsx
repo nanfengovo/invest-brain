@@ -1,22 +1,27 @@
 import { useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import TabBar from './TabBar';
 import { useAppStore } from '../../stores/useAppStore';
 import './AppShell.css';
 
 export default function AppShell({ children }) {
   const { theme, colorConvention } = useAppStore();
+  const location = useLocation();
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     document.documentElement.setAttribute('data-color-mode', colorConvention);
   }, [theme, colorConvention]);
 
+  // Hide tab bar on detail pages
+  const hideTabBar = location.pathname.match(/^\/(information)\/.+/);
+
   return (
     <div className="app-shell">
       <main className="app-shell__content">
         {children}
       </main>
-      <TabBar />
+      {!hideTabBar && <TabBar />}
     </div>
   );
 }

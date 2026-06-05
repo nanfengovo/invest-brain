@@ -230,6 +230,50 @@
   background: var(--color-glass-card);
 }
 
+.info-detail__pdf-wrapper {
+  display: flex;
+  flex-direction: column;
+  background: #f0f0f0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.info-detail__pdf-loading {
+  padding: 40px;
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+}
+
+.info-detail__pdf-page {
+  display: flex;
+  justify-content: center;
+  background: white;
+  padding: 8px;
+}
+
+.info-detail__pdf-page canvas {
+  max-width: 100% !important;
+  height: auto !important;
+  border: 1px solid #ddd;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.info-detail__pdf-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--color-bg-card);
+  border-top: 1px solid var(--color-border);
+}
+
+.info-detail__pdf-page-info {
+  font-size: 13px;
+  color: var(--color-text-primary);
+  font-family: monospace;
+}
+
 /* ── Content Body ── */
 .info-detail__body {
   padding: 16px;

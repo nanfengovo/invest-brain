@@ -83,6 +83,8 @@
   background: var(--color-bg-card);
   border: 1px solid var(--color-border);
   border-radius: 8px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .info-form__upload-remove {

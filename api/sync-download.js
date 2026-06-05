@@ -10,11 +10,12 @@ export default async function handler(req) {
   }
 
   try {
-    const authHeader = req.headers.get('authorization');
-    const expectedSecret = process.env.SYNC_SECRET;
+    const authHeader = req.headers.get('authorization') || '';
+    const expectedSecret = process.env.SYNC_SECRET?.trim();
+    const providedSecret = authHeader.replace(/^Bearer\s+/i, '').trim();
     
     // Only enforce secret if it is configured on the server
-    if (expectedSecret && authHeader !== `Bearer ${expectedSecret}`) {
+    if (expectedSecret && providedSecret !== expectedSecret) {
       return new Response(JSON.stringify({ error: 'Unauthorized: Invalid Sync Secret' }), {
         status: 401,
         headers: { 'Content-Type': 'application/json' },

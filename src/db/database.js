@@ -347,11 +347,11 @@ export const db = {
   },
 
   async addDecision(decision) {
-    const { id, title, content, confidence, sentiment, status } = decision;
+    const { id, title, content, confidence, sentiment, status, asset_id, sector } = decision;
     return this.exec(
-      `INSERT INTO decisions (id, title, content, confidence, sentiment, status)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [id, title, content || '', confidence || 3, sentiment || 'NEUTRAL', status || 'ACTIVE']
+      `INSERT INTO decisions (id, title, content, confidence, sentiment, status, asset_id, sector)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, title, content || '', confidence || 3, sentiment || 'NEUTRAL', status || 'ACTIVE', asset_id || null, sector || null]
     );
   },
 

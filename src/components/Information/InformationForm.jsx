@@ -4,6 +4,7 @@ import { useTradeStore } from '../../stores/useTradeStore';
 import { useAppStore } from '../../stores/useAppStore';
 import { saveFileToOPFS } from '../../utils/opfsUtils';
 import { db } from '../../db/database';
+import AssetSelector from '../common/AssetSelector';
 import './InformationForm.css';
 
 const TYPE_OPTIONS = [
@@ -266,7 +267,7 @@ export default function InformationForm({ onClose }) {
           
           <Form.Header>关联数据</Form.Header>
           <Form.Item name="asset_id" label="关联股票/资产代码 (可选)">
-            <Input placeholder="如: AAPL, BTC" clearable />
+            <AssetSelector />
           </Form.Item>
           
           <Form.Item name="sector" label="关联板块 (可选)">

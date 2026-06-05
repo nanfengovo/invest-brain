@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Form, Input, TextArea, Selector, Toast } from 'antd-mobile';
 import { useTradeStore } from '../../stores/useTradeStore';
+import AssetSelector from '../common/AssetSelector';
 import './DecisionForm.css';
 
 const SENTIMENT_OPTIONS = [
@@ -71,6 +72,8 @@ export default function DecisionForm({ onClose, onSuccess, initialData }) {
           sentiment,
           confidence,
           status,
+          asset_id: values.asset_id || null,
+          sector: values.sector || null,
         };
         const result = await store.updateDecision(initialData.id, updates);
         if (result.success) {
@@ -89,6 +92,8 @@ export default function DecisionForm({ onClose, onSuccess, initialData }) {
           sentiment,
           confidence,
           status,
+          asset_id: values.asset_id || null,
+          sector: values.sector || null,
           created_at: new Date().toISOString(),
         };
 
@@ -140,6 +145,8 @@ export default function DecisionForm({ onClose, onSuccess, initialData }) {
                   content: initialData.content,
                   sentiment: [initialData.sentiment],
                   status: [initialData.status || 'ACTIVE'],
+                  asset_id: initialData.asset_id,
+                  sector: initialData.sector,
                 }
               : {
                   sentiment: ['NEUTRAL'],
@@ -149,6 +156,14 @@ export default function DecisionForm({ onClose, onSuccess, initialData }) {
           footer={null}
         >
           <div className="decision-form__section-title">基本信息</div>
+
+          <Form.Item name="asset_id" label="关联股票/资产代码 (可选)">
+            <AssetSelector />
+          </Form.Item>
+          
+          <Form.Item name="sector" label="关联板块 (可选)">
+            <Input placeholder="如: 科技, AI" clearable />
+          </Form.Item>
 
           <Form.Item
             name="title"

@@ -79,12 +79,6 @@ export default function InsightsPage() {
   };
 
   const generateAIInsight = async () => {
-    if (!geminiApiKey) {
-      Toast.show({ icon: 'fail', content: '请先在设置中配置 Gemini API Key' });
-      navigate('/settings');
-      return;
-    }
-
     if (!stats || !stats.rawData || stats.rawData.length === 0) {
       Toast.show({ icon: 'fail', content: '所选时段没有足够的闭环数据' });
       return;

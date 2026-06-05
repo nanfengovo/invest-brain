@@ -119,7 +119,7 @@ export default function ReviewForm({ decision, onClose, onSuccess }) {
             label="盈亏金额 ($，支持负数)"
             rules={[{ required: true, message: '请输入盈亏金额' }]}
           >
-            <Input type="number" placeholder="0.00" inputMode="decimal" clearable />
+            <Input type="text" placeholder="如: -200.50" clearable />
           </Form.Item>
 
           <Form.Item name="lessons" label="反思与核心经验教训">

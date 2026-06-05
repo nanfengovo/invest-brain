@@ -161,6 +161,15 @@ export const MIGRATIONS = [
       `ALTER TABLE viewpoints ADD COLUMN updated_at INTEGER`,
       `CREATE INDEX IF NOT EXISTS idx_viewpoints_status ON viewpoints(status)`
     ]
+  },
+  {
+    version: 6,
+    description: 'Phase 6: Add asset_id and sector to decisions',
+    statements: [
+      `ALTER TABLE decisions ADD COLUMN asset_id TEXT REFERENCES assets(id)`,
+      `ALTER TABLE decisions ADD COLUMN sector TEXT`,
+      `CREATE INDEX IF NOT EXISTS idx_decisions_asset ON decisions(asset_id)`
+    ]
   }
 ];
 

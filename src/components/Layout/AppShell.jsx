@@ -13,8 +13,8 @@ export default function AppShell({ children }) {
     document.documentElement.setAttribute('data-color-mode', colorConvention);
   }, [theme, colorConvention]);
 
-  // Hide tab bar on detail pages
-  const hideTabBar = location.pathname.match(/^\/(information)\/.+/);
+  // Hide tab bar on detail pages and insights page
+  const hideTabBar = location.pathname.match(/^\/(information)\/.+/) || location.pathname === '/insights';
 
   return (
     <div className="app-shell">

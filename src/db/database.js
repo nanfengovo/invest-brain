@@ -187,6 +187,45 @@ export const db = {
     return this.query('SELECT * FROM assets ORDER BY symbol');
   },
 
+  async hasAnyData() {
+    const res = await this.query('SELECT COUNT(*) as count FROM informations');
+    return res[0]?.count > 0;
+  },
+
+  // ==========================================
+  // Insights Data (Closed Loop)
+  // ==========================================
+  async getClosedLoopData(startTimestamp = 0, endTimestamp = Date.now()) {
+    const sql = `
+      SELECT 
+        r.id as review_id,
+        r.is_successful,
+        r.result_pnl,
+        r.review_content,
+        r.lessons,
+        r.created_at as review_date,
+        d.id as decision_id,
+        d.title as decision_title,
+        d.content as decision_content,
+        d.confidence,
+        t.asset_id,
+        a.symbol as asset_symbol,
+        a.sector as asset_sector
+      FROM reviews r
+      JOIN decisions d ON r.decision_id = d.id
+      LEFT JOIN (
+        SELECT decision_id, MIN(asset_id) as asset_id 
+        FROM trades 
+        WHERE decision_id IS NOT NULL 
+        GROUP BY decision_id
+      ) t ON t.decision_id = r.decision_id
+      LEFT JOIN assets a ON t.asset_id = a.id
+      WHERE r.created_at >= ? AND r.created_at <= ?
+      ORDER BY r.created_at DESC
+    `;
+    return this.query(sql, [Math.floor(startTimestamp / 1000), Math.floor(endTimestamp / 1000)]);
+  },
+
   async getAssetById(id) {
     const results = await this.query('SELECT * FROM assets WHERE id = ?', [id]);
     return results[0] || null;

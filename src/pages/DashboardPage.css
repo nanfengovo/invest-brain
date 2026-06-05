@@ -335,6 +335,54 @@
   }
 }
 
+/* ── AI Insights Banner ── */
+.dashboard__insights-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, rgba(var(--color-accent-rgb), 0.15) 0%, rgba(var(--color-bg-card-rgb), 0.8) 100%);
+  border: 1px solid rgba(var(--color-accent-rgb), 0.3);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.dashboard__insights-banner:active {
+  transform: scale(0.98);
+}
+
+.dashboard__insights-content {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.dashboard__insights-icon {
+  font-size: 28px;
+  line-height: 1;
+  filter: drop-shadow(0 0 8px rgba(var(--color-accent-rgb), 0.6));
+}
+
+.dashboard__insights-text h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  letter-spacing: 0.02em;
+}
+
+.dashboard__insights-text p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.dashboard__insights-arrow {
+  font-size: 20px;
+  color: var(--color-accent);
+  font-family: monospace;
+}
+
 /* ── Funnel / Decision Loop ── */
 .dashboard__funnel-stats {
   display: flex;

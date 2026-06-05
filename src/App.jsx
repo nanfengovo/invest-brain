@@ -13,6 +13,7 @@ import SettingsPage from './pages/SettingsPage';
 import InformationPage from './pages/InformationPage';
 import InformationDetail from './pages/InformationDetail';
 import HoldingsPage from './pages/HoldingsPage';
+import InsightsPage from './pages/InsightsPage';
 import LoadingSpinner from './components/common/LoadingSpinner';
 
 function App({ onReady }) {
@@ -115,6 +116,7 @@ function App({ onReady }) {
         <Route path="/decisions" element={<DecisionsPage />} />
         <Route path="/information" element={<InformationPage />} />
         <Route path="/information/:id" element={<InformationDetail />} />
+        <Route path="/insights" element={<InsightsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Routes>
     </AppShell>

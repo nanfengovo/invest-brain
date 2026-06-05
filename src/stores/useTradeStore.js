@@ -269,6 +269,21 @@ export const useTradeStore = create((set, get) => ({
   },
 
   // ==========================================
+  // Insights & Analytics
+  // ==========================================
+  getTradingInsights: async (days = 30) => {
+    try {
+      const now = Date.now();
+      const startTimestamp = days === 'all' ? 0 : now - days * 24 * 60 * 60 * 1000;
+      const data = await db.getClosedLoopData(startTimestamp, now);
+      return { success: true, data };
+    } catch (err) {
+      console.error('Failed to get trading insights:', err);
+      return { success: false, error: err.message };
+    }
+  },
+
+  // ==========================================
   // Refresh all data
   // ==========================================
 

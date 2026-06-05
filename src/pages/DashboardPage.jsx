@@ -66,6 +66,23 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* ── AI Insights Banner ── */}
+      <div className="dashboard__section">
+        <div 
+          className="dashboard__insights-banner glass-card"
+          onClick={() => navigate('/insights')}
+        >
+          <div className="dashboard__insights-content">
+            <div className="dashboard__insights-icon">✨</div>
+            <div className="dashboard__insights-text">
+              <h3>AI 交易体检</h3>
+              <p>分析你的交易闭环，发现性格短板</p>
+            </div>
+          </div>
+          <div className="dashboard__insights-arrow">→</div>
+        </div>
+      </div>
+
       {/* ── Portfolio Overview ── */}
       <div className="dashboard__section">
         <div className="dashboard__overview glass-card">

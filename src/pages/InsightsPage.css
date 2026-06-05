@@ -1,0 +1,244 @@
+/* ============================================================
+   InsightsPage — AI Trading Insights
+   ============================================================ */
+
+.insights-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background-color: var(--color-bg-primary);
+}
+
+.insights-page__content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  padding-bottom: calc(env(safe-area-inset-bottom) + 30px);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ── Filter ── */
+.insights-page__filter {
+  padding: 12px;
+}
+
+.insights-page__filter .adm-selector-item {
+  font-size: 13px;
+  border-radius: 8px;
+}
+
+/* ── Common Section ── */
+.insights-page__section-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 16px;
+  color: var(--color-text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.insights-page__section-title::before {
+  content: '';
+  display: block;
+  width: 4px;
+  height: 16px;
+  background: var(--color-accent);
+  border-radius: 2px;
+}
+
+/* ── Objective Stats ── */
+.insights-page__stats {
+  padding: 20px;
+}
+
+.insights-page__loading,
+.insights-page__empty {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 40px 0;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+}
+
+.insights-page__stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.insights-page__stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.insights-page__stat-item--full {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  justify-content: space-between;
+  padding: 20px;
+  background: linear-gradient(135deg, rgba(var(--color-accent-rgb), 0.1) 0%, transparent 100%);
+  border-color: rgba(var(--color-accent-rgb), 0.2);
+}
+
+.insights-page__stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin-bottom: 4px;
+}
+
+.insights-page__stat-item--full .insights-page__stat-value {
+  margin-bottom: 0;
+  font-size: 28px;
+}
+
+.insights-page__stat-value.profit {
+  color: var(--color-profit);
+  text-shadow: 0 0 10px rgba(var(--color-profit-rgb), 0.3);
+}
+
+.insights-page__stat-value.loss {
+  color: var(--color-loss);
+  text-shadow: 0 0 10px rgba(var(--color-loss-rgb), 0.3);
+}
+
+.insights-page__stat-label {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+/* ── Generate Action ── */
+.insights-page__action {
+  margin: 8px 0;
+}
+
+.insights-page__generate-btn {
+  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-light) 100%);
+  border: none;
+  font-weight: 600;
+  box-shadow: 0 8px 24px rgba(var(--color-accent-rgb), 0.4);
+}
+
+/* ── AI Result ── */
+.insights-page__result {
+  padding: 20px;
+  background: linear-gradient(180deg, var(--color-bg-card) 0%, rgba(var(--color-bg-card-rgb), 0.5) 100%);
+  border: 1px solid rgba(var(--color-accent-rgb), 0.3);
+  box-shadow: 0 0 30px rgba(var(--color-accent-rgb), 0.1) inset;
+}
+
+.insights-page__personality {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 24px;
+  padding: 16px;
+  background: rgba(var(--color-accent-rgb), 0.1);
+  border-radius: 12px;
+}
+
+.insights-page__personality-label {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+}
+
+.insights-page__personality-tag {
+  font-size: 18px;
+  font-weight: bold;
+  color: var(--color-accent);
+  text-shadow: 0 0 10px rgba(var(--color-accent-rgb), 0.5);
+}
+
+.insights-page__radar-container {
+  margin: 0 -20px 24px; /* break out of padding to make chart bigger */
+}
+
+/* Recharts overrides for dark mode */
+.recharts-polar-grid-angle line,
+.recharts-polar-grid-concentric polygon {
+  stroke: var(--color-border) !important;
+}
+.recharts-polar-angle-axis-tick-value {
+  fill: var(--color-text-secondary) !important;
+}
+
+.insights-page__analysis {
+  margin-bottom: 24px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 12px;
+  border-left: 4px solid var(--color-accent);
+}
+
+.insights-page__analysis h4 {
+  margin: 0 0 8px;
+  font-size: 15px;
+  color: var(--color-text-primary);
+}
+
+.insights-page__analysis p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+}
+
+.insights-page__advice {
+  margin-bottom: 24px;
+}
+
+.insights-page__advice h4 {
+  margin: 0 0 12px;
+  font-size: 15px;
+  color: var(--color-text-primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.insights-page__advice h4::before {
+  content: '🎯';
+}
+
+.insights-page__advice ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.insights-page__advice li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  background: rgba(var(--color-profit-rgb), 0.05);
+  border: 1px solid rgba(var(--color-profit-rgb), 0.1);
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-text-primary);
+}
+
+.insights-page__advice-icon {
+  flex-shrink: 0;
+  font-size: 16px;
+}
+
+.insights-page__re-generate-btn {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+}

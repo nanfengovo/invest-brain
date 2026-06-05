@@ -248,9 +248,9 @@ export const db = {
   // Trade operations
   // ==========================================
 
-  async getTrades(limit = 100, offset = 0) {
+  async getTrades(limit = 1000, offset = 0) {
     return this.query(
-      `SELECT t.*, a.symbol, a.name as asset_name, a.type as asset_type,
+      `SELECT t.*, a.symbol, a.name as asset_name, a.type as asset_type, a.sector as asset_sector,
               d.title as decision_title, t.broker
        FROM trades t
        LEFT JOIN assets a ON t.asset_id = a.id

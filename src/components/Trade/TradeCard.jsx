@@ -48,7 +48,7 @@ function formatNumber(num) {
  * @param {number} [props.index=0] - Index for stagger animation delay
  * @param {function} [props.onEdit] - Edit callback
  */
-export default function TradeCard({ trade, index = 0, onEdit }) {
+export default function TradeCard({ trade, index = 0, onEdit, compactMode = false }) {
   const deleteTrade = useTradeStore((s) => s.deleteTrade);
   const [actionSheetVisible, setActionSheetVisible] = useState(false);
 
@@ -112,7 +112,7 @@ export default function TradeCard({ trade, index = 0, onEdit }) {
   return (
     <SwipeAction rightActions={swipeActions} className="trade-card__swipe">
       <div
-        className={`trade-card ${isBuy ? 'trade-card--buy' : 'trade-card--sell'}`}
+        className={`trade-card ${isBuy ? 'trade-card--buy' : 'trade-card--sell'} ${compactMode ? 'trade-card--compact' : ''}`}
         style={{ animationDelay }}
         onClick={() => setActionSheetVisible(true)}
       >

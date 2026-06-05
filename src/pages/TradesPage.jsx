@@ -1,14 +1,24 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { PullToRefresh, Popup } from 'antd-mobile';
 import { useTradeStore } from '../stores/useTradeStore';
 import TradeForm from '../components/Trade/TradeForm';
 import TradeCard from '../components/Trade/TradeCard';
+import TradeFilter from '../components/Trade/TradeFilter';
 import EmptyState from '../components/common/EmptyState';
 import './TradesPage.css';
 
 export default function TradesPage() {
   const [showForm, setShowForm] = useState(false);
+  const [showFilter, setShowFilter] = useState(false);
   const [editingTrade, setEditingTrade] = useState(null);
+
+  const [filters, setFilters] = useState({
+    symbol: '',
+    sector: 'ALL',
+    direction: 'ALL',
+    groupBy: 'DATE',
+    compactMode: false,
+  });
 
   const { trades, tradesLoading, refreshTrades, refreshHoldings } =
     useTradeStore();
@@ -33,37 +43,111 @@ export default function TradesPage() {
     setShowForm(true);
   };
 
+  // Extract available sectors dynamically
+  const availableSectors = useMemo(() => {
+    const sectors = new Set(trades.map(t => t.asset_sector).filter(Boolean));
+    return Array.from(sectors);
+  }, [trades]);
+
+  // Apply filters
+  const filteredTrades = useMemo(() => {
+    return trades.filter(t => {
+      if (filters.symbol && !t.symbol.toLowerCase().includes(filters.symbol.toLowerCase())) return false;
+      if (filters.sector !== 'ALL' && t.asset_sector !== filters.sector) return false;
+      if (filters.direction !== 'ALL' && t.direction !== filters.direction) return false;
+      return true;
+    });
+  }, [trades, filters]);
+
+  const renderList = () => {
+    if (tradesLoading && trades.length === 0) {
+      return (
+        <div className="trades-page__loading">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="skeleton skeleton--card" />
+          ))}
+        </div>
+      );
+    }
+
+    if (trades.length === 0) {
+      return (
+        <EmptyState
+          icon="📈"
+          title="还没有交易记录"
+          subtitle="点击右下角按钮开始记录"
+        />
+      );
+    }
+
+    if (filteredTrades.length === 0) {
+      return (
+        <EmptyState
+          icon="📉"
+          title="没有符合条件的记录"
+          subtitle="尝试调整过滤条件"
+        />
+      );
+    }
+
+    if (filters.groupBy === 'NONE') {
+      return (
+        <div className="trades-page__list">
+          {filteredTrades.map((trade, idx) => (
+            <TradeCard key={trade.id} trade={trade} index={idx} onEdit={handleEditTrade} compactMode={filters.compactMode} />
+          ))}
+        </div>
+      );
+    }
+
+    // Grouping
+    const groups = {};
+    filteredTrades.forEach(t => {
+      let key = '未分类';
+      if (filters.groupBy === 'DATE') {
+        key = t.trade_time ? t.trade_time.split('T')[0] : '未知日期';
+      } else if (filters.groupBy === 'ASSET') {
+        key = t.symbol || '未知标的';
+      }
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(t);
+    });
+
+    return (
+      <div className="trades-page__list">
+        {Object.entries(groups).map(([groupKey, groupTrades], gIdx) => (
+          <div key={groupKey} className="trade-group">
+            <div className="trade-group__header">{groupKey}</div>
+            <div className="trade-group__items">
+              {groupTrades.map((t, idx) => (
+                <TradeCard key={t.id} trade={t} index={idx} onEdit={handleEditTrade} compactMode={filters.compactMode} />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="trades-page">
       {/* ── Header ── */}
       <div className="trades-page__header">
-        <h1 className="trades-page__title">交易记录</h1>
-        <p className="trades-page__subtitle">
-          共 {trades.length} 笔交易
-        </p>
+        <div className="trades-page__header-left">
+          <h1 className="trades-page__title">交易记录</h1>
+          <p className="trades-page__subtitle">
+            共 {filteredTrades.length} 笔交易
+            {trades.length !== filteredTrades.length && <span style={{color: 'var(--color-primary)'}}> (已过滤)</span>}
+          </p>
+        </div>
+        <button className="btn-filter" onClick={() => setShowFilter(true)}>
+          ⚙️ 筛选/视图
+        </button>
       </div>
 
       {/* ── Trade List ── */}
       <PullToRefresh onRefresh={handleRefresh}>
-        {tradesLoading && trades.length === 0 ? (
-          <div className="trades-page__loading">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="skeleton skeleton--card" />
-            ))}
-          </div>
-        ) : trades.length > 0 ? (
-          <div className="trades-page__list">
-            {trades.map((trade, idx) => (
-              <TradeCard key={trade.id} trade={trade} index={idx} onEdit={handleEditTrade} />
-            ))}
-          </div>
-        ) : (
-          <EmptyState
-            icon="📈"
-            title="还没有交易记录"
-            subtitle="点击右下角按钮开始记录"
-          />
-        )}
+        {renderList()}
       </PullToRefresh>
 
       {/* ── FAB ── */}
@@ -77,6 +161,24 @@ export default function TradesPage() {
       >
         +
       </button>
+
+      {/* ── Trade Filter Popup ── */}
+      <Popup
+        visible={showFilter}
+        onMaskClick={() => setShowFilter(false)}
+        position="right"
+        bodyStyle={{ width: '85vw' }}
+      >
+        <TradeFilter
+          filters={filters}
+          onChange={(updates) => setFilters(prev => ({ ...prev, ...updates }))}
+          onReset={() => setFilters({
+            symbol: '', sector: 'ALL', direction: 'ALL', groupBy: 'DATE', compactMode: false
+          })}
+          onClose={() => setShowFilter(false)}
+          availableSectors={availableSectors}
+        />
+      </Popup>
 
       {/* ── Trade Form Popup ── */}
       <Popup

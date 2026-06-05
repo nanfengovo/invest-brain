@@ -22,7 +22,7 @@ export const useTradeStore = create((set, get) => ({
   refreshTrades: async () => {
     set({ tradesLoading: true });
     try {
-      const trades = await db.getTrades(200);
+      const trades = await db.getTrades(2000);
       set({ trades, tradesLoading: false });
     } catch (err) {
       console.error('Failed to load trades:', err);

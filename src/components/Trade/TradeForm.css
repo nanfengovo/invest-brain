@@ -17,7 +17,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  padding-top: calc(var(--safe-area-top, 0px) + 12px);
+  padding-top: calc(env(safe-area-inset-top, 0px) + 12px);
   background: var(--color-glass-nav);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
@@ -89,7 +89,7 @@
 .trade-form__body {
   flex: 1;
   padding: 16px;
-  padding-bottom: calc(var(--safe-area-bottom, 0px) + 24px);
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 24px);
   overflow-y: auto;
 }
 

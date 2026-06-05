@@ -146,40 +146,54 @@ function exportDatabase() {
 
 /**
  * Import database from JSON dump
+ * @param {string|object} jsonData 
+ * @param {boolean} merge - If true, uses INSERT OR REPLACE and skips DELETE
  */
-function importDatabase(jsonData) {
+function importDatabase(jsonData, merge = false) {
   try {
     const dump = typeof jsonData === 'string' ? JSON.parse(jsonData) : jsonData;
     db.exec('BEGIN TRANSACTION');
 
-    // Clear existing data (reverse order for foreign keys)
-    const tableOrder = [
-      'reviews',
-      'decision_info_links',
-      'trades',
-      'decisions',
-      'informations',
-      'assets',
-    ];
-    for (const table of tableOrder) {
-      db.exec(`DELETE FROM ${table}`);
+    if (!merge) {
+      // Clear existing data (reverse order for foreign keys)
+      const tableOrder = [
+        'reviews',
+        'decision_info_links',
+        'trades',
+        'decisions',
+        'viewpoints',
+        'informations',
+        'assets',
+      ];
+      for (const table of tableOrder) {
+        // use try-catch because viewpoints might not exist in old backups
+        try {
+          db.exec(`DELETE FROM ${table}`);
+        } catch (e) {}
+      }
     }
 
     // Insert data
     for (const [tableName, rows] of Object.entries(dump.tables)) {
-      if (rows.length === 0) continue;
+      if (!Array.isArray(rows) || rows.length === 0) continue;
       const columns = Object.keys(rows[0]);
       const placeholders = columns.map(() => '?').join(',');
-      const sql = `INSERT INTO ${tableName} (${columns.join(',')}) VALUES (${placeholders})`;
+      
+      const insertCmd = merge ? 'INSERT OR REPLACE' : 'INSERT';
+      const sql = `${insertCmd} INTO ${tableName} (${columns.join(',')}) VALUES (${placeholders})`;
 
       for (const row of rows) {
         const values = columns.map((col) => row[col] ?? null);
-        db.exec({ sql, bind: values });
+        try {
+          db.exec({ sql, bind: values });
+        } catch (e) {
+          console.error(`[SQLite Worker] Failed to insert into ${tableName}:`, e.message);
+        }
       }
     }
 
     db.exec('COMMIT');
-    return { success: true, message: `Imported ${Object.keys(dump.tables).length} tables` };
+    return { success: true, message: `Imported ${Object.keys(dump.tables).length} tables (${merge ? 'merged' : 'replaced'})` };
   } catch (err) {
     try {
       db.exec('ROLLBACK');
@@ -213,7 +227,7 @@ self.onmessage = async function (e) {
       result = exportDatabase();
       break;
     case 'import':
-      result = importDatabase(payload.data);
+      result = importDatabase(payload.data, payload.merge || false);
       break;
     default:
       result = { success: false, error: `Unknown message type: ${type}` };

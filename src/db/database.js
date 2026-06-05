@@ -172,11 +172,11 @@ export const db = {
   },
 
   /**
-   * Import database from backup
+   * Import database from backup or merge external data
    */
-  async importDB(data) {
+  async importDB(data, merge = false) {
     if (!isReady) throw new Error('Database not initialized');
-    return sendMessage('import', { data });
+    return sendMessage('import', { data, merge });
   },
 
   // ==========================================
@@ -226,6 +226,10 @@ export const db = {
     return this.query(sql, [Math.floor(startTimestamp / 1000), Math.floor(endTimestamp / 1000)]);
   },
 
+  // ==========================================
+  // Asset operations
+  // ==========================================
+  
   async getAssetById(id) {
     const results = await this.query('SELECT * FROM assets WHERE id = ?', [id]);
     return results[0] || null;

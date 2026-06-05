@@ -88,24 +88,62 @@ function SettingsPage() {
       if (!file) return;
 
       const confirmed = await Dialog.confirm({
-        title: '确认导入',
-        content: `导入 "${file.name}" 将覆盖所有现有数据。此操作不可撤销。确定继续？`,
-        confirmText: '确认导入',
+        title: '确认导入并覆盖',
+        content: `全量恢复将清除当前所有数据并导入 "${file.name}"。此操作不可撤销。确定继续？`,
+        confirmText: '确认覆盖',
         cancelText: '取消',
       });
 
       if (!confirmed) return;
 
       try {
-        Toast.show({ icon: 'loading', content: '正在导入...' });
+        Toast.show({ icon: 'loading', content: '正在恢复备份...' });
 
         const text = await file.text();
-        await db.importDB(text);
+        await db.importDB(text, false); // merge = false
         await refreshAll();
 
-        Toast.show({ icon: 'success', content: '导入成功' });
+        Toast.show({ icon: 'success', content: '恢复成功' });
       } catch (err) {
-        Toast.show({ icon: 'fail', content: '导入失败: ' + err.message });
+        Toast.show({ icon: 'fail', content: '恢复失败: ' + err.message });
+      }
+    };
+
+    input.click();
+  }
+
+  async function handleMergeData() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+
+    input.onchange = async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const confirmed = await Dialog.confirm({
+        title: '合并团队数据',
+        content: `将 "${file.name}" 中的数据合并到当前数据库。如果有相同记录将被覆盖更新，不会删除现有数据。`,
+        confirmText: '确认合并',
+        cancelText: '取消',
+      });
+
+      if (!confirmed) return;
+
+      try {
+        Toast.show({ icon: 'loading', content: '正在合并数据...' });
+
+        const text = await file.text();
+        const res = await db.importDB(text, true); // merge = true
+        
+        if (res.success) {
+          await refreshAll();
+          Toast.show({ icon: 'success', content: '合并成功' });
+        } else {
+          throw new Error(res.error || '合并过程出错');
+        }
+      } catch (err) {
+        Toast.show({ icon: 'fail', content: '合并失败: ' + err.message });
       }
     };
 
@@ -384,8 +422,17 @@ function SettingsPage() {
           <div className="settings-card__row" onClick={handleImport}>
             <span className="settings-card__icon">📥</span>
             <div className="settings-card__content">
-              <div className="settings-card__label">导入恢复</div>
-              <div className="settings-card__desc">从备份文件恢复数据</div>
+              <div className="settings-card__label">全量导入覆盖 (恢复)</div>
+              <div className="settings-card__desc">从备份文件恢复数据 (将清空现有数据)</div>
+            </div>
+            <span className="settings-card__arrow">›</span>
+          </div>
+          <div className="settings-card__divider" />
+          <div className="settings-card__row" onClick={handleMergeData}>
+            <span className="settings-card__icon">🤝</span>
+            <div className="settings-card__content">
+              <div className="settings-card__label">合并团队数据 (JSON)</div>
+              <div className="settings-card__desc">导入他人的导出的 JSON，并与本地数据合并</div>
             </div>
             <span className="settings-card__arrow">›</span>
           </div>

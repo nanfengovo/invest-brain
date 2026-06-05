@@ -488,18 +488,33 @@ export const db = {
   },
 
   async addViewpoint(vp) {
-    const { id, info_id, content } = vp;
+    const { id, info_id, content, tags, status } = vp;
+    const tagsJson = tags ? JSON.stringify(tags) : null;
     return this.exec(
-      'INSERT INTO viewpoints (id, info_id, content) VALUES (?, ?, ?)',
-      [id, info_id, content]
+      'INSERT INTO viewpoints (id, info_id, content, tags, status, version, updated_at) VALUES (?, ?, ?, ?, ?, 1, unixepoch())',
+      [id, info_id, content, tagsJson, status || 'ACTIVE']
     );
   },
 
   async updateViewpoint(vp) {
-    const { id, content } = vp;
+    const { id, content, tags } = vp;
+    const tagsJson = tags ? JSON.stringify(tags) : undefined;
+    if (tagsJson !== undefined) {
+      return this.exec(
+        'UPDATE viewpoints SET content = ?, tags = ?, version = version + 1, updated_at = unixepoch() WHERE id = ?',
+        [content, tagsJson, id]
+      );
+    }
     return this.exec(
-      'UPDATE viewpoints SET content = ? WHERE id = ?',
+      'UPDATE viewpoints SET content = ?, version = version + 1, updated_at = unixepoch() WHERE id = ?',
       [content, id]
+    );
+  },
+
+  async updateViewpointStatus(id, status) {
+    return this.exec(
+      'UPDATE viewpoints SET status = ?, updated_at = unixepoch() WHERE id = ?',
+      [status, id]
     );
   },
 
@@ -538,5 +553,18 @@ export const db = {
         (SELECT COUNT(*) FROM viewpoints) as viewpoint_count`
     );
     return results[0] || {};
+  },
+
+  /**
+   * Quick check if database has any user data (for PWA recovery detection)
+   */
+  async hasAnyData() {
+    const results = await this.query(
+      `SELECT
+        (SELECT COUNT(*) FROM trades) + 
+        (SELECT COUNT(*) FROM informations) + 
+        (SELECT COUNT(*) FROM decisions) as total`
+    );
+    return (results[0]?.total || 0) > 0;
   },
 };

@@ -257,6 +257,17 @@ export const useTradeStore = create((set, get) => ({
     }
   },
 
+  updateViewpointStatus: async (id, status) => {
+    try {
+      await db.updateViewpointStatus(id, status);
+      triggerAutoBackup().catch((e) => console.error('[AutoBackup] Error:', e));
+      return { success: true };
+    } catch (err) {
+      console.error('Failed to update viewpoint status:', err);
+      return { success: false, error: err.message };
+    }
+  },
+
   // ==========================================
   // Refresh all data
   // ==========================================

@@ -41,6 +41,72 @@
   margin-bottom: 12px;
 }
 
+/* ── Editable Tags ── */
+.info-detail__tag-editable {
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.info-detail__tag-editable:active {
+  transform: scale(0.95);
+  opacity: 0.8;
+}
+
+.info-detail__tag-edit-icon {
+  font-size: 10px;
+  margin-left: 4px;
+  opacity: 0.5;
+}
+
+.info-detail__tag-add {
+  cursor: pointer;
+  border-style: dashed !important;
+  opacity: 0.6;
+  transition: all 0.2s ease;
+}
+
+.info-detail__tag-add:active {
+  opacity: 1;
+  transform: scale(0.95);
+}
+
+/* ── Edit Popups ── */
+.info-detail__edit-popup {
+  background: var(--color-bg-primary) !important;
+  border-radius: 16px 16px 0 0 !important;
+  border-top: 1px solid var(--color-border) !important;
+}
+
+.info-detail__edit-popup-content {
+  padding: 20px 16px;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+}
+
+.info-detail__edit-popup-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.info-detail__edit-input {
+  --font-size: 16px;
+  --color: var(--color-text-primary);
+  background: var(--color-glass-card);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 16px;
+}
+
+.info-detail__edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
 .info-detail__date {
   font-size: 12px;
   color: var(--color-text-secondary);
@@ -233,6 +299,57 @@
   border: 1px solid var(--color-border);
 }
 
+/* ── Viewpoint Header (status + tags + version) ── */
+.vp-item__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  gap: 8px;
+}
+
+.vp-item__status-tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.vp-item__status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid;
+  white-space: nowrap;
+}
+
+.vp-item__tag-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid;
+  white-space: nowrap;
+}
+
+.vp-item__version {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 2px 6px;
+  border-radius: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .vp-item__content {
   font-size: 14px;
   color: var(--color-text-primary);
@@ -247,6 +364,11 @@
   text-align: right;
 }
 
+.vp-item__edited {
+  opacity: 0.7;
+}
+
+/* ── Add Viewpoint Section ── */
 .info-detail__add-vp {
   background: var(--color-glass-card);
   border-radius: var(--radius-lg, 12px);
@@ -264,9 +386,56 @@
   background: transparent;
 }
 
+/* ── Viewpoint Tag Selector ── */
+.info-detail__vp-tags-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.info-detail__vp-tags-label {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.info-detail__vp-tags-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.info-detail__vp-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--chip-color, #6366f1);
+  background: transparent;
+  border: 1px solid var(--chip-color, #6366f1);
+  opacity: 0.5;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.info-detail__vp-tag-chip:active {
+  transform: scale(0.95);
+}
+
+.info-detail__vp-tag-chip.active {
+  opacity: 1;
+  background: color-mix(in srgb, var(--chip-color, #6366f1) 15%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--chip-color, #6366f1) 25%, transparent);
+}
+
+/* ── Footer ── */
 .info-detail__footer {
   padding: 12px 16px;
-  padding-bottom: calc(30px + env(safe-area-inset-bottom)); /* Changed to give more space above TabBar */
+  padding-bottom: calc(30px + env(safe-area-inset-bottom));
   background: var(--color-glass-card);
   border-top: 1px solid var(--color-border);
 }

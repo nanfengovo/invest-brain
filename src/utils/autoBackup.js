@@ -110,3 +110,30 @@ export async function restoreAutoBackup() {
     throw err;
   }
 }
+
+/**
+ * Check if a backup exists in IndexedDB
+ * @returns {Promise<{exists: boolean, timestamp: number|null}>}
+ */
+export async function hasBackup() {
+  try {
+    const idb = await openBackupDB();
+    const backupObject = await new Promise((resolve, reject) => {
+      const transaction = idb.transaction([STORE_NAME], 'readonly');
+      const store = transaction.objectStore(STORE_NAME);
+      const getRequest = store.get(BACKUP_KEY);
+
+      getRequest.onsuccess = () => resolve(getRequest.result);
+      getRequest.onerror = (e) => reject(e.target.error);
+    });
+
+    if (backupObject && backupObject.data) {
+      return { exists: true, timestamp: backupObject.timestamp || null };
+    }
+    return { exists: false, timestamp: null };
+  } catch (err) {
+    console.warn('[AutoBackup] hasBackup check failed:', err);
+    return { exists: false, timestamp: null };
+  }
+}
+

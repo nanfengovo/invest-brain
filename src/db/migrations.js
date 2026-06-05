@@ -150,6 +150,17 @@ export const MIGRATIONS = [
       `ALTER TABLE informations ADD COLUMN status TEXT DEFAULT 'UNPROCESSED'`,
       `CREATE INDEX IF NOT EXISTS idx_informations_status ON informations(status)`
     ]
+  },
+  {
+    version: 5,
+    description: 'Phase 5: Viewpoint tags, lifecycle status, and version tracking',
+    statements: [
+      `ALTER TABLE viewpoints ADD COLUMN tags TEXT`,
+      `ALTER TABLE viewpoints ADD COLUMN status TEXT DEFAULT 'ACTIVE'`,
+      `ALTER TABLE viewpoints ADD COLUMN version INTEGER DEFAULT 1`,
+      `ALTER TABLE viewpoints ADD COLUMN updated_at INTEGER`,
+      `CREATE INDEX IF NOT EXISTS idx_viewpoints_status ON viewpoints(status)`
+    ]
   }
 ];
 

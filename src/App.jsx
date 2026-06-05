@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Routes, Route } from 'react-router-dom';
+import { Modal } from 'antd-mobile';
 import { useAppStore } from './stores/useAppStore';
 import { useTradeStore } from './stores/useTradeStore';
-import { initDB } from './db/database';
+import { initDB, db } from './db/database';
+import { hasBackup, restoreAutoBackup } from './utils/autoBackup';
 import AppShell from './components/Layout/AppShell';
 import DashboardPage from './pages/DashboardPage';
 import TradesPage from './pages/TradesPage';
@@ -29,6 +31,37 @@ function App({ onReady }) {
 
         // Load settings
         await useAppStore.getState().loadGeminiApiKey();
+
+        // PWA Recovery: Check if data was lost (e.g., PWA removed from homescreen)
+        try {
+          const hasData = await db.hasAnyData();
+          if (!hasData) {
+            const backup = await hasBackup();
+            if (backup.exists) {
+              const backupTime = backup.timestamp 
+                ? new Date(backup.timestamp).toLocaleString('zh-CN') 
+                : '未知时间';
+              
+              const confirmed = await Modal.confirm({
+                title: '检测到数据可能丢失',
+                content: `数据库为空，但发现 ${backupTime} 的自动备份。是否恢复数据？`,
+                confirmText: '恢复数据',
+                cancelText: '跳过',
+              });
+
+              if (confirmed) {
+                try {
+                  const restoreResult = await restoreAutoBackup();
+                  console.log('[PWA Recovery]', restoreResult.message);
+                } catch (restoreErr) {
+                  console.error('[PWA Recovery] Restore failed:', restoreErr);
+                }
+              }
+            }
+          }
+        } catch (recoveryErr) {
+          console.warn('[PWA Recovery] Check failed (non-blocking):', recoveryErr);
+        }
 
         // Load initial data
         await refreshAll();

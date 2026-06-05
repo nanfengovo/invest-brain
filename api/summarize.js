@@ -41,6 +41,7 @@ export default async function handler(req, res) {
     const parts = [];
     let extractedContent = null;
     let extractedAuthor = null;
+    let extractedSummary = null;
 
     // 1. If URL is provided, try parsing it (with graceful fallback)
     if (url) {
@@ -107,7 +108,49 @@ export default async function handler(req, res) {
                               htmlText.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i);
             const desc = descMatch ? descMatch[1].trim() : '';
 
+            // Deep content extraction: extract article body text
+            let bodyText = '';
+            try {
+              // Remove script, style, nav, header, footer, aside, noscript tags and their content
+              let cleaned = htmlText
+                .replace(/<script[\s\S]*?<\/script>/gi, '')
+                .replace(/<style[\s\S]*?<\/style>/gi, '')
+                .replace(/<nav[\s\S]*?<\/nav>/gi, '')
+                .replace(/<header[\s\S]*?<\/header>/gi, '')
+                .replace(/<footer[\s\S]*?<\/footer>/gi, '')
+                .replace(/<aside[\s\S]*?<\/aside>/gi, '')
+                .replace(/<noscript[\s\S]*?<\/noscript>/gi, '');
+
+              // Try to find content in <article>, <main>, or fall back to <body>
+              const articleMatch = cleaned.match(/<article[^>]*>([\s\S]*?)<\/article>/i);
+              const mainMatch = cleaned.match(/<main[^>]*>([\s\S]*?)<\/main>/i);
+              const bodyMatch = cleaned.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+              const contentHtml = articleMatch?.[1] || mainMatch?.[1] || bodyMatch?.[1] || cleaned;
+
+              // Strip remaining HTML tags to get plain text
+              bodyText = contentHtml
+                .replace(/<[^>]+>/g, ' ')
+                .replace(/&nbsp;/g, ' ')
+                .replace(/&amp;/g, '&')
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>')
+                .replace(/&quot;/g, '"')
+                .replace(/&#39;/g, "'")
+                .replace(/\s+/g, ' ')
+                .trim();
+
+              // Trim to first 3000 characters
+              if (bodyText.length > 3000) {
+                bodyText = bodyText.substring(0, 3000) + '...';
+              }
+            } catch (e) {
+              console.warn('[Summarize API] Body text extraction failed:', e.message);
+            }
+
             pageDetails += `网页原始标题: ${rawTitle}\n社交网络标题(og): ${ogTitle}\n描述信息: ${desc}`;
+            if (bodyText) {
+              pageDetails += `\n正文摘要: ${bodyText}`;
+            }
           } else {
             pageDetails += `抓取网页失败（状态码 ${response.status}），请根据 URL 格式推断内容。`;
           }
@@ -125,7 +168,7 @@ export default async function handler(req, res) {
     }
 
     // 3. Build instructions
-    let instruction = '你是一个专业的投资情报阅读助手。请结合以上提供的信息（可能包含网页链接标题、描述、文章内容或图像内容），为这条情报归纳提取出一个非常精炼、易懂的中文卡片标题。\n\n规则：\n1. 标题必须非常简短，严格控制在 30 个字以内。\n2. 突出核心事件（如：公司、动作、财务数据或板块变化，例如：“特斯拉 Q1 交付量不及预期大跌” 或 “美联储降息50个基点汇率变动”）。\n3. 不要输出任何多余的废话、解释或 Markdown 格式，只输出提炼好的纯文字标题本身。';
+    let instruction = '你是一个专业的投资情报分析助手。请仔细阅读以上提供的所有信息（包括正文内容、网页标题、描述等），深入理解文章的核心观点和论据，然后提炼出一个精准的中文卡片标题。\n\n规则：\n1. 标题必须简短，严格控制在 30 个字以内。\n2. 必须基于文章的核心观点和实质内容来总结，不要只翻译或复述网页标题。\n3. 突出核心事件或观点（如：公司动态、财务数据、市场趋势、投资观点等）。\n4. 如果涉及具体数字或数据，应在标题中体现。\n5. 不要输出任何多余的废话、解释或 Markdown 格式，只输出纯文字标题。\n\n同时，请提供一个不超过100字的内容摘要（用于卡片预览），格式为：\n标题: xxx\n摘要: xxx';
     
     parts.push({ text: summaryPromptText + instruction });
 
@@ -167,7 +210,7 @@ export default async function handler(req, res) {
               contents: [{ parts }],
               generationConfig: {
                 temperature: 0.3,
-                maxOutputTokens: 200,
+                maxOutputTokens: 500,
               },
             }),
           });
@@ -184,7 +227,21 @@ export default async function handler(req, res) {
           }
 
           const data = await geminiResponse.json();
-          generatedTitle = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+          const rawResponse = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+          
+          // Parse title and summary from structured response
+          const titleLineMatch = rawResponse.match(/标题[::：]\s*(.+)/m);
+          const summaryLineMatch = rawResponse.match(/摘要[::：]\s*(.+)/m);
+          
+          if (titleLineMatch) {
+            generatedTitle = titleLineMatch[1].trim();
+            if (summaryLineMatch) {
+              extractedSummary = summaryLineMatch[1].trim().substring(0, 100);
+            }
+          } else {
+            // Fallback: treat entire response as title (no structured format)
+            generatedTitle = rawResponse;
+          }
           
           // Validate: title must be at least 4 characters, otherwise try next model
           if (generatedTitle.length < 4) {
@@ -213,10 +270,16 @@ export default async function handler(req, res) {
     }
 
     // Clean up title (remove double quotes, markdown bold, etc.)
-    const cleanTitle = generatedTitle.replace(/^["'“”«]/, '').replace(/["'“”»]$/, '').replace(/\*\*?/g, '').trim();
+    const cleanTitle = generatedTitle.replace(/^["'\u201c\u201d\u00ab]/, '').replace(/["'\u201c\u201d\u00bb]$/, '').replace(/\*\*?/g, '').trim();
+
+    // For Twitter posts, generate summary from tweet text if not already set
+    if (!extractedSummary && extractedContent) {
+      extractedSummary = extractedContent.substring(0, 100);
+    }
 
     return res.status(200).json({ 
       title: cleanTitle || '未命名情报',
+      summary: extractedSummary || null,
       content: extractedContent,
       author: extractedAuthor
     });

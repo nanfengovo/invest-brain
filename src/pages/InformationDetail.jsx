@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { NavBar, Button, Toast, Tag, TextArea, Divider, List, ActionSheet, SwipeAction, Modal } from 'antd-mobile';
-import { LinkOutline, AppstoreOutline, MoreOutline } from 'antd-mobile-icons';
+import { NavBar, Button, Toast, Tag, TextArea, Divider, List, ActionSheet, SwipeAction, Modal, Popup, Selector, Input } from 'antd-mobile';
+import { LinkOutline, AppstoreOutline, MoreOutline, EditSOutline, AddOutline } from 'antd-mobile-icons';
 import { db } from '../db/database';
 import { useTradeStore } from '../stores/useTradeStore';
 import { getFileUrlFromOPFS } from '../utils/opfsUtils';
@@ -22,12 +22,37 @@ const TYPE_COLORS = {
   BOOK: 'warning',
 };
 
+const TYPE_OPTIONS = [
+  { label: '文章', value: 'ARTICLE' },
+  { label: '视频', value: 'VIDEO' },
+  { label: '图表/图片', value: 'IMAGE' },
+  { label: '书籍/研报', value: 'BOOK' },
+];
+
+// Viewpoint tag presets
+const VP_TAG_PRESETS = [
+  { label: '看多', value: '看多', color: '#22c55e' },
+  { label: '看空', value: '看空', color: '#ef4444' },
+  { label: '短期', value: '短期', color: '#f59e0b' },
+  { label: '长期', value: '长期', color: '#3b82f6' },
+  { label: '基本面', value: '基本面', color: '#8b5cf6' },
+  { label: '技术面', value: '技术面', color: '#06b6d4' },
+  { label: '关键事件', value: '关键事件', color: '#ec4899' },
+  { label: '风险', value: '风险', color: '#f97316' },
+];
+
+const VP_STATUS_CONFIG = {
+  ACTIVE: { label: '活跃', color: '#22c55e', bg: 'rgba(34,197,94,0.12)' },
+  VALIDATED: { label: '已验证', color: '#3b82f6', bg: 'rgba(59,130,246,0.12)' },
+  INVALIDATED: { label: '已失效', color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
+  ARCHIVED: { label: '已归档', color: '#6b7280', bg: 'rgba(107,114,128,0.12)' },
+};
+
 /**
  * Convert a Unix timestamp (seconds) to locale date string.
  */
 function formatTimestamp(ts) {
   if (!ts) return '—';
-  // created_at is stored as seconds (unixepoch), JS Date needs milliseconds
   const d = new Date(ts * 1000);
   if (isNaN(d.getTime())) return '—';
   return d.toLocaleString('zh-CN');
@@ -44,10 +69,6 @@ function extractDomain(url) {
   }
 }
 
-/**
- * Try to parse a YouTube video ID from a URL.
- * Supports: youtube.com/watch?v=, youtu.be/, youtube.com/embed/
- */
 function getYouTubeId(url) {
   if (!url) return null;
   try {
@@ -62,10 +83,6 @@ function getYouTubeId(url) {
   return null;
 }
 
-/**
- * Try to parse a Bilibili BV ID from a URL.
- * Supports: bilibili.com/video/BVxxxxxx
- */
 function getBilibiliId(url) {
   if (!url) return null;
   try {
@@ -75,15 +92,33 @@ function getBilibiliId(url) {
   return null;
 }
 
-/**
- * Check if URL is from X/Twitter.
- */
 function isTwitterUrl(url) {
   if (!url) return false;
   try {
     const host = new URL(url).hostname;
     return host === 'x.com' || host === 'twitter.com' || host.endsWith('.x.com');
   } catch { return false; }
+}
+
+/**
+ * Parse tags from JSON string or return empty array
+ */
+function parseTags(tagsStr) {
+  if (!tagsStr) return [];
+  try {
+    const parsed = JSON.parse(tagsStr);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Get color for a viewpoint tag
+ */
+function getTagColor(tag) {
+  const preset = VP_TAG_PRESETS.find(p => p.value === tag);
+  return preset ? preset.color : '#6366f1';
 }
 
 export default function InformationDetail() {
@@ -93,12 +128,21 @@ export default function InformationDetail() {
   const [loading, setLoading] = useState(true);
   const [viewpoints, setViewpoints] = useState([]);
   const [fileUrl, setFileUrl] = useState(null);
-  const [contentExpanded, setContentExpanded] = useState(false);
+  const [contentCollapsed, setContentCollapsed] = useState(false);
   
   const [newViewpoint, setNewViewpoint] = useState('');
+  const [newVpTags, setNewVpTags] = useState([]);
   const [submittingVp, setSubmittingVp] = useState(false);
   
+  // Tag editing state
+  const [editTypeVisible, setEditTypeVisible] = useState(false);
+  const [editAssetVisible, setEditAssetVisible] = useState(false);
+  const [editSectorVisible, setEditSectorVisible] = useState(false);
+  const [editAssetValue, setEditAssetValue] = useState('');
+  const [editSectorValue, setEditSectorValue] = useState('');
+  
   const addViewpoint = useTradeStore(s => s.addViewpoint);
+  const updateViewpoint = useTradeStore(s => s.updateViewpoint);
 
   useEffect(() => {
     let currentUrl = null;
@@ -111,12 +155,12 @@ export default function InformationDetail() {
           return;
         }
         setInfo(infoData);
+        setEditAssetValue(infoData.asset_symbol || infoData.asset_id || '');
+        setEditSectorValue(infoData.sector || '');
         
-        // Fetch viewpoints
         const vps = await db.getViewpoints(id);
         setViewpoints(vps || []);
 
-        // Load file from OPFS if available
         if (infoData.file_path) {
           currentUrl = await getFileUrlFromOPFS(infoData.file_path);
           setFileUrl(currentUrl);
@@ -145,11 +189,12 @@ export default function InformationDetail() {
         id: crypto.randomUUID(),
         info_id: id,
         content: newViewpoint.trim(),
+        tags: newVpTags.length > 0 ? newVpTags : null,
       });
       if (res.success) {
         Toast.show({ icon: 'success', content: '添加成功' });
         setNewViewpoint('');
-        // Reload viewpoints
+        setNewVpTags([]);
         const vps = await db.getViewpoints(id);
         setViewpoints(vps || []);
       } else {
@@ -164,16 +209,72 @@ export default function InformationDetail() {
     navigate(`/decisions?info_id=${id}`);
   };
 
+  // Tag editing handlers
+  const handleEditType = async (typeArr) => {
+    if (!typeArr || typeArr.length === 0) return;
+    const newType = typeArr[0];
+    const updateInformation = useTradeStore.getState().updateInformation;
+    const res = await updateInformation({ ...info, type: newType });
+    if (res.success) {
+      setInfo(prev => ({ ...prev, type: newType }));
+      Toast.show({ icon: 'success', content: '类型已更新' });
+    }
+    setEditTypeVisible(false);
+  };
+
+  const handleEditAsset = async () => {
+    const symbol = editAssetValue.toUpperCase().trim();
+    const updateInformation = useTradeStore.getState().updateInformation;
+    
+    let assetId = null;
+    if (symbol) {
+      try {
+        await db.upsertAsset({ id: symbol, symbol, name: symbol, type: 'STOCK' });
+        assetId = symbol;
+      } catch (err) {
+        console.warn('Asset upsert failed:', err);
+      }
+    }
+    
+    const res = await updateInformation({ ...info, asset_id: assetId });
+    if (res.success) {
+      setInfo(prev => ({ ...prev, asset_id: assetId, asset_symbol: symbol || null }));
+      Toast.show({ icon: 'success', content: symbol ? '关联资产已更新' : '已取消关联' });
+    }
+    setEditAssetVisible(false);
+  };
+
+  const handleEditSector = async () => {
+    const sector = editSectorValue.trim() || null;
+    const updateInformation = useTradeStore.getState().updateInformation;
+    const res = await updateInformation({ ...info, sector });
+    if (res.success) {
+      setInfo(prev => ({ ...prev, sector }));
+      Toast.show({ icon: 'success', content: sector ? '板块已更新' : '已清除板块' });
+    }
+    setEditSectorVisible(false);
+  };
+
+  const handleViewpointStatusChange = async (vpId, newStatus) => {
+    const updateVpStatus = useTradeStore.getState().updateViewpointStatus;
+    const res = await updateVpStatus(vpId, newStatus);
+    if (res.success) {
+      const vps = await db.getViewpoints(id);
+      setViewpoints(vps || []);
+      Toast.show({ icon: 'success', content: `已标记为${VP_STATUS_CONFIG[newStatus]?.label || newStatus}` });
+    }
+  };
+
   // Determine embed type
   const youtubeId = useMemo(() => info?.url ? getYouTubeId(info.url) : null, [info?.url]);
   const bilibiliId = useMemo(() => info?.url ? getBilibiliId(info.url) : null, [info?.url]);
   const isTwitter = useMemo(() => isTwitterUrl(info?.url), [info?.url]);
 
-  // Content truncation
-  const CONTENT_LIMIT = 300;
-  const shouldTruncate = info?.content && info.content.length > CONTENT_LIMIT;
-  const displayContent = shouldTruncate && !contentExpanded
-    ? info.content.slice(0, CONTENT_LIMIT) + '...'
+  // Content: show full by default, allow collapse for very long content
+  const COLLAPSE_THRESHOLD = 800;
+  const isLongContent = info?.content && info.content.length > COLLAPSE_THRESHOLD;
+  const displayContent = isLongContent && contentCollapsed
+    ? info.content.slice(0, COLLAPSE_THRESHOLD) + '...'
     : info?.content;
 
   const [actionSheetVisible, setActionSheetVisible] = useState(false);
@@ -209,6 +310,53 @@ export default function InformationDetail() {
     { text: '删除', key: 'delete', danger: true },
   ];
 
+  // Build swipe actions for viewpoint based on its current status
+  const getVpSwipeActions = (vp) => {
+    const status = vp.status || 'ACTIVE';
+    const actions = [];
+    
+    if (status !== 'VALIDATED') {
+      actions.push({
+        key: 'validate',
+        text: '验证',
+        color: '#3b82f6',
+        onClick: () => handleViewpointStatusChange(vp.id, 'VALIDATED'),
+      });
+    }
+    if (status !== 'INVALIDATED') {
+      actions.push({
+        key: 'invalidate',
+        text: '失效',
+        color: '#f59e0b',
+        onClick: () => handleViewpointStatusChange(vp.id, 'INVALIDATED'),
+      });
+    }
+    if (status !== 'ARCHIVED') {
+      actions.push({
+        key: 'archive',
+        text: '归档',
+        color: '#6b7280',
+        onClick: () => handleViewpointStatusChange(vp.id, 'ARCHIVED'),
+      });
+    }
+    actions.push({
+      key: 'delete',
+      text: '删除',
+      color: 'danger',
+      onClick: async () => {
+        const res = await useTradeStore.getState().deleteViewpoint(vp.id);
+        if (res.success) {
+          Toast.show({ icon: 'success', content: '观点已删除' });
+          const newVps = await db.getViewpoints(id);
+          setViewpoints(newVps || []);
+        } else {
+          Toast.show({ icon: 'fail', content: '删除失败' });
+        }
+      },
+    });
+    return actions;
+  };
+
   if (loading) return <LoadingSpinner />;
   if (!info) return null;
 
@@ -232,24 +380,149 @@ export default function InformationDetail() {
       <div className="info-detail__content">
         <div className="info-detail__header">
           <h1 className="info-detail__title">{info.title}</h1>
+          
+          {/* ── Editable Tags ── */}
           <div className="info-detail__tags">
-            <Tag color={TYPE_COLORS[info.type] || 'default'} fill="outline">
+            <Tag 
+              color={TYPE_COLORS[info.type] || 'default'} 
+              fill="outline"
+              className="info-detail__tag-editable"
+              onClick={() => setEditTypeVisible(true)}
+            >
               {TYPE_LABELS[info.type] || info.type}
+              <EditSOutline className="info-detail__tag-edit-icon" />
             </Tag>
-            {info.asset_symbol && (
-              <Tag color="primary" fill="outline">
+            
+            {info.asset_symbol || info.asset_id ? (
+              <Tag 
+                color="primary" 
+                fill="outline"
+                className="info-detail__tag-editable"
+                onClick={() => {
+                  setEditAssetValue(info.asset_symbol || info.asset_id || '');
+                  setEditAssetVisible(true);
+                }}
+              >
                 <AppstoreOutline style={{ marginRight: 4 }} />
-                {info.asset_symbol}
+                {info.asset_symbol || info.asset_id}
+                <EditSOutline className="info-detail__tag-edit-icon" />
+              </Tag>
+            ) : (
+              <Tag 
+                color="default" 
+                fill="outline"
+                className="info-detail__tag-add"
+                onClick={() => {
+                  setEditAssetValue('');
+                  setEditAssetVisible(true);
+                }}
+              >
+                <AddOutline style={{ marginRight: 2 }} />
+                关联资产
               </Tag>
             )}
-            {info.sector && (
-              <Tag color="success" fill="outline">{info.sector}</Tag>
+            
+            {info.sector ? (
+              <Tag 
+                color="success" 
+                fill="outline"
+                className="info-detail__tag-editable"
+                onClick={() => {
+                  setEditSectorValue(info.sector || '');
+                  setEditSectorVisible(true);
+                }}
+              >
+                {info.sector}
+                <EditSOutline className="info-detail__tag-edit-icon" />
+              </Tag>
+            ) : (
+              <Tag 
+                color="default" 
+                fill="outline"
+                className="info-detail__tag-add"
+                onClick={() => {
+                  setEditSectorValue('');
+                  setEditSectorVisible(true);
+                }}
+              >
+                <AddOutline style={{ marginRight: 2 }} />
+                板块
+              </Tag>
+            )}
+            
+            {info.source === 'AI' && (
+              <Tag color="warning" fill="outline">AI-</Tag>
             )}
           </div>
+          
           <div className="info-detail__date">
             创建于 {formatTimestamp(info.created_at)}
           </div>
         </div>
+
+        {/* ── Type Editing Popup ── */}
+        <Popup
+          visible={editTypeVisible}
+          onMaskClick={() => setEditTypeVisible(false)}
+          position="bottom"
+          bodyClassName="info-detail__edit-popup"
+        >
+          <div className="info-detail__edit-popup-content">
+            <div className="info-detail__edit-popup-title">选择类型</div>
+            <Selector
+              options={TYPE_OPTIONS}
+              value={[info.type]}
+              onChange={handleEditType}
+              columns={2}
+            />
+          </div>
+        </Popup>
+
+        {/* ── Asset Editing Popup ── */}
+        <Popup
+          visible={editAssetVisible}
+          onMaskClick={() => setEditAssetVisible(false)}
+          position="bottom"
+          bodyClassName="info-detail__edit-popup"
+        >
+          <div className="info-detail__edit-popup-content">
+            <div className="info-detail__edit-popup-title">关联资产代码</div>
+            <Input
+              placeholder="如: AAPL, BTC, MRVL"
+              value={editAssetValue}
+              onChange={setEditAssetValue}
+              clearable
+              className="info-detail__edit-input"
+            />
+            <div className="info-detail__edit-actions">
+              <Button size="small" onClick={() => setEditAssetVisible(false)}>取消</Button>
+              <Button size="small" color="primary" onClick={handleEditAsset}>确定</Button>
+            </div>
+          </div>
+        </Popup>
+
+        {/* ── Sector Editing Popup ── */}
+        <Popup
+          visible={editSectorVisible}
+          onMaskClick={() => setEditSectorVisible(false)}
+          position="bottom"
+          bodyClassName="info-detail__edit-popup"
+        >
+          <div className="info-detail__edit-popup-content">
+            <div className="info-detail__edit-popup-title">关联板块</div>
+            <Input
+              placeholder="如: 科技, AI, 半导体"
+              value={editSectorValue}
+              onChange={setEditSectorValue}
+              clearable
+              className="info-detail__edit-input"
+            />
+            <div className="info-detail__edit-actions">
+              <Button size="small" onClick={() => setEditSectorVisible(false)}>取消</Button>
+              <Button size="small" color="primary" onClick={handleEditSector}>确定</Button>
+            </div>
+          </div>
+        </Popup>
 
         {/* ── Video Embed (YouTube / Bilibili) ── */}
         {youtubeId && (
@@ -316,19 +589,19 @@ export default function InformationDetail() {
           </div>
         )}
 
-        {/* ── Content Body ── */}
+        {/* ── Content Body — Full Display ── */}
         {info.content && (
           <div className="info-detail__body glass-card">
             <div className="info-detail__body-label">正文内容</div>
             <div className="info-detail__body-text">
               {displayContent}
             </div>
-            {shouldTruncate && (
+            {isLongContent && (
               <button
                 className="info-detail__body-toggle"
-                onClick={() => setContentExpanded(!contentExpanded)}
+                onClick={() => setContentCollapsed(!contentCollapsed)}
               >
-                {contentExpanded ? '收起 ▲' : '展开全文 ▼'}
+                {contentCollapsed ? '展开全文 ▼' : '收起 ▲'}
               </button>
             )}
           </div>
@@ -336,44 +609,69 @@ export default function InformationDetail() {
 
         <Divider>标注与观点</Divider>
 
+        {/* ── Viewpoints List ── */}
         <div className="info-detail__viewpoints">
           {viewpoints.length === 0 ? (
             <div className="info-detail__empty">暂无观点，来添加第一个观点吧</div>
           ) : (
             <List>
-              {viewpoints.map(vp => (
-                <SwipeAction
-                  key={vp.id}
-                  rightActions={[
-                    {
-                      key: 'delete',
-                      text: '删除',
-                      color: 'danger',
-                      onClick: async () => {
-                        const res = await useTradeStore.getState().deleteViewpoint(vp.id);
-                        if (res.success) {
-                          Toast.show({ icon: 'success', content: '观点已删除' });
-                          const newVps = await db.getViewpoints(id);
-                          setViewpoints(newVps || []);
-                        } else {
-                          Toast.show({ icon: 'fail', content: '删除失败' });
-                        }
-                      },
-                    },
-                  ]}
-                >
-                  <List.Item className="vp-item">
-                    <div className="vp-item__content">{vp.content}</div>
-                    <div className="vp-item__date">
-                      {formatTimestamp(vp.created_at)}
-                    </div>
-                  </List.Item>
-                </SwipeAction>
-              ))}
+              {viewpoints.map(vp => {
+                const vpTags = parseTags(vp.tags);
+                const vpStatus = vp.status || 'ACTIVE';
+                const statusConfig = VP_STATUS_CONFIG[vpStatus] || VP_STATUS_CONFIG.ACTIVE;
+                
+                return (
+                  <SwipeAction
+                    key={vp.id}
+                    rightActions={getVpSwipeActions(vp)}
+                  >
+                    <List.Item className="vp-item">
+                      <div className="vp-item__header">
+                        <div className="vp-item__status-tags">
+                          <span 
+                            className="vp-item__status-badge"
+                            style={{ 
+                              color: statusConfig.color, 
+                              background: statusConfig.bg,
+                              borderColor: statusConfig.color 
+                            }}
+                          >
+                            {statusConfig.label}
+                          </span>
+                          {vpTags.map((tag, i) => (
+                            <span 
+                              key={i} 
+                              className="vp-item__tag-pill"
+                              style={{ 
+                                color: getTagColor(tag),
+                                background: `${getTagColor(tag)}18`,
+                                borderColor: `${getTagColor(tag)}40`
+                              }}
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                        <span className="vp-item__version">
+                          v{vp.version || 1}
+                        </span>
+                      </div>
+                      <div className="vp-item__content">{vp.content}</div>
+                      <div className="vp-item__date">
+                        {formatTimestamp(vp.created_at)}
+                        {vp.updated_at && vp.updated_at !== vp.created_at && (
+                          <span className="vp-item__edited"> · 编辑于 {formatTimestamp(vp.updated_at)}</span>
+                        )}
+                      </div>
+                    </List.Item>
+                  </SwipeAction>
+                );
+              })}
             </List>
           )}
         </div>
 
+        {/* ── Add Viewpoint ── */}
         <div className="info-detail__add-vp">
           <TextArea
             placeholder="输入你的观点、分析或灵感..."
@@ -382,6 +680,31 @@ export default function InformationDetail() {
             autoSize={{ minRows: 3, maxRows: 6 }}
             className="vp-textarea"
           />
+          
+          <div className="info-detail__vp-tags-selector">
+            <div className="info-detail__vp-tags-label">标签（可选）</div>
+            <div className="info-detail__vp-tags-options">
+              {VP_TAG_PRESETS.map(preset => (
+                <span
+                  key={preset.value}
+                  className={`info-detail__vp-tag-chip ${newVpTags.includes(preset.value) ? 'active' : ''}`}
+                  style={{
+                    '--chip-color': preset.color,
+                  }}
+                  onClick={() => {
+                    setNewVpTags(prev => 
+                      prev.includes(preset.value)
+                        ? prev.filter(t => t !== preset.value)
+                        : [...prev, preset.value]
+                    );
+                  }}
+                >
+                  {preset.label}
+                </span>
+              ))}
+            </div>
+          </div>
+          
           <Button 
             color="primary" 
             size="small" 

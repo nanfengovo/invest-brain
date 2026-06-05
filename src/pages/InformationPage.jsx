@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Tabs, FloatingBubble, Popup, Card, Tag, Button } from 'antd-mobile';
+import { useState, useEffect, useMemo } from 'react';
+import { Tabs, FloatingBubble, Popup, Card, Tag } from 'antd-mobile';
 import { AddOutline, LinkOutline, PictureOutline, VideoOutline, FileOutline } from 'antd-mobile-icons';
 import { useNavigate } from 'react-router-dom';
 import { useTradeStore } from '../stores/useTradeStore';
@@ -42,6 +42,15 @@ export default function InformationPage() {
   const informations = useTradeStore((s) => s.informations);
   const refreshInformations = useTradeStore((s) => s.refreshInformations);
 
+  const stats = useMemo(() => {
+    const total = informations.length;
+    const articles = informations.filter(i => i.type === 'ARTICLE').length;
+    const videos = informations.filter(i => i.type === 'VIDEO').length;
+    const images = informations.filter(i => i.type === 'IMAGE').length;
+    const books = informations.filter(i => i.type === 'BOOK').length;
+    return { total, articles, videos, images, books };
+  }, [informations]);
+
   // Fetch data based on viewMode
   useEffect(() => {
     refreshInformations(viewMode === 'ARCHIVED' ? 'ARCHIVED' : null);
@@ -55,25 +64,19 @@ export default function InformationPage() {
     <div className="info-page">
       <div className="info-page__header">
         <h1>情报与资讯</h1>
-        <div className="info-page__view-toggle">
-          <Button 
-            size="mini" 
-            color={viewMode === 'INBOX' ? 'primary' : 'default'} 
-            fill={viewMode === 'INBOX' ? 'solid' : 'outline'}
+        <div className="info-page__capsule-toggle">
+          <div 
+            className={`info-page__capsule-option ${viewMode === 'INBOX' ? 'active' : ''}`}
             onClick={() => setViewMode('INBOX')}
-            style={{ borderRadius: '4px 0 0 4px', borderRight: 'none' }}
           >
             收件箱
-          </Button>
-          <Button 
-            size="mini" 
-            color={viewMode === 'ARCHIVED' ? 'primary' : 'default'}
-            fill={viewMode === 'ARCHIVED' ? 'solid' : 'outline'}
+          </div>
+          <div 
+            className={`info-page__capsule-option ${viewMode === 'ARCHIVED' ? 'active' : ''}`}
             onClick={() => setViewMode('ARCHIVED')}
-            style={{ borderRadius: '0 4px 4px 0' }}
           >
             已归档
-          </Button>
+          </div>
         </div>
       </div>
 
@@ -85,6 +88,10 @@ export default function InformationPage() {
           <Tabs.Tab title="图片" key="IMAGE" />
           <Tabs.Tab title="书籍" key="BOOK" />
         </Tabs>
+      </div>
+
+      <div className="info-page__stats">
+        共 <span className="info-page__stats-highlight">{stats.total}</span> 条情报 · 文章 <span className="info-page__stats-highlight">{stats.articles}</span> · 视频 <span className="info-page__stats-highlight">{stats.videos}</span>
       </div>
 
       <div className="info-page__list">
@@ -103,6 +110,11 @@ export default function InformationPage() {
                   {TYPE_LABELS[info.type] || info.type}
                 </Tag>
               </div>
+              {info.content && (
+                <div className="info-card__preview">
+                  {info.content.length > 60 ? info.content.substring(0, 60) + '…' : info.content}
+                </div>
+              )}
               <div className="info-card__footer">
                 <div className="info-card__type">
                   {TYPE_ICONS[info.type] || <LinkOutline />}

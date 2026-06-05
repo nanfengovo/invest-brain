@@ -5,7 +5,7 @@
 .decisions-page {
   padding: 16px;
   padding-top: calc(env(safe-area-inset-top, 0px) + 16px);
-  padding-bottom: calc(var(--tabbar-height) + env(safe-area-inset-bottom, 0px) + 24px);
+  padding-bottom: calc(var(--tabbar-height) + var(--safe-area-bottom) + 24px);
 }
 
 /* ── Header ── */

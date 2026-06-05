@@ -121,7 +121,7 @@ ol {
 
   /* ── Layout: Safe Areas & Component Heights ── */
   --safe-area-top: env(safe-area-inset-top);
-  --safe-area-bottom: env(safe-area-inset-bottom);
+  --safe-area-bottom: max(10px, calc(env(safe-area-inset-bottom, 0px) - 16px));
   --tabbar-height: 56px;
   --navbar-height: 48px;
   
@@ -427,7 +427,7 @@ body {
 }
 
 .page--no-tab {
-  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 24px);
+  padding-bottom: calc(var(--safe-area-bottom) + 24px);
 }
 
 /* ── Page Header ── */
@@ -516,7 +516,7 @@ body {
 .action-fab {
   position: fixed;
   right: 20px;
-  bottom: calc(var(--tabbar-height) + env(safe-area-inset-bottom, 0px) + 24px);
+  bottom: calc(var(--tabbar-height) + var(--safe-area-bottom) + 24px);
   width: 56px;
   height: 56px;
   border-radius: 50%;

@@ -334,7 +334,7 @@ function SettingsPage() {
       return;
     }
     try {
-      Toast.show({ icon: 'loading', content: '拉取云端数据...', duration: 0 });
+      Toast.show({ icon: 'loading', content: '拉取全员云端数据...', duration: 0 });
       const res = await fetch('/api/sync-download', {
         method: 'GET',
         headers: {
@@ -358,7 +358,44 @@ function SettingsPage() {
       
       await refreshAll();
       Toast.clear();
-      Toast.show({ icon: 'success', content: '数据同步合并成功' });
+      Toast.show({ icon: 'success', content: '全员数据同步合并成功' });
+    } catch (e) {
+      Toast.clear();
+      Toast.show({ icon: 'fail', content: e.message });
+    }
+  }
+
+  async function handleRestoreMyData() {
+    if (!syncUserIdInput || !syncSecretInput) {
+      Toast.show({ icon: 'fail', content: '请先填写同步凭证' });
+      return;
+    }
+    try {
+      Toast.show({ icon: 'loading', content: '拉取您的云端备份...', duration: 0 });
+      const res = await fetch(`/api/sync-download?userId=${encodeURIComponent(syncUserIdInput)}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${syncSecretInput}`
+        }
+      });
+
+      const responseData = await res.json();
+      if (!res.ok) throw new Error(responseData.error || '拉取失败');
+
+      if (!responseData.mergedData || responseData.usersFound === 0) {
+        Toast.clear();
+        Toast.show({ content: '未找到您的云端备份' });
+        return;
+      }
+
+      Toast.show({ icon: 'loading', content: '恢复并合并数据...', duration: 0 });
+      
+      const jsonString = JSON.stringify(responseData.mergedData);
+      await db.importDB(jsonString, true); // true indicates merge mode
+      
+      await refreshAll();
+      Toast.clear();
+      Toast.show({ icon: 'success', content: '您的数据已成功恢复' });
     } catch (e) {
       Toast.clear();
       Toast.show({ icon: 'fail', content: e.message });

@@ -21,6 +21,9 @@ export default async function handler(req) {
       });
     }
 
+    const url = new URL(req.url);
+    const targetUserId = url.searchParams.get('userId');
+
     // Initialize Redis
     if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
       if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
@@ -36,21 +39,28 @@ export default async function handler(req) {
 
     const redis = Redis.fromEnv();
     
-    // Find all keys matching sync_data:*
-    let cursor = 0;
-    const allKeys = [];
+    let allKeys = [];
     
-    do {
-      // redis.scan returns [cursor, [keys]]
-      const result = await redis.scan(cursor, { match: 'sync_data:*', count: 100 });
-      cursor = result[0];
-      allKeys.push(...result[1]);
-    } while (cursor !== 0 && cursor !== '0');
+    if (targetUserId) {
+      // Fetch only specific user's data
+      const keyExists = await redis.exists(`sync_data:${targetUserId}`);
+      if (keyExists) {
+        allKeys.push(`sync_data:${targetUserId}`);
+      }
+    } else {
+      // Find all keys matching sync_data:*
+      let cursor = 0;
+      do {
+        const result = await redis.scan(cursor, { match: 'sync_data:*', count: 100 });
+        cursor = result[0];
+        allKeys.push(...result[1]);
+      } while (cursor !== 0 && cursor !== '0');
+    }
 
     if (allKeys.length === 0) {
       return new Response(JSON.stringify({ 
         success: true, 
-        message: 'No data found in cloud',
+        message: targetUserId ? '未找到您的云端备份' : 'No data found in cloud',
         usersFound: 0,
         mergedData: { tables: {} }
       }), {
@@ -60,7 +70,6 @@ export default async function handler(req) {
     }
 
     // Fetch all data
-    // Upstash provides mget for multiple keys
     const rawDataList = await redis.mget(...allKeys);
     
     // Merge all tables

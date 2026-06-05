@@ -551,10 +551,20 @@ function SettingsPage() {
           </div>
 
           <div className="settings-card__divider" />
+          <div className="settings-card__row" onClick={handleRestoreMyData}>
+            <span className="settings-card__icon">🔄</span>
+            <div className="settings-card__content">
+              <div className="settings-card__label">恢复我的云端数据</div>
+              <div className="settings-card__desc">仅拉取我自己的备份并覆盖到本地</div>
+            </div>
+            <span className="settings-card__arrow">›</span>
+          </div>
+
+          <div className="settings-card__divider" />
           <div className="settings-card__row" onClick={handleSyncDownload}>
             <span className="settings-card__icon">📥</span>
             <div className="settings-card__content">
-              <div className="settings-card__label">拉取云端团队数据</div>
+              <div className="settings-card__label">拉取全员云端数据 (Admin)</div>
               <div className="settings-card__desc">拉取所有成员数据并在本地无损智能合并</div>
             </div>
             <span className="settings-card__arrow">›</span>

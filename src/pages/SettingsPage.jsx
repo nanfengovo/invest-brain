@@ -15,17 +15,27 @@ function SettingsPage() {
     setTheme, 
     setColorConvention,
     geminiApiKey,
-    saveGeminiApiKey
+    saveGeminiApiKey,
+    syncUserId,
+    syncSecret,
+    saveSyncConfig
   } = useAppStore();
 
   const { stats, refreshAll } = useTradeStore();
   const [storageInfo, setStorageInfo] = useState(null);
   const [apiKeyInput, setApiKeyInput] = useState(geminiApiKey);
+  const [syncUserIdInput, setSyncUserIdInput] = useState(syncUserId);
+  const [syncSecretInput, setSyncSecretInput] = useState(syncSecret);
   const [lastBackupTime, setLastBackupTime] = useState(localStorage.getItem('ib_last_autobackup_time'));
 
   useEffect(() => {
     setApiKeyInput(geminiApiKey);
   }, [geminiApiKey]);
+
+  useEffect(() => {
+    setSyncUserIdInput(syncUserId);
+    setSyncSecretInput(syncSecret);
+  }, [syncUserId, syncSecret]);
 
   useEffect(() => {
     // Get storage estimate
@@ -268,10 +278,90 @@ function SettingsPage() {
 
   async function handleSaveApiKey() {
     try {
-      await saveGeminiApiKey(apiKeyInput.trim());
-      Toast.show({ icon: 'success', content: 'API Key 保存成功' });
+      await saveGeminiApiKey(apiKeyInput);
+      Toast.show({ icon: 'success', content: '已保存' });
     } catch (e) {
-      Toast.show({ icon: 'fail', content: '保存失败: ' + e.message });
+      Toast.show({ icon: 'fail', content: '保存失败' });
+    }
+  }
+
+  async function handleSaveSyncConfig() {
+    try {
+      await saveSyncConfig(syncUserIdInput, syncSecretInput);
+      Toast.show({ icon: 'success', content: '云端配置已保存' });
+    } catch (e) {
+      Toast.show({ icon: 'fail', content: '保存失败' });
+    }
+  }
+
+  async function handleSyncUpload() {
+    if (!syncUserId || !syncSecret) {
+      Toast.show({ icon: 'fail', content: '请先填写并保存同步凭证' });
+      return;
+    }
+    try {
+      Toast.show({ icon: 'loading', content: '打包本地数据...', duration: 0 });
+      const result = await db.exportDB();
+      const exportData = JSON.parse(result.data);
+
+      Toast.show({ icon: 'loading', content: '上传至云端...', duration: 0 });
+      const res = await fetch('/api/sync-upload', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${syncSecret}`
+        },
+        body: JSON.stringify({
+          userId: syncUserId,
+          data: exportData
+        })
+      });
+
+      const responseData = await res.json();
+      if (!res.ok) throw new Error(responseData.error || '上传失败');
+
+      Toast.clear();
+      Toast.show({ icon: 'success', content: '已成功备份至云端' });
+    } catch (e) {
+      Toast.clear();
+      Toast.show({ icon: 'fail', content: e.message });
+    }
+  }
+
+  async function handleSyncDownload() {
+    if (!syncSecret) {
+      Toast.show({ icon: 'fail', content: '请先填写同步暗号' });
+      return;
+    }
+    try {
+      Toast.show({ icon: 'loading', content: '拉取云端数据...', duration: 0 });
+      const res = await fetch('/api/sync-download', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${syncSecret}`
+        }
+      });
+
+      const responseData = await res.json();
+      if (!res.ok) throw new Error(responseData.error || '拉取失败');
+
+      if (!responseData.mergedData || responseData.usersFound === 0) {
+        Toast.clear();
+        Toast.show({ content: '云端暂无数据' });
+        return;
+      }
+
+      Toast.show({ icon: 'loading', content: `合并 ${responseData.usersFound} 位成员的数据...`, duration: 0 });
+      
+      const jsonString = JSON.stringify(responseData.mergedData);
+      await db.importDB(jsonString, true); // true indicates merge mode
+      
+      await refreshAll();
+      Toast.clear();
+      Toast.show({ icon: 'success', content: '数据同步合并成功' });
+    } catch (e) {
+      Toast.clear();
+      Toast.show({ icon: 'fail', content: e.message });
     }
   }
 
@@ -402,6 +492,72 @@ function SettingsPage() {
             >
               保存
             </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Cloud Sync Configuration */}
+      <div className="section">
+        <div className="section__title">多用户与云端协作 (Phase 2)</div>
+        <div className="settings-card glass-card">
+          <div className="settings-card__row" style={{ cursor: 'default' }}>
+            <span className="settings-card__icon">☁️</span>
+            <div className="settings-card__content">
+              <div className="settings-card__label">团队同步凭证</div>
+              <div className="settings-card__desc">
+                输入您的花名代号以及团队的同步暗号，即可实现一键云端合并数据，永不丢失。
+              </div>
+            </div>
+          </div>
+          <div className="settings-card__input-row" style={{ borderBottom: '1px solid var(--color-border)', paddingBottom: '12px' }}>
+            <div className="settings-card__input-wrapper">
+              <Input
+                placeholder="您的代号 (如: Feng)"
+                value={syncUserIdInput}
+                onChange={setSyncUserIdInput}
+                clearable
+              />
+            </div>
+          </div>
+          <div className="settings-card__input-row">
+            <div className="settings-card__input-wrapper">
+              <Input
+                placeholder="同步暗号 (Secret)"
+                value={syncSecretInput}
+                onChange={setSyncSecretInput}
+                type="password"
+                clearable
+              />
+            </div>
+            <Button
+              color="primary"
+              size="small"
+              fill="solid"
+              onClick={handleSaveSyncConfig}
+              style={{ borderRadius: '6px' }}
+            >
+              保存
+            </Button>
+          </div>
+
+          <div className="settings-card__divider" />
+          <div className="settings-card__row" onClick={handleSyncUpload}>
+            <span className="settings-card__icon">🚀</span>
+            <div className="settings-card__content">
+              <div className="settings-card__label">备份至云端</div>
+              <div className="settings-card__desc">将本地数据一键推送到团队云端空间</div>
+            </div>
+            <span className="settings-card__arrow">›</span>
+          </div>
+
+          <div className="settings-card__divider" />
+          <div className="settings-card__row" onClick={handleSyncDownload}>
+            <span className="settings-card__icon">📥</span>
+            <div className="settings-card__content">
+              <div className="settings-card__label">拉取云端团队数据</div>
+              <div className="settings-card__desc">拉取所有成员数据并在本地无损智能合并</div>
+            </div>
+            <span className="settings-card__arrow">›</span>
           </div>
         </div>
       </div>

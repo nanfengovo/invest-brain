@@ -32,6 +32,31 @@ export const useAppStore = create((set) => ({
     }
   },
 
+  // Cloud Sync state
+  syncUserId: '',
+  syncSecret: '',
+  setSyncUserId: (id) => set({ syncUserId: id }),
+  setSyncSecret: (secret) => set({ syncSecret: secret }),
+  loadSyncConfig: async () => {
+    try {
+      const userId = await db.getSetting('sync_user_id');
+      const secret = await db.getSetting('sync_secret');
+      set({ syncUserId: userId || '', syncSecret: secret || '' });
+    } catch (e) {
+      console.error('Failed to load sync config from DB', e);
+    }
+  },
+  saveSyncConfig: async (userId, secret) => {
+    try {
+      await db.setSetting('sync_user_id', userId);
+      await db.setSetting('sync_secret', secret);
+      set({ syncUserId: userId, syncSecret: secret });
+    } catch (e) {
+      console.error('Failed to save sync config to DB', e);
+      throw e;
+    }
+  },
+
   // Active tab
   activeTab: '/',
 

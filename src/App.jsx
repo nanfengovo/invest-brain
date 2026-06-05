@@ -32,6 +32,7 @@ function App({ onReady }) {
 
         // Load settings
         await useAppStore.getState().loadGeminiApiKey();
+        await useAppStore.getState().loadSyncConfig();
 
         // PWA Recovery: Check if data was lost (e.g., PWA removed from homescreen)
         try {

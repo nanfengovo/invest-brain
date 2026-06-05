@@ -55,6 +55,7 @@ export default function TabBar() {
       <AdmTabBar
         activeKey={activeKey}
         onChange={(key) => navigate(key)}
+        safeArea={false}
       >
         {tabs.map((tab) => (
           <AdmTabBar.Item

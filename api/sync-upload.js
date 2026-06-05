@@ -11,12 +11,12 @@ export default async function handler(req) {
 
   try {
     const authHeader = req.headers.get('authorization') || '';
-    const expectedSecret = process.env.SYNC_SECRET?.trim();
-    const providedSecret = authHeader.replace(/^Bearer\s+/i, '').trim();
+    const expectedSecret = process.env.SYNC_SECRET?.replace(/^["']|["']$/g, '').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+    const providedSecret = authHeader.replace(/^Bearer\s+/i, '').replace(/^["']|["']$/g, '').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
     
     // Only enforce secret if it is configured on the server
     if (expectedSecret && providedSecret !== expectedSecret) {
-      return new Response(JSON.stringify({ error: 'Unauthorized: Invalid Sync Secret' }), {
+      return new Response(JSON.stringify({ error: `Unauthorized: Invalid Sync Secret (Length: ${providedSecret.length}, Expected: ${expectedSecret.length})` }), {
         status: 401,
         headers: { 'Content-Type': 'application/json' },
       });

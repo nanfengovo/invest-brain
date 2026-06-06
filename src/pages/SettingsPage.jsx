@@ -310,7 +310,7 @@ function SettingsPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${syncSecret}`
+          'Authorization': `Bearer ${encodeURIComponent(syncSecret)}`
         },
         body: JSON.stringify({
           userId: syncUserId,
@@ -339,7 +339,7 @@ function SettingsPage() {
       const res = await fetch('/api/sync-download', {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${syncSecret}`
+          'Authorization': `Bearer ${encodeURIComponent(syncSecret)}`
         }
       });
 
@@ -376,7 +376,7 @@ function SettingsPage() {
       const res = await fetch(`/api/sync-download?userId=${encodeURIComponent(syncUserIdInput)}`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${syncSecretInput}`
+          'Authorization': `Bearer ${encodeURIComponent(syncSecretInput)}`
         }
       });
 

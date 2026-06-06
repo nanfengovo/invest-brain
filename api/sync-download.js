@@ -12,7 +12,9 @@ export default async function handler(req) {
   try {
     const authHeader = req.headers.get('authorization') || '';
     const expectedSecret = process.env.SYNC_SECRET?.replace(/^["']|["']$/g, '').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
-    const providedSecret = authHeader.replace(/^Bearer\s+/i, '').replace(/^["']|["']$/g, '').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+    
+    let providedSecret = authHeader.replace(/^Bearer\s+/i, '').replace(/^["']|["']$/g, '').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+    try { providedSecret = decodeURIComponent(providedSecret); } catch(e) {}
     
     // Only enforce secret if it is configured on the server
     if (expectedSecret && providedSecret !== expectedSecret) {

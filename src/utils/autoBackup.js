@@ -73,7 +73,7 @@ export async function triggerAutoBackup() {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${syncSecret}`
+                'Authorization': `Bearer ${encodeURIComponent(syncSecret)}`
               },
               body: JSON.stringify({
                 userId: syncUserId,

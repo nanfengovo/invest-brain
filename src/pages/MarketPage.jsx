@@ -3,7 +3,6 @@ import { useAppStore } from '../stores/useAppStore';
 import MarketHeader from '../components/Market/MarketHeader';
 import IndexCardScroller from '../components/Market/IndexCardScroller';
 import SectorGrid from '../components/Market/SectorGrid';
-import './MarketPage.css';
 
 const INDICES = [
   { symbol: 'gb_ixic', name: '纳斯达克' },

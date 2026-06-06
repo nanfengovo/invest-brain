@@ -1,0 +1,120 @@
+.market-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 16px;
+  background: var(--bg-card);
+  border-radius: 16px;
+  margin-bottom: 16px;
+}
+
+.market-header__left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.market-header__title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.market-header__icon {
+  width: 32px;
+  height: 32px;
+  background: rgba(88, 101, 242, 0.15);
+  color: #5865F2;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.market-header__icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.market-header__title-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.market-header__title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.market-header__status {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  background: rgba(0, 184, 148, 0.15);
+  color: #00b894;
+  padding: 2px 6px;
+  border-radius: 12px;
+  font-weight: 500;
+}
+
+.market-header__status-dot {
+  width: 6px;
+  height: 6px;
+  background-color: #00b894;
+  border-radius: 50%;
+  animation: pulse-green 2s infinite;
+}
+
+@keyframes pulse-green {
+  0% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.8); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.market-header__subtitle {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  margin-top: 2px;
+}
+
+.market-header__right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.market-header__flags {
+  display: flex;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 4px 6px;
+  border-radius: 12px;
+}
+
+.market-header__flags .flag {
+  font-size: 14px;
+  opacity: 0.4;
+  transition: all 0.3s ease;
+  filter: grayscale(1);
+}
+
+.market-header__flags .flag.active {
+  opacity: 1;
+  filter: grayscale(0);
+}
+
+.market-header__search {
+  width: 32px;
+  height: 32px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-secondary);
+  font-size: 16px;
+}

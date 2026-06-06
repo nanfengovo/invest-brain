@@ -1,0 +1,84 @@
+.index-card-scroller {
+  display: flex;
+  overflow-x: auto;
+  gap: 12px;
+  padding-bottom: 8px; /* For scrollbar */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+  scroll-snap-type: x mandatory;
+}
+
+.index-card-scroller::-webkit-scrollbar {
+  display: none; /* Chrome, Safari and Opera */
+}
+
+.index-card {
+  min-width: 140px;
+  background: var(--bg-card);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  scroll-snap-align: start;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.index-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.index-card__name {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 80px;
+}
+
+.sparkline {
+  opacity: 0.8;
+}
+
+.index-card__price {
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.index-card__changes {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.index-card__abs {
+  opacity: 0.6;
+  font-weight: 500;
+}
+
+/* Colors based on user settings */
+.profit-green {
+  color: #00b894;
+}
+.loss-green {
+  color: #00b894;
+}
+.profit-red {
+  color: #ff7675;
+}
+.loss-red {
+  color: #ff7675;
+}
+.neutral {
+  color: var(--color-text-secondary);
+}

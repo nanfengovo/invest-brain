@@ -36,9 +36,29 @@ if not target_symbol:
 
 st.subheader(f"正在深度解析: {target_symbol.upper()}")
 
+def build_last30days_command(query):
+    npx_path = shutil.which("npx")
+    if npx_path:
+        return [
+            npx_path, "-y", "skills", "run", "mvanhorn/last30days-skill",
+            "--query", query,
+            "--format", "markdown"
+        ]
+
+    npm_path = shutil.which("npm")
+    if npm_path:
+        return [
+            npm_path, "exec", "--yes", "--package=skills", "--",
+            "skills", "run", "mvanhorn/last30days-skill",
+            "--query", query,
+            "--format", "markdown"
+        ]
+
+    return None
+
 # 检查依赖环境
-if not shutil.which("npx"):
-    st.error("❌ 严重错误: 环境中未找到 Node.js (npx)。请确保您的 Streamlit Cloud 部署环境配置了 `packages.txt` 并包含 `nodejs` 和 `npm`。")
+if not build_last30days_command(target_symbol):
+    st.error("❌ 严重错误: 环境中未找到 Node.js/npm。请将 `packages.txt` 放在 Streamlit Cloud 绑定仓库的根目录，并确保内容包含 `nodejs` 和 `npm`。")
     st.stop()
 
 # 检查 API Key 是否存在 (可以在 Streamlit Cloud 的 Secrets 中配置)
@@ -47,12 +67,9 @@ if not shutil.which("npx"):
 
 @st.cache_data(ttl=3600)  # 缓存 1 小时，避免重复消耗 Token
 def run_last30days(query):
-    # 构建执行命令
-    command = [
-        "npx", "-y", "skills", "run", "mvanhorn/last30days-skill",
-        "--query", query,
-        "--format", "markdown"
-    ]
+    command = build_last30days_command(query)
+    if not command:
+        return "### ❌ 环境错误\n\n未找到 Node.js/npm，无法运行 last30days-skill。"
     
     # 注入 Secrets 到环境变量中 (如果使用了 Streamlit Secrets)
     env = os.environ.copy()

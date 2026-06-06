@@ -5,8 +5,10 @@
 .tabbar {
   position: fixed;
   bottom: 0;
-  left: 0;
+  left: 50%;
   width: 100%;
+  max-width: var(--app-shell-max-width);
+  transform: translateX(-50%);
   z-index: 100;
   background: var(--color-glass-nav);
   backdrop-filter: blur(24px);

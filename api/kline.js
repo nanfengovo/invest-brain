@@ -1,3 +1,27 @@
+const KLINE_TIMEOUT_MS = 4_500;
+const klineCache = globalThis.__INVEST_BRAIN_KLINE_CACHE__ || new Map();
+globalThis.__INVEST_BRAIN_KLINE_CACHE__ = klineCache;
+
+const getCacheTtl = (interval) => {
+  if (interval.includes('m')) return 10_000;
+  if (interval.includes('h')) return 60_000;
+  return 180_000;
+};
+
+const fetchWithTimeout = async (url, options = {}, timeoutMs = KLINE_TIMEOUT_MS) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method Not Allowed' });
@@ -15,6 +39,15 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Missing symbol parameter' });
     }
 
+    const cacheKey = `${symbol.toUpperCase()}|${interval}|${range}`;
+    const cached = klineCache.get(cacheKey);
+    if (cached && Date.now() - cached.fetchedAt <= getCacheTtl(interval)) {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cache-Control', 's-maxage=30, stale-while-revalidate=60');
+      res.setHeader('X-IB-Kline-Cache', 'hit');
+      return res.status(200).json(cached.payload);
+    }
+
     // Clean symbol (Sina prefix removal if present)
     let cleanSymbol = symbol.replace(/^(gb_|hf_|us|hk|sh|sz)/i, '').toUpperCase();
     
@@ -29,7 +62,12 @@ export default async function handler(req, res) {
 
     const apiUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${cleanSymbol}?interval=${interval}&range=${range}`;
     
-    const response = await fetch(apiUrl);
+    const response = await fetchWithTimeout(apiUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        Accept: 'application/json,text/plain,*/*',
+      },
+    });
     if (!response.ok) {
       throw new Error(`Yahoo API responded with status: ${response.status}`);
     }
@@ -65,13 +103,21 @@ export default async function handler(req, res) {
 
     // Add CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate');
+    res.setHeader('Cache-Control', 's-maxage=30, stale-while-revalidate=60');
+    res.setHeader('X-IB-Kline-Cache', 'miss');
 
-    return res.status(200).json({ 
+    const payload = {
       success: true, 
       meta: result.meta,
       data: klineData
+    };
+
+    klineCache.set(cacheKey, {
+      fetchedAt: Date.now(),
+      payload,
     });
+
+    return res.status(200).json(payload);
 
   } catch (error) {
     console.error('Kline Proxy Error:', error);

@@ -8,6 +8,9 @@ import WatchlistBoard from '../components/Market/WatchlistBoard';
 import './MarketPage.css';
 
 const SHARE_BASE_URL = 'https://invest-brain.vercel.app';
+const MARKET_DATA_CACHE_KEY = 'ib_market_page_cache';
+const MARKET_CLIENT_CACHE_TTL_MS = 30_000;
+const MARKET_POLL_INTERVAL_MS = 8_000;
 
 const INDICES = [
   { symbol: 'gb_ixic', name: '纳斯达克' },
@@ -67,6 +70,37 @@ const copyText = async (text) => {
   document.body.removeChild(textArea);
 };
 
+const getUniqueSymbols = (symbols) => Array.from(new Set(symbols.filter(Boolean)));
+
+const readCachedMarketData = () => {
+  if (typeof window === 'undefined') return {};
+
+  try {
+    const raw = window.sessionStorage.getItem(MARKET_DATA_CACHE_KEY);
+    if (!raw) return {};
+
+    const parsed = JSON.parse(raw);
+    if (!parsed?.data || Date.now() - parsed.fetchedAt > MARKET_CLIENT_CACHE_TTL_MS) {
+      return {};
+    }
+
+    return parsed.data;
+  } catch {
+    return {};
+  }
+};
+
+const writeCachedMarketData = (data) => {
+  try {
+    window.sessionStorage.setItem(MARKET_DATA_CACHE_KEY, JSON.stringify({
+      fetchedAt: Date.now(),
+      data,
+    }));
+  } catch {
+    // Session cache is only a perceived-speed optimization.
+  }
+};
+
 export default function MarketPage() {
   const {
     colorConvention,
@@ -74,44 +108,84 @@ export default function MarketPage() {
     addMarketWatchItem,
     removeMarketWatchItem,
   } = useAppStore();
-  const [marketData, setMarketData] = useState({});
-  const [loading, setLoading] = useState(true);
+  const [marketData, setMarketData] = useState(() => readCachedMarketData());
+  const [loading, setLoading] = useState(() => Object.keys(readCachedMarketData()).length === 0);
 
   useEffect(() => {
     let mounted = true;
-    
-    const fetchMarketData = async () => {
+    let activeController = null;
+
+    const criticalSymbols = getUniqueSymbols([
+      ...INDICES.map(i => i.symbol),
+      ...FUTURES.map(f => f.symbol),
+    ]);
+    const secondarySymbols = getUniqueSymbols([
+      ...SECTORS.map(s => s.symbol),
+      ...marketWatchlist.map(item => item.symbol),
+    ]).filter((symbol) => !criticalSymbols.includes(symbol));
+
+    const mergeMarketData = (nextData) => {
+      if (!mounted || !nextData || Object.keys(nextData).length === 0) return;
+
+      setMarketData((prevData) => {
+        const merged = {
+          ...prevData,
+          ...nextData,
+        };
+        writeCachedMarketData(merged);
+        return merged;
+      });
+    };
+
+    const fetchSymbolGroup = async (symbols, signal) => {
+      if (!symbols.length) return {};
+
+      const symbolParam = symbols.join(',');
+      const res = await fetch(`/api/market?symbols=${encodeURIComponent(symbolParam)}`, { signal });
+      if (!res.ok) throw new Error('Network response was not ok');
+
+      const json = await res.json();
+      if (!json.success) return {};
+
+      return json.data || {};
+    };
+
+    const fetchMarketData = async (isInitial = false) => {
+      activeController?.abort();
+      activeController = new AbortController();
+      const { signal } = activeController;
+
+      const criticalRequest = fetchSymbolGroup(criticalSymbols, signal);
+      const secondaryRequest = fetchSymbolGroup(secondarySymbols, signal);
+
       try {
-        const allSymbols = [
-          ...INDICES.map(i => i.symbol),
-          ...FUTURES.map(f => f.symbol),
-          ...SECTORS.map(s => s.symbol),
-          ...marketWatchlist.map(item => item.symbol)
-        ];
-
-        const symbolParam = Array.from(new Set(allSymbols.filter(Boolean))).join(',');
-
-        const res = await fetch(`/api/market?symbols=${encodeURIComponent(symbolParam)}`);
-        if (!res.ok) throw new Error('Network response was not ok');
-        
-        const json = await res.json();
-        if (json.success && mounted) {
-          setMarketData(json.data || {});
-        }
+        mergeMarketData(await criticalRequest);
       } catch (err) {
-        console.error('Failed to fetch market data:', err);
+        if (err.name !== 'AbortError') {
+          console.error('Failed to fetch critical market data:', err);
+        }
+      } finally {
+        if (mounted && isInitial) setLoading(false);
+      }
+
+      try {
+        mergeMarketData(await secondaryRequest);
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          console.error('Failed to fetch secondary market data:', err);
+        }
       } finally {
         if (mounted) setLoading(false);
       }
     };
 
-    fetchMarketData();
+    fetchMarketData(true);
     
-    // Poll every 5 seconds for real-time updates
-    const intervalId = setInterval(fetchMarketData, 5000);
+    const intervalId = setInterval(() => fetchMarketData(false), MARKET_POLL_INTERVAL_MS);
 
     return () => {
       mounted = false;
+      activeController?.abort();
       clearInterval(intervalId);
     };
   }, [marketWatchlist]);

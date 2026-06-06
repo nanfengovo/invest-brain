@@ -122,7 +122,8 @@ ol {
   --transition-slow: 400ms ease;
 
   /* ── Layout: Safe Areas & Component Heights ── */
-  --safe-area-top: env(safe-area-inset-top);
+  --app-shell-max-width: 480px;
+  --safe-area-top: env(safe-area-inset-top, 0px);
   --safe-area-bottom: max(10px, calc(env(safe-area-inset-bottom, 0px) - 16px));
   --tabbar-height: 56px;
   --navbar-height: 48px;
@@ -238,6 +239,15 @@ body {
   flex-direction: column;
   isolation: isolate;
   overflow: hidden;
+}
+
+@media (min-width: 720px) {
+  :root,
+  [data-theme='dark'],
+  [data-theme='light'] {
+    --safe-area-top: 0px;
+    --safe-area-bottom: 10px;
+  }
 }
 
 /* ── Custom Scrollbar (Webkit) ── */
@@ -420,12 +430,12 @@ body {
 /* ── Page Layout ── */
 .page {
   padding: 16px;
-  padding-top: calc(var(--navbar-height) + env(safe-area-inset-top, 0px) + 12px);
+  padding-top: calc(var(--safe-area-top) + 18px);
   padding-bottom: calc(var(--tabbar-height) + 16px);
 }
 
 .page--no-nav {
-  padding-top: calc(env(safe-area-inset-top, 0px) + 16px);
+  padding-top: calc(var(--safe-area-top) + 16px);
 }
 
 .page--no-tab {

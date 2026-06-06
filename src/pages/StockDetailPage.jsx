@@ -362,7 +362,7 @@ export default function StockDetailPage() {
               if (streamlitUrl) {
                 let url = streamlitUrl;
                 if (!url.endsWith('/')) url += '/';
-                window.open(`${url}?q=${symbol}`, '_blank');
+                window.open(`${url}?q=${encodeURIComponent(symbol)}`, '_blank');
               } else {
                 Toast.show({ content: '请先在设置页配置 AI 引擎地址' });
               }

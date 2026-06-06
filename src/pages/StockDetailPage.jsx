@@ -4,6 +4,8 @@ import { Toast } from 'antd-mobile';
 import { LeftOutline, SearchOutline, CloseOutline, SendOutline } from 'antd-mobile-icons';
 import KlineChart from '../components/Market/KlineChart';
 import { useAppStore } from '../stores/useAppStore';
+import { db } from '../db/database';
+import { checkPriceAlerts } from '../utils/priceAlertRunner';
 import './StockDetailPage.css';
 
 const SHARE_BASE_URL = 'https://invest-brain.vercel.app';
@@ -87,7 +89,7 @@ const copyText = async (text) => {
 export default function StockDetailPage() {
   const { symbol } = useParams();
   const navigate = useNavigate();
-  const { colorConvention, streamlitUrl } = useAppStore();
+  const { colorConvention, streamlitUrl, notificationConfig, marketDataConfig } = useAppStore();
   
   const [activeTab, setActiveTab] = useState('1d');
   const [chartData, setChartData] = useState([]);
@@ -95,6 +97,13 @@ export default function StockDetailPage() {
   const [snapshot, setSnapshot] = useState(null);
   const [snapshotLoading, setSnapshotLoading] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [priceAlerts, setPriceAlerts] = useState([]);
+  const [alertCondition, setAlertCondition] = useState('ABOVE');
+  const [alertTarget, setAlertTarget] = useState('');
+  const [optionChain, setOptionChain] = useState(null);
+  const [optionLoading, setOptionLoading] = useState(false);
+  const [optionExpiration, setOptionExpiration] = useState('');
+  const [optionTypeFilter, setOptionTypeFilter] = useState('ALL');
   
   // Inline search states
   const [isSearching, setIsSearching] = useState(false);
@@ -168,6 +177,52 @@ export default function StockDetailPage() {
 
     return () => { mounted = false; };
   }, [symbol]);
+
+  useEffect(() => {
+    let mounted = true;
+    async function loadAlerts() {
+      try {
+        const rows = await db.getPriceAlertsBySymbol(String(symbol || '').toUpperCase());
+        if (mounted) setPriceAlerts(rows || []);
+      } catch (error) {
+        console.warn('Failed to load price alerts:', error);
+      }
+    }
+    loadAlerts();
+    return () => { mounted = false; };
+  }, [symbol]);
+
+  useEffect(() => {
+    let mounted = true;
+    async function loadOptionChain() {
+      setOptionLoading(true);
+      try {
+        const params = new URLSearchParams({
+          symbol: String(symbol || '').toUpperCase(),
+          provider: marketDataConfig.optionProvider || 'auto',
+        });
+        if (optionExpiration) params.set('expiration', optionExpiration);
+        const res = await fetch(`/api/options-chain?${params.toString()}`, {
+          headers: {
+            ...(marketDataConfig.tradierToken ? { 'X-Tradier-Token': marketDataConfig.tradierToken } : {}),
+            ...(marketDataConfig.polygonToken ? { 'X-Polygon-Token': marketDataConfig.polygonToken } : {}),
+          },
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || '期权链加载失败');
+        if (!mounted) return;
+        setOptionChain(json);
+        setOptionExpiration(json.selectedExpiration || '');
+      } catch (error) {
+        console.warn('Failed to fetch option chain:', error);
+        if (mounted) setOptionChain(null);
+      } finally {
+        if (mounted) setOptionLoading(false);
+      }
+    }
+    loadOptionChain();
+    return () => { mounted = false; };
+  }, [symbol, optionExpiration, marketDataConfig]);
 
   useEffect(() => {
     let mounted = true;
@@ -285,6 +340,77 @@ export default function StockDetailPage() {
   const changeValue = hasDailyChange ? (currentPrice - previousClose).toFixed(2) : '0.00';
   const changePct = hasDailyChange ? ((currentPrice - previousClose) / previousClose * 100).toFixed(2) : '0.00';
   const sign = isUp ? '+' : '';
+  const normalizedSymbol = String(symbol || '').toUpperCase();
+  const activeAlerts = priceAlerts.filter((alert) => alert.status === 'ACTIVE');
+  const optionRows = (optionChain?.options || [])
+    .filter((item) => optionTypeFilter === 'ALL' || item.type === optionTypeFilter)
+    .sort((a, b) => (a.strike || 0) - (b.strike || 0))
+    .slice(0, 40);
+
+  const reloadAlerts = async () => {
+    const rows = await db.getPriceAlertsBySymbol(normalizedSymbol);
+    setPriceAlerts(rows || []);
+  };
+
+  const handleAddStockAlert = async () => {
+    const target = Number(alertTarget);
+    if (!Number.isFinite(target) || target <= 0) {
+      Toast.show({ content: '请输入有效价格' });
+      return;
+    }
+    await db.addPriceAlert({
+      id: crypto.randomUUID(),
+      symbol: normalizedSymbol,
+      asset_id: normalizedSymbol,
+      asset_type: 'STOCK',
+      condition: alertCondition,
+      target_price: target,
+      last_price: currentPrice || null,
+      channels: null,
+      note: `${normalizedSymbol} 股票提醒`,
+    });
+    setAlertTarget('');
+    await reloadAlerts();
+    Toast.show({ icon: 'success', content: '提醒已添加' });
+  };
+
+  const handleAddOptionAlert = async (option) => {
+    const defaultTarget = option.mark || option.last || option.bid || '';
+    const input = window.prompt(`设置 ${option.contractSymbol} 目标价格`, defaultTarget);
+    if (!input) return;
+    const target = Number(input);
+    if (!Number.isFinite(target) || target <= 0) {
+      Toast.show({ content: '目标价格无效' });
+      return;
+    }
+    await db.addPriceAlert({
+      id: crypto.randomUUID(),
+      symbol: normalizedSymbol,
+      asset_id: option.contractSymbol,
+      asset_type: 'OPTION',
+      condition: 'ABOVE',
+      target_price: target,
+      last_price: option.mark || option.last || null,
+      channels: null,
+      note: `${option.expiration} ${option.type} ${option.strike}`,
+    });
+    await reloadAlerts();
+    Toast.show({ icon: 'success', content: '期权提醒已添加' });
+  };
+
+  const handleCheckAlertsNow = async () => {
+    try {
+      Toast.show({ icon: 'loading', content: '正在检查提醒...' });
+      const triggered = await checkPriceAlerts(notificationConfig, marketDataConfig, normalizedSymbol);
+      await reloadAlerts();
+      Toast.show({
+        icon: triggered.length ? 'success' : undefined,
+        content: triggered.length ? `触发 ${triggered.length} 条提醒` : '暂无触发',
+      });
+    } catch (error) {
+      Toast.show({ icon: 'fail', content: error.message || '检查失败' });
+    }
+  };
 
   return (
     <div className="stock-detail-page">
@@ -517,6 +643,102 @@ export default function StockDetailPage() {
           </>
         ) : (
           <div className="stock-detail__snapshot-loading">暂时无法生成数据证据</div>
+        )}
+      </div>
+
+      <div className="stock-detail__alerts">
+        <div className="stock-detail__module-header">
+          <div>
+            <h3>价格提醒</h3>
+            <p>App 打开时自动检查，也可以手动触发检查</p>
+          </div>
+          <button type="button" onClick={handleCheckAlertsNow}>检查</button>
+        </div>
+        <div className="stock-detail__alert-form">
+          <select value={alertCondition} onChange={(e) => setAlertCondition(e.target.value)}>
+            <option value="ABOVE">高于等于</option>
+            <option value="BELOW">低于等于</option>
+          </select>
+          <input
+            type="number"
+            inputMode="decimal"
+            placeholder="目标价格"
+            value={alertTarget}
+            onChange={(e) => setAlertTarget(e.target.value)}
+          />
+          <button type="button" onClick={handleAddStockAlert}>添加</button>
+        </div>
+        {activeAlerts.length > 0 ? (
+          <div className="stock-detail__alert-list">
+            {activeAlerts.slice(0, 4).map((alert) => (
+              <div key={alert.id} className="stock-detail__alert-item">
+                <span>{alert.asset_id || alert.symbol}</span>
+                <strong>{alert.condition === 'ABOVE' ? '≥' : '≤'} {Number(alert.target_price).toFixed(2)}</strong>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="stock-detail__alert-empty">暂无活动提醒</div>
+        )}
+      </div>
+
+      <div className="stock-detail__options">
+        <div className="stock-detail__module-header">
+          <div>
+            <h3>期权链</h3>
+            <p>{optionChain?.provider || 'Auto'} · Bid / Ask / Mid / IV / Greeks</p>
+          </div>
+          {optionLoading && <span className="stock-detail__module-loading">加载中</span>}
+        </div>
+        <div className="stock-detail__options-controls">
+          <select
+            value={optionExpiration}
+            onChange={(e) => setOptionExpiration(e.target.value)}
+          >
+            {(optionChain?.expirations || []).map((expiration) => (
+              <option key={expiration} value={expiration}>{expiration}</option>
+            ))}
+          </select>
+          <select
+            value={optionTypeFilter}
+            onChange={(e) => setOptionTypeFilter(e.target.value)}
+          >
+            <option value="ALL">全部</option>
+            <option value="CALL">Call</option>
+            <option value="PUT">Put</option>
+          </select>
+        </div>
+        {optionRows.length > 0 ? (
+          <div className="stock-detail__options-table">
+            <div className="stock-detail__options-head">
+              <span>合约</span>
+              <span>Bid/Ask</span>
+              <span>Mid</span>
+              <span>IV/Delta</span>
+              <span>量/OI</span>
+            </div>
+            {optionRows.map((option) => (
+              <button
+                type="button"
+                key={option.contractSymbol}
+                className="stock-detail__option-row"
+                onClick={() => handleAddOptionAlert(option)}
+              >
+                <span>
+                  <strong>{option.type}</strong>
+                  <em>{option.strike}</em>
+                </span>
+                <span>{formatMetric(option.bid)} / {formatMetric(option.ask)}</span>
+                <span>{formatMetric(option.mark)}</span>
+                <span>{formatMetric(option.impliedVolatility ? option.impliedVolatility * 100 : null, '%')} / {formatMetric(option.delta)}</span>
+                <span>{formatCompact(option.volume)} / {formatCompact(option.openInterest)}</span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="stock-detail__alert-empty">
+            {optionLoading ? '正在加载期权链...' : (optionChain?.message || '暂无可用期权链数据')}
+          </div>
         )}
       </div>
 

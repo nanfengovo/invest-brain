@@ -40,10 +40,12 @@ test('closed-loop schema keeps the forward funnel tables', () => {
   assertTableHasColumns('informations', ['id', 'title', 'type', 'url', 'content', 'asset_id', 'status']);
   assertTableHasColumns('viewpoints', ['id', 'info_id', 'content', 'status', 'version', 'author', 'quote', 'target_type']);
   assertTableHasColumns('decisions', ['id', 'title', 'content', 'confidence', 'sentiment', 'status', 'asset_id', 'priority']);
-  assertTableHasColumns('trades', ['id', 'asset_id', 'decision_id', 'info_id', 'direction', 'quantity', 'price']);
+  assertTableHasColumns('trades', ['id', 'asset_id', 'decision_id', 'info_id', 'direction', 'quantity', 'price', 'underlying_symbol', 'strike_price', 'expiry_date', 'option_type', 'contract_symbol']);
   assertTableHasColumns('reviews', ['id', 'decision_id', 'review_content', 'is_successful', 'lessons', 'result_pnl']);
   assertTableHasColumns('information_asset_links', ['info_id', 'asset_id', 'position', 'created_at']);
   assertTableHasColumns('information_sector_links', ['info_id', 'sector', 'position', 'created_at']);
+  assertTableHasColumns('price_alerts', ['id', 'symbol', 'asset_id', 'asset_type', 'condition', 'target_price', 'status', 'channels', 'triggered_at']);
+  assertTableHasColumns('assets', ['underlying_symbol', 'option_type']);
 });
 
 test('trades and reviews remain traceable back to decisions and information', () => {
@@ -67,6 +69,9 @@ test('discipline and lifecycle checks have indexed status fields', () => {
   assert.match(allSql, /CREATE INDEX IF NOT EXISTS idx_info_sector_links_sector ON information_sector_links\(sector\)/i);
   assert.match(allSql, /CREATE INDEX IF NOT EXISTS idx_decision_info_links_info ON decision_info_links\(info_id\)/i);
   assert.match(allSql, /CREATE INDEX IF NOT EXISTS idx_decisions_priority ON decisions\(priority\)/i);
+  assert.match(allSql, /CREATE INDEX IF NOT EXISTS idx_price_alerts_symbol ON price_alerts\(symbol\)/i);
+  assert.match(allSql, /CREATE INDEX IF NOT EXISTS idx_price_alerts_status ON price_alerts\(status\)/i);
+  assert.match(allSql, /CREATE INDEX IF NOT EXISTS idx_trades_underlying ON trades\(underlying_symbol\)/i);
 });
 
 test('migrations are ordered and discoverable for replay', () => {

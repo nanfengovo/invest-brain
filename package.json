@@ -1,7 +1,7 @@
 {
   "name": "invest-brain",
   "private": true,
-  "version": "1.0.88",
+  "version": "1.0.93",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,8 +9,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test:closed-loop": "node --test tests/closed-loop-schema.test.js",
-    "test": "npm run test:closed-loop",
-    "verify": "npm run test:closed-loop && vite build"
+    "test": "node --test tests/*.test.js",
+    "verify": "npm test && vite build"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.0",

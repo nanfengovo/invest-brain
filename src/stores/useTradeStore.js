@@ -43,6 +43,8 @@ export const useTradeStore = create((set, get) => ({
         sector: trade.sector || null,
         strike_price: trade.strike_price || null,
         expiry_date: trade.expiry_date || null,
+        underlying_symbol: trade.underlying_symbol || trade.symbol || null,
+        option_type: trade.option_type || null,
       });
 
       await db.addTrade(trade);

@@ -5,6 +5,7 @@ import TradeForm from '../components/Trade/TradeForm';
 import TradeCard from '../components/Trade/TradeCard';
 import TradeFilter from '../components/Trade/TradeFilter';
 import EmptyState from '../components/common/EmptyState';
+import { toDateKey } from '../utils/time';
 import './TradesPage.css';
 
 export default function TradesPage() {
@@ -105,7 +106,7 @@ export default function TradesPage() {
     filteredTrades.forEach(t => {
       let key = '未分类';
       if (filters.groupBy === 'DATE') {
-        key = t.trade_time ? t.trade_time.split('T')[0] : '未知日期';
+        key = toDateKey(t.trade_time);
       } else if (filters.groupBy === 'ASSET') {
         key = t.symbol || '未知标的';
       }

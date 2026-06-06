@@ -12,6 +12,8 @@ import {
 } from 'antd-mobile';
 import { useTradeStore } from '../../stores/useTradeStore';
 import { parseTradeImage } from '../../utils/ocrWorker';
+import { recommendDecisionForTrade, attachDecisionRecommendations } from '../../utils/decisionMatcher';
+import { parseDateTime } from '../../utils/time';
 import './TradeForm.css';
 
 const ASSET_TYPE_OPTIONS = [
@@ -25,6 +27,11 @@ const DIRECTION_OPTIONS = [
   { label: '卖出', value: 'SELL' },
   { label: '开仓', value: 'OPEN' },
   { label: '平仓', value: 'CLOSE' },
+];
+
+const OPTION_TYPE_OPTIONS = [
+  { label: 'Call', value: 'CALL' },
+  { label: 'Put', value: 'PUT' },
 ];
 
 const OCR_MODEL_OPTIONS = [
@@ -44,6 +51,7 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const [assetType, setAssetType] = useState(['STOCK']);
+  const [optionType, setOptionType] = useState(['CALL']);
   const [decisionPickerVisible, setDecisionPickerVisible] = useState(false);
   const [tradeTime, setTradeTime] = useState(new Date());
   const [expiryDate, setExpiryDate] = useState(null);
@@ -56,6 +64,8 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
   const [activeField, setActiveField] = useState(null);
   const [referenceImage, setReferenceImage] = useState(null);
   const [ocrModel, setOcrModel] = useState('gemini-3.5-flash');
+  const [formDraft, setFormDraft] = useState({});
+  const [ignoredRecommendationId, setIgnoredRecommendationId] = useState(null);
 
   // Cleanup object URLs on unmount to avoid memory leaks
   useEffect(() => {
@@ -90,10 +100,18 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
         direction: initialData.direction ? [initialData.direction] : ['BUY'],
       });
       setAssetType([initialData.asset_type || 'STOCK']);
+      setOptionType([initialData.option_type || 'CALL']);
       setSelectedDecision(initialData.decision_id || null);
       setSelectedInfo(initialData.info_id || null);
-      if (initialData.trade_time) setTradeTime(new Date(initialData.trade_time));
+      if (initialData.trade_time) {
+        const parsedTradeTime = parseDateTime(initialData.trade_time);
+        if (parsedTradeTime) setTradeTime(parsedTradeTime);
+      }
       if (initialData.expiry_date) setExpiryDate(new Date(initialData.expiry_date));
+      setFormDraft({
+        symbol: initialData.symbol || '',
+        direction: initialData.direction ? [initialData.direction] : ['BUY'],
+      });
     }
   }, [initialData, form]);
 
@@ -113,6 +131,24 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
     return [items.length > 0 ? items : [{ label: '暂无关联信息', value: '' }]];
   }, [informations]);
 
+  const recommendedDecision = useMemo(() => {
+    if (selectedDecision || initialData) return null;
+    const symbol = formDraft.symbol || form.getFieldValue('symbol');
+    if (!symbol) return null;
+    const direction = formDraft.direction?.[0] || form.getFieldValue('direction')?.[0];
+    const recommendation = recommendDecisionForTrade(
+      {
+        symbol,
+        asset_id: symbol,
+        direction,
+        trade_time: tradeTime,
+      },
+      decisions
+    );
+    if (!recommendation || recommendation.decision.id === ignoredRecommendationId) return null;
+    return recommendation;
+  }, [decisions, form, formDraft, ignoredRecommendationId, initialData, selectedDecision, tradeTime]);
+
   /** Fill form with a single OCR trade result */
   const applyOcrTrade = (data) => {
     const updates = {};
@@ -127,6 +163,7 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
 
     if (data.asset_type === 'OPTION') {
       setAssetType(['OPTION']);
+      setOptionType([data.option_type || 'CALL']);
       if (data.expiry_date) setExpiryDate(new Date(data.expiry_date + 'T00:00:00'));
     } else if (data.asset_type === 'ETF') {
       setAssetType(['ETF']);
@@ -137,13 +174,14 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
     }
 
     if (data.trade_time) {
-      try {
-        setTradeTime(new Date(data.trade_time));
-      } catch { /* ignore invalid dates */ }
+      const parsedTradeTime = parseDateTime(data.trade_time);
+      if (parsedTradeTime) setTradeTime(parsedTradeTime);
     }
 
     if (Object.keys(updates).length > 0) {
       form.setFieldsValue(updates);
+      setFormDraft((prev) => ({ ...prev, ...updates }));
+      setIgnoredRecommendationId(null);
       Toast.show({ icon: 'success', content: '已填入表单' });
     }
   };
@@ -250,8 +288,11 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
         const expStr = expiryDate
           ? expiryDate.toISOString().slice(0, 10)
           : '';
-        assetId = `${symbol}_${values.strike_price}_${expStr}`;
+        assetId = `${symbol}_${expStr}_${values.strike_price}_${optionType[0]}`;
       }
+      const contractSymbol = isOption
+        ? `${symbol} ${expiryDate ? expiryDate.toISOString().slice(0, 10) : ''} ${optionType[0]} ${values.strike_price || ''}`.trim()
+        : null;
 
       const trade = {
         id: initialData ? initialData.id : crypto.randomUUID(),
@@ -269,8 +310,11 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
         trade_time: tradeTime.toISOString(),
         note: values.note || '',
         // Option-specific
+        underlying_symbol: isOption ? symbol : null,
         strike_price: isOption ? parseFloat(values.strike_price || '0') : null,
         expiry_date: isOption && expiryDate ? expiryDate.toISOString().slice(0, 10) : null,
+        option_type: isOption ? optionType[0] : null,
+        contract_symbol: contractSymbol,
       };
 
       const result = initialData 
@@ -390,6 +434,12 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
           initialValues={{
             fee: '0',
             direction: ['BUY'],
+          }}
+          onValuesChange={(changed, allValues) => {
+            setFormDraft(allValues);
+            if (changed.symbol || changed.direction) {
+              setIgnoredRecommendationId(null);
+            }
           }}
           footer={null}
         >
@@ -529,6 +579,18 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
                 />
               </Form.Item>
 
+              <div className="trade-form__picker-trigger trade-form__picker-trigger--selector">
+                <span className="trade-form__picker-label">类型</span>
+                <Selector
+                  options={OPTION_TYPE_OPTIONS}
+                  value={optionType}
+                  onChange={(val) => {
+                    if (val.length > 0) setOptionType(val);
+                  }}
+                  style={{ '--padding': '4px 12px' }}
+                />
+              </div>
+
               <div className="trade-form__picker-trigger trade-form__picker-trigger--native">
                 <span className="trade-form__picker-label">到期日</span>
                 <input
@@ -553,6 +615,38 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
           <Form.Item name="account" label="账户">
             <Input placeholder="例如 LongBridge" clearable />
           </Form.Item>
+
+          {recommendedDecision && (
+            <div className="trade-form__decision-recommendation">
+              <div className="trade-form__decision-recommendation-copy">
+                <div className="trade-form__decision-recommendation-title">
+                  推荐关联决策
+                </div>
+                <div className="trade-form__decision-recommendation-name">
+                  {recommendedDecision.decision.title}
+                </div>
+                <div className="trade-form__decision-recommendation-reason">
+                  {recommendedDecision.reasons.slice(0, 2).join(' · ') || `匹配分 ${recommendedDecision.score}`}
+                </div>
+              </div>
+              <div className="trade-form__decision-recommendation-actions">
+                <button
+                  type="button"
+                  className="trade-form__mini-action trade-form__mini-action--primary"
+                  onClick={() => setSelectedDecision(recommendedDecision.decision.id)}
+                >
+                  采用
+                </button>
+                <button
+                  type="button"
+                  className="trade-form__mini-action"
+                  onClick={() => setIgnoredRecommendationId(recommendedDecision.decision.id)}
+                >
+                  忽略
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Decision Picker */}
           <div
@@ -662,6 +756,18 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
                 let successCount = 0;
                 let failCount = 0;
                 const errors = [];
+                const prepared = attachDecisionRecommendations(ocrTrades, decisions);
+                const recommendationCount = prepared.filter((item) => item.recommendation).length;
+                let useRecommendations = false;
+
+                if (recommendationCount > 0) {
+                  useRecommendations = await Dialog.confirm({
+                    title: '采用推荐决策？',
+                    content: `系统按标的、时间和生命周期为 ${recommendationCount} 笔交易找到最可能的决策。采用后仍可在交易里手动修改；取消则不自动关联。`,
+                    confirmText: '采用推荐',
+                    cancelText: '不关联导入',
+                  });
+                }
 
                 const loadingToast = Toast.show({
                   icon: 'loading',
@@ -669,12 +775,14 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
                   duration: 0,
                 });
 
-                for (const t of ocrTrades) {
+                for (const [index, item] of prepared.entries()) {
+                  const t = useRecommendations ? item.trade : ocrTrades[index];
                   const symbol = (t.symbol || '').toUpperCase().trim();
                   if (!symbol) continue; // 必须有股票代码
 
                   const isOption = t.asset_type === 'OPTION';
                   let assetId = symbol;
+                  const normalizedOptionType = t.option_type || 'CALL';
 
                   if (isOption && t.strike_price) {
                     let expStr = '';
@@ -685,7 +793,7 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
                         expStr = String(t.expiry_date);
                       }
                     }
-                    assetId = `${symbol}_${t.strike_price}_${expStr}`;
+                    assetId = `${symbol}_${expStr}_${t.strike_price}_${normalizedOptionType}`;
                   }
 
                   const tradeToSave = {
@@ -699,6 +807,11 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
                     fee: parseFloat(t.fee || 0),
                     trade_time: t.trade_time || new Date().toISOString(),
                     broker: t.broker || null,
+                    underlying_symbol: isOption ? symbol : null,
+                    option_type: isOption ? normalizedOptionType : null,
+                    contract_symbol: isOption
+                      ? `${symbol} ${t.expiry_date || ''} ${normalizedOptionType} ${t.strike_price || ''}`.trim()
+                      : null,
                   };
 
                   const res = await addTrade(tradeToSave);

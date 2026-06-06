@@ -4,6 +4,20 @@ import { db } from '../db/database';
 const MARKET_WATCHLIST_KEY = 'ib_market_watchlist';
 const SYNC_USER_ID_KEY = 'invest_sync_user_id';
 const SYNC_SECRET_KEY = 'invest_sync_secret';
+const DEFAULT_NOTIFICATION_CONFIG = {
+  emailEnabled: false,
+  emailApiKey: '',
+  emailFrom: '',
+  emailTo: '',
+  feishuEnabled: false,
+  feishuWebhook: '',
+  browserEnabled: true,
+};
+const DEFAULT_MARKET_DATA_CONFIG = {
+  optionProvider: 'auto',
+  tradierToken: '',
+  polygonToken: '',
+};
 
 const normalizeMarketWatchItem = (item) => {
   const symbol = String(item?.symbol || '').trim().toUpperCase();
@@ -110,6 +124,46 @@ export const useAppStore = create((set, get) => ({
       console.error('Failed to save sync config to DB', e);
       throw e;
     }
+  },
+
+  // Notification & market data provider settings
+  notificationConfig: DEFAULT_NOTIFICATION_CONFIG,
+  marketDataConfig: DEFAULT_MARKET_DATA_CONFIG,
+  loadNotificationConfig: async () => {
+    try {
+      const raw = await db.getSetting('notification_config');
+      set({
+        notificationConfig: raw
+          ? { ...DEFAULT_NOTIFICATION_CONFIG, ...JSON.parse(raw) }
+          : DEFAULT_NOTIFICATION_CONFIG,
+      });
+    } catch (e) {
+      console.error('Failed to load notification config', e);
+      set({ notificationConfig: DEFAULT_NOTIFICATION_CONFIG });
+    }
+  },
+  saveNotificationConfig: async (config) => {
+    const normalized = { ...DEFAULT_NOTIFICATION_CONFIG, ...(config || {}) };
+    await db.setSetting('notification_config', JSON.stringify(normalized));
+    set({ notificationConfig: normalized });
+  },
+  loadMarketDataConfig: async () => {
+    try {
+      const raw = await db.getSetting('market_data_config');
+      set({
+        marketDataConfig: raw
+          ? { ...DEFAULT_MARKET_DATA_CONFIG, ...JSON.parse(raw) }
+          : DEFAULT_MARKET_DATA_CONFIG,
+      });
+    } catch (e) {
+      console.error('Failed to load market data config', e);
+      set({ marketDataConfig: DEFAULT_MARKET_DATA_CONFIG });
+    }
+  },
+  saveMarketDataConfig: async (config) => {
+    const normalized = { ...DEFAULT_MARKET_DATA_CONFIG, ...(config || {}) };
+    await db.setSetting('market_data_config', JSON.stringify(normalized));
+    set({ marketDataConfig: normalized });
   },
 
   // Active tab

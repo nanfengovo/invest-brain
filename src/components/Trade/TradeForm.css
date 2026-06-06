@@ -232,9 +232,84 @@
   margin-left: 4px;
 }
 
+.trade-form__decision-recommendation {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  margin-bottom: 10px;
+  border: 1px solid rgba(99, 102, 241, 0.26);
+  border-radius: var(--radius-md);
+  background: var(--color-accent-bg);
+}
+
+.trade-form__decision-recommendation-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.trade-form__decision-recommendation-title {
+  color: var(--color-accent-light);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.trade-form__decision-recommendation-name {
+  overflow: hidden;
+  margin-top: 3px;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trade-form__decision-recommendation-reason {
+  overflow: hidden;
+  margin-top: 3px;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trade-form__decision-recommendation-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.trade-form__mini-action {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-bg-input);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.trade-form__mini-action--primary {
+  border-color: rgba(99, 102, 241, 0.32);
+  background: var(--color-accent);
+  color: #fff;
+}
+
 /* ── Native Date Input (replaces antd-mobile DatePicker) ── */
 .trade-form__picker-trigger--native {
   cursor: default;
+}
+
+.trade-form__picker-trigger--selector {
+  cursor: default;
+}
+
+.trade-form__picker-trigger--selector .adm-selector {
+  flex: 0 0 auto;
 }
 
 .trade-form__native-date-input {

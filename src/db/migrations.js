@@ -201,6 +201,38 @@ export const MIGRATIONS = [
       `CREATE INDEX IF NOT EXISTS idx_decision_info_links_info ON decision_info_links(info_id)`,
       `CREATE INDEX IF NOT EXISTS idx_decisions_priority ON decisions(priority)`
     ]
+  },
+  {
+    version: 8,
+    description: 'Phase 8: Option contract metadata and local price alerts',
+    statements: [
+      `ALTER TABLE assets ADD COLUMN underlying_symbol TEXT`,
+      `ALTER TABLE assets ADD COLUMN option_type TEXT`,
+      `ALTER TABLE trades ADD COLUMN underlying_symbol TEXT`,
+      `ALTER TABLE trades ADD COLUMN strike_price REAL`,
+      `ALTER TABLE trades ADD COLUMN expiry_date TEXT`,
+      `ALTER TABLE trades ADD COLUMN option_type TEXT`,
+      `ALTER TABLE trades ADD COLUMN contract_symbol TEXT`,
+      `CREATE TABLE IF NOT EXISTS price_alerts (
+        id TEXT PRIMARY KEY,
+        symbol TEXT NOT NULL,
+        asset_id TEXT,
+        asset_type TEXT DEFAULT 'STOCK',
+        condition TEXT NOT NULL,
+        target_price REAL NOT NULL,
+        last_price REAL,
+        status TEXT DEFAULT 'ACTIVE',
+        channels TEXT,
+        note TEXT,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        triggered_at INTEGER
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_price_alerts_symbol ON price_alerts(symbol)`,
+      `CREATE INDEX IF NOT EXISTS idx_price_alerts_status ON price_alerts(status)`,
+      `CREATE INDEX IF NOT EXISTS idx_trades_underlying ON trades(underlying_symbol)`,
+      `CREATE INDEX IF NOT EXISTS idx_assets_underlying ON assets(underlying_symbol)`
+    ]
   }
 ];
 

@@ -4,6 +4,7 @@ import { db } from '../db/database';
 import { useAppStore } from '../stores/useAppStore';
 import { useTradeStore } from '../stores/useTradeStore';
 import { parseTradesFile } from '../utils/importTrades';
+import { attachDecisionRecommendations } from '../utils/decisionMatcher';
 import { restoreAutoBackup } from '../utils/autoBackup';
 import './SettingsPage.css';
 
@@ -47,7 +48,11 @@ function SettingsPage() {
     syncSecret,
     saveSyncConfig,
     streamlitUrl,
-    setStreamlitUrl
+    setStreamlitUrl,
+    notificationConfig,
+    saveNotificationConfig,
+    marketDataConfig,
+    saveMarketDataConfig
   } = useAppStore();
 
   const { stats, refreshAll } = useTradeStore();
@@ -56,6 +61,8 @@ function SettingsPage() {
   const [streamlitUrlInput, setStreamlitUrlInput] = useState(streamlitUrl);
   const [syncUserIdInput, setSyncUserIdInput] = useState(syncUserId);
   const [syncSecretInput, setSyncSecretInput] = useState(syncSecret);
+  const [notificationInput, setNotificationInput] = useState(notificationConfig);
+  const [marketDataInput, setMarketDataInput] = useState(marketDataConfig);
   const [autoSync, setAutoSync] = useState(localStorage.getItem('invest_auto_sync') === 'true');
   const [lastBackupTime, setLastBackupTime] = useState(localStorage.getItem('ib_last_autobackup_time'));
 
@@ -71,6 +78,14 @@ function SettingsPage() {
   useEffect(() => {
     setStreamlitUrlInput(streamlitUrl);
   }, [streamlitUrl]);
+
+  useEffect(() => {
+    setNotificationInput(notificationConfig);
+  }, [notificationConfig]);
+
+  useEffect(() => {
+    setMarketDataInput(marketDataConfig);
+  }, [marketDataConfig]);
 
   useEffect(() => {
     // Get storage estimate
@@ -222,18 +237,39 @@ function SettingsPage() {
 
         if (!confirmed) return;
 
+        const decisions = await db.getDecisions();
+        const prepared = attachDecisionRecommendations(trades, decisions);
+        const recommendationCount = prepared.filter((item) => item.recommendation).length;
+        let tradesToImport = trades;
+
+        if (recommendationCount > 0) {
+          const useRecommendations = await Dialog.confirm({
+            title: '采用推荐决策？',
+            content: `系统按交易标的、时间和决策生命周期，为 ${recommendationCount} 条记录找到最可能的决策。采用后仍可在交易记录中手动修改；不采用也会继续导入。`,
+            confirmText: '采用推荐导入',
+            cancelText: '不关联导入',
+          });
+          if (useRecommendations) {
+            tradesToImport = prepared.map((item) => item.trade);
+          }
+        }
+
         Toast.show({ icon: 'loading', content: '正在导入...' });
         let successCount = 0;
         let failCount = 0;
         const errors = [];
 
-        for (const trade of trades) {
+        for (const trade of tradesToImport) {
           try {
             await db.upsertAsset({
               id: trade.asset_id,
               symbol: trade.symbol,
               name: trade.asset_name || '',
               type: trade.asset_type || 'STOCK',
+              strike_price: trade.strike_price || null,
+              expiry_date: trade.expiry_date || null,
+              underlying_symbol: trade.underlying_symbol || trade.symbol || null,
+              option_type: trade.option_type || null,
             });
             await db.addTrade(trade);
             successCount++;
@@ -333,6 +369,70 @@ function SettingsPage() {
       await saveSyncConfig(normalizedUserId, normalizedSecret);
       Toast.show({ icon: 'success', content: '云端配置已保存' });
     } catch (e) {
+      Toast.show({ icon: 'fail', content: '保存失败' });
+    }
+  }
+
+  async function handleSaveNotificationConfig() {
+    try {
+      await saveNotificationConfig(notificationInput);
+      Toast.show({ icon: 'success', content: '提醒通道已保存' });
+    } catch {
+      Toast.show({ icon: 'fail', content: '保存失败' });
+    }
+  }
+
+  async function handleTestNotification() {
+    try {
+      if (notificationInput.browserEnabled && 'Notification' in window) {
+        if (Notification.permission === 'default') {
+          await Notification.requestPermission();
+        }
+        if (Notification.permission === 'granted') {
+          new Notification('InvestBrain 测试提醒', {
+            body: '浏览器通知通道可用',
+          });
+        }
+      }
+
+      const channels = [
+        notificationInput.emailEnabled ? 'email' : null,
+        notificationInput.feishuEnabled ? 'feishu' : null,
+      ].filter(Boolean);
+
+      if (channels.length === 0) {
+        Toast.show({ icon: 'success', content: '本地浏览器提醒已测试' });
+        return;
+      }
+
+      const res = await fetch('/api/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: 'InvestBrain 测试提醒',
+          body: '这是一条来自价格提醒配置页的测试消息。',
+          channels,
+          feishuWebhook: notificationInput.feishuWebhook,
+          email: {
+            apiKey: notificationInput.emailApiKey,
+            from: notificationInput.emailFrom,
+            to: notificationInput.emailTo,
+          },
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || '发送失败');
+      Toast.show({ icon: 'success', content: '测试消息已发送' });
+    } catch (e) {
+      Toast.show({ icon: 'fail', content: e.message || '测试失败' });
+    }
+  }
+
+  async function handleSaveMarketDataConfig() {
+    try {
+      await saveMarketDataConfig(marketDataInput);
+      Toast.show({ icon: 'success', content: '行情数据源已保存' });
+    } catch {
       Toast.show({ icon: 'fail', content: '保存失败' });
     }
   }
@@ -665,6 +765,136 @@ function SettingsPage() {
               style={{ borderRadius: '6px' }}
             >
               保存
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Market Data & Alerts */}
+      <div className="section">
+        <div className="section__title">行情数据源与价格提醒</div>
+        <div className="settings-card glass-card">
+          <div className="settings-card__row" style={{ cursor: 'default' }}>
+            <span className="settings-card__icon">📡</span>
+            <div className="settings-card__content">
+              <div className="settings-card__label">期权链数据源</div>
+              <div className="settings-card__desc">
+                Auto 会优先使用 Tradier，其次 Polygon；Yahoo 期权链当前需要 crumb，仅保留实验入口。
+              </div>
+            </div>
+          </div>
+          <div className="settings-card__input-row settings-card__input-row--stacked">
+            <Selector
+              options={[
+                { label: 'Auto', value: 'auto' },
+                { label: 'Tradier', value: 'tradier' },
+                { label: 'Polygon', value: 'polygon' },
+                { label: 'Yahoo(实验)', value: 'yahoo' },
+              ]}
+              value={[marketDataInput.optionProvider || 'auto']}
+              onChange={(value) => {
+                if (!value.length) return;
+                setMarketDataInput((current) => ({ ...current, optionProvider: value[0] }));
+              }}
+            />
+            <div className="settings-card__input-wrapper">
+              <Input
+                placeholder="Tradier API Token（可选）"
+                type="password"
+                value={marketDataInput.tradierToken || ''}
+                onChange={(value) => setMarketDataInput((current) => ({ ...current, tradierToken: value }))}
+                clearable
+              />
+            </div>
+            <div className="settings-card__input-wrapper">
+              <Input
+                placeholder="Polygon API Key（可选）"
+                type="password"
+                value={marketDataInput.polygonToken || ''}
+                onChange={(value) => setMarketDataInput((current) => ({ ...current, polygonToken: value }))}
+                clearable
+              />
+            </div>
+          </div>
+          <div className="settings-card__actions-row">
+            <Button color="primary" size="small" fill="solid" onClick={handleSaveMarketDataConfig} style={{ borderRadius: '6px' }}>
+              保存数据源
+            </Button>
+          </div>
+
+          <div className="settings-card__divider" />
+          <div className="settings-card__row" style={{ cursor: 'default' }}>
+            <span className="settings-card__icon">🔔</span>
+            <div className="settings-card__content">
+              <div className="settings-card__label">价格提醒通道</div>
+              <div className="settings-card__desc">
+                浏览器提醒在 App 打开时触发；邮件和飞书由 Vercel API 发送。
+              </div>
+            </div>
+          </div>
+          <div className="settings-card__input-row settings-card__input-row--stacked">
+            <Selector
+              options={[
+                { label: '浏览器通知', value: 'browser' },
+                { label: '邮件', value: 'email' },
+                { label: '飞书', value: 'feishu' },
+              ]}
+              multiple
+              value={[
+                notificationInput.browserEnabled ? 'browser' : null,
+                notificationInput.emailEnabled ? 'email' : null,
+                notificationInput.feishuEnabled ? 'feishu' : null,
+              ].filter(Boolean)}
+              onChange={(value) => {
+                setNotificationInput((current) => ({
+                  ...current,
+                  browserEnabled: value.includes('browser'),
+                  emailEnabled: value.includes('email'),
+                  feishuEnabled: value.includes('feishu'),
+                }));
+              }}
+            />
+            <div className="settings-card__input-wrapper">
+              <Input
+                placeholder="Resend API Key（邮件启用时必填）"
+                type="password"
+                value={notificationInput.emailApiKey || ''}
+                onChange={(value) => setNotificationInput((current) => ({ ...current, emailApiKey: value }))}
+                clearable
+              />
+            </div>
+            <div className="settings-card__input-wrapper">
+              <Input
+                placeholder="发件人，如 alerts@yourdomain.com"
+                value={notificationInput.emailFrom || ''}
+                onChange={(value) => setNotificationInput((current) => ({ ...current, emailFrom: value }))}
+                clearable
+              />
+            </div>
+            <div className="settings-card__input-wrapper">
+              <Input
+                placeholder="收件人，可用逗号分隔"
+                value={notificationInput.emailTo || ''}
+                onChange={(value) => setNotificationInput((current) => ({ ...current, emailTo: value }))}
+                clearable
+              />
+            </div>
+            <div className="settings-card__input-wrapper">
+              <Input
+                placeholder="飞书机器人 Webhook URL"
+                type="password"
+                value={notificationInput.feishuWebhook || ''}
+                onChange={(value) => setNotificationInput((current) => ({ ...current, feishuWebhook: value }))}
+                clearable
+              />
+            </div>
+          </div>
+          <div className="settings-card__actions-row">
+            <Button color="primary" size="small" fill="solid" onClick={handleSaveNotificationConfig} style={{ borderRadius: '6px' }}>
+              保存提醒配置
+            </Button>
+            <Button color="primary" size="small" fill="outline" onClick={handleTestNotification} style={{ borderRadius: '6px' }}>
+              测试通道
             </Button>
           </div>
         </div>

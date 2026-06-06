@@ -5,6 +5,7 @@ import { useAppStore } from './stores/useAppStore';
 import { useTradeStore } from './stores/useTradeStore';
 import { initDB, db } from './db/database';
 import { hasBackup, restoreAutoBackup } from './utils/autoBackup';
+import { checkPriceAlerts } from './utils/priceAlertRunner';
 import AppShell from './components/Layout/AppShell';
 import DashboardPage from './pages/DashboardPage';
 import LoadingSpinner from './components/common/LoadingSpinner';
@@ -21,7 +22,7 @@ const StockDetailPage = lazy(() => import('./pages/StockDetailPage'));
 
 function App({ onReady }) {
   const [initError, setInitError] = useState(null);
-  const { isDbReady, setDbReady, setDbError } = useAppStore();
+  const { isDbReady, setDbReady, setDbError, notificationConfig, marketDataConfig } = useAppStore();
   const refreshAll = useTradeStore((s) => s.refreshAll);
 
   useEffect(() => {
@@ -36,6 +37,8 @@ function App({ onReady }) {
         // Load settings
         await useAppStore.getState().loadGeminiApiKey();
         await useAppStore.getState().loadSyncConfig();
+        await useAppStore.getState().loadNotificationConfig();
+        await useAppStore.getState().loadMarketDataConfig();
 
         // PWA Recovery: Check if data was lost (e.g., PWA removed from homescreen)
         try {
@@ -87,6 +90,17 @@ function App({ onReady }) {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!isDbReady) return undefined;
+    const run = () => {
+      checkPriceAlerts(notificationConfig, marketDataConfig).catch((error) => {
+        console.warn('Price alert check failed:', error);
+      });
+    };
+    const timer = window.setInterval(run, 60_000);
+    return () => window.clearInterval(timer);
+  }, [isDbReady, notificationConfig, marketDataConfig]);
 
   if (initError) {
     return (

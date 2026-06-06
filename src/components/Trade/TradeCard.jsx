@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { SwipeAction, Dialog, Toast, ActionSheet } from 'antd-mobile';
 import { useTradeStore } from '../../stores/useTradeStore';
+import { parseDateTime } from '../../utils/time';
 import './TradeCard.css';
 
 const DIRECTION_MAP = {
@@ -15,7 +16,8 @@ const DIRECTION_MAP = {
  */
 function formatTimeAgo(dateStr) {
   if (!dateStr) return '';
-  const date = new Date(dateStr);
+  const date = parseDateTime(dateStr);
+  if (!date) return '';
   const now = new Date();
   const diffMs = now - date;
   const diffMin = Math.floor(diffMs / 60000);

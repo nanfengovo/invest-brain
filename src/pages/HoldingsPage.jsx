@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useTradeStore } from '../stores/useTradeStore';
 import { db } from '../db/database';
 import EmptyState from '../components/common/EmptyState';
+import { parseDateTime } from '../utils/time';
 import './HoldingsPage.css';
 
 const formatCurrency = (num) => {
@@ -14,8 +15,8 @@ const formatCurrency = (num) => {
 
 const formatDate = (dateStr) => {
   if (!dateStr) return '—';
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return '—';
+  const d = parseDateTime(dateStr);
+  if (!d) return '—';
   return d.toLocaleDateString('zh-CN', {
     year: 'numeric',
     month: '2-digit',

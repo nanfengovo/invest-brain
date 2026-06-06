@@ -62,6 +62,14 @@ function csvFromList(items) {
   return list.length ? list.join(',') : null;
 }
 
+const TRADE_TIME_SECONDS_SQL = `CASE
+  WHEN typeof(t.trade_time) IN ('integer', 'real') THEN
+    CASE WHEN CAST(t.trade_time AS REAL) > 100000000000 THEN CAST(t.trade_time AS REAL) / 1000 ELSE CAST(t.trade_time AS REAL) END
+  WHEN CAST(t.trade_time AS TEXT) <> '' AND CAST(t.trade_time AS TEXT) NOT GLOB '*[^0-9]*' THEN
+    CASE WHEN CAST(t.trade_time AS REAL) > 100000000000 THEN CAST(t.trade_time AS REAL) / 1000 ELSE CAST(t.trade_time AS REAL) END
+  ELSE unixepoch(t.trade_time)
+END`;
+
 /**
  * Initialize the database
  */
@@ -268,11 +276,11 @@ export const db = {
   },
 
   async upsertAsset(asset) {
-    const { id, symbol, name, type, sector, strike_price, expiry_date } = asset;
+    const { id, symbol, name, type, sector, strike_price, expiry_date, underlying_symbol, option_type } = asset;
     return this.exec(
-      `INSERT OR REPLACE INTO assets (id, symbol, name, type, sector, strike_price, expiry_date, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM assets WHERE id = ?), unixepoch()), unixepoch())`,
-      [id, symbol, name || '', type || 'STOCK', sector || null, strike_price || null, expiry_date || null, id]
+      `INSERT OR REPLACE INTO assets (id, symbol, name, type, sector, strike_price, expiry_date, underlying_symbol, option_type, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM assets WHERE id = ?), unixepoch()), unixepoch())`,
+      [id, symbol, name || '', type || 'STOCK', sector || null, strike_price || null, expiry_date || null, underlying_symbol || null, option_type || null, id]
     );
   },
 
@@ -287,7 +295,7 @@ export const db = {
        FROM trades t
        LEFT JOIN assets a ON t.asset_id = a.id
        LEFT JOIN decisions d ON t.decision_id = d.id
-       ORDER BY t.trade_time DESC
+       ORDER BY ${TRADE_TIME_SECONDS_SQL} DESC
        LIMIT ? OFFSET ?`,
       [limit, offset]
     );
@@ -307,19 +315,19 @@ export const db = {
   },
 
   async addTrade(trade) {
-    const { id, asset_id, decision_id, direction, quantity, price, fee, account, trade_time, note, broker } = trade;
+    const { id, asset_id, decision_id, direction, quantity, price, fee, account, trade_time, note, broker, info_id, underlying_symbol, strike_price, expiry_date, option_type, contract_symbol } = trade;
     return this.exec(
-      `INSERT INTO trades (id, asset_id, decision_id, direction, quantity, price, fee, account, trade_time, note, broker)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, asset_id, decision_id || null, direction, quantity, price, fee || 0, account || null, trade_time, note || null, broker || null]
+      `INSERT INTO trades (id, asset_id, decision_id, info_id, direction, quantity, price, fee, account, trade_time, note, broker, underlying_symbol, strike_price, expiry_date, option_type, contract_symbol)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, asset_id, decision_id || null, info_id || null, direction, quantity, price, fee || 0, account || null, trade_time, note || null, broker || null, underlying_symbol || null, strike_price || null, expiry_date || null, option_type || null, contract_symbol || null]
     );
   },
 
   async updateTrade(trade) {
-    const { id, asset_id, decision_id, direction, quantity, price, fee, account, trade_time, note, broker } = trade;
+    const { id, asset_id, decision_id, direction, quantity, price, fee, account, trade_time, note, broker, info_id, underlying_symbol, strike_price, expiry_date, option_type, contract_symbol } = trade;
     return this.exec(
-      `UPDATE trades SET asset_id = ?, decision_id = ?, direction = ?, quantity = ?, price = ?, fee = ?, account = ?, trade_time = ?, note = ?, broker = ? WHERE id = ?`,
-      [asset_id, decision_id || null, direction, quantity, price, fee || 0, account || null, trade_time, note || null, broker || null, id]
+      `UPDATE trades SET asset_id = ?, decision_id = ?, info_id = ?, direction = ?, quantity = ?, price = ?, fee = ?, account = ?, trade_time = ?, note = ?, broker = ?, underlying_symbol = ?, strike_price = ?, expiry_date = ?, option_type = ?, contract_symbol = ? WHERE id = ?`,
+      [asset_id, decision_id || null, info_id || null, direction, quantity, price, fee || 0, account || null, trade_time, note || null, broker || null, underlying_symbol || null, strike_price || null, expiry_date || null, option_type || null, contract_symbol || null, id]
     );
   },
 
@@ -339,7 +347,7 @@ export const db = {
     } else {
       sql += ` AND (t.broker IS NULL OR t.broker = '')`;
     }
-    sql += ` ORDER BY t.trade_time DESC`;
+    sql += ` ORDER BY ${TRADE_TIME_SECONDS_SQL} DESC`;
 
     return this.query(sql, params);
   },
@@ -527,8 +535,8 @@ export const db = {
         END), 0) as avg_cost,
         SUM(t.fee) as total_fees,
         COUNT(t.id) as trade_count,
-        MIN(t.trade_time) as first_trade,
-        MAX(t.trade_time) as last_trade
+        MIN(${TRADE_TIME_SECONDS_SQL}) as first_trade,
+        MAX(${TRADE_TIME_SECONDS_SQL}) as last_trade
        FROM trades t
        JOIN assets a ON t.asset_id = a.id
        GROUP BY a.id, t.broker
@@ -734,6 +742,94 @@ export const db = {
 
   async deleteViewpoint(id) {
     return this.exec('DELETE FROM viewpoints WHERE id = ?', [id]);
+  },
+
+  // ==========================================
+  // Price alert operations
+  // ==========================================
+
+  async getPriceAlerts(status = null) {
+    if (status) {
+      return this.query(
+        'SELECT * FROM price_alerts WHERE status = ? ORDER BY created_at DESC',
+        [status]
+      );
+    }
+    return this.query('SELECT * FROM price_alerts ORDER BY created_at DESC');
+  },
+
+  async getPriceAlertsBySymbol(symbol) {
+    const normalized = String(symbol || '').trim().toUpperCase();
+    return this.query(
+      'SELECT * FROM price_alerts WHERE symbol = ? ORDER BY status, created_at DESC',
+      [normalized]
+    );
+  },
+
+  async addPriceAlert(alert) {
+    const {
+      id,
+      symbol,
+      asset_id,
+      asset_type,
+      condition,
+      target_price,
+      last_price,
+      status,
+      channels,
+      note,
+    } = alert;
+    const finalId = id || crypto.randomUUID();
+    const channelsJson = Array.isArray(channels) ? JSON.stringify(channels) : (channels || null);
+    await this.exec(
+      `INSERT INTO price_alerts (id, symbol, asset_id, asset_type, condition, target_price, last_price, status, channels, note)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        finalId,
+        String(symbol || '').trim().toUpperCase(),
+        asset_id || null,
+        asset_type || 'STOCK',
+        condition,
+        Number(target_price),
+        last_price ?? null,
+        status || 'ACTIVE',
+        channelsJson,
+        note || null,
+      ]
+    );
+    return { id: finalId };
+  },
+
+  async updatePriceAlert(id, updates) {
+    const fields = [];
+    const values = [];
+    for (const [key, value] of Object.entries(updates)) {
+      if (key === 'id') continue;
+      fields.push(`${key} = ?`);
+      values.push(Array.isArray(value) ? JSON.stringify(value) : value);
+    }
+    fields.push('updated_at = unixepoch()');
+    values.push(id);
+    return this.exec(
+      `UPDATE price_alerts SET ${fields.join(', ')} WHERE id = ?`,
+      values
+    );
+  },
+
+  async markPriceAlertTriggered(id, lastPrice) {
+    return this.exec(
+      `UPDATE price_alerts
+          SET status = 'TRIGGERED',
+              last_price = ?,
+              triggered_at = unixepoch(),
+              updated_at = unixepoch()
+        WHERE id = ?`,
+      [lastPrice, id]
+    );
+  },
+
+  async deletePriceAlert(id) {
+    return this.exec('DELETE FROM price_alerts WHERE id = ?', [id]);
   },
 
   // ==========================================

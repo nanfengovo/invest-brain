@@ -319,10 +319,12 @@ function SettingsPage() {
       });
 
       let responseData;
+      let rawText = '';
       try {
-        responseData = await res.json();
+        rawText = await res.text();
+        responseData = JSON.parse(rawText);
       } catch (e) {
-        throw new Error('服务器端未正确配置数据库，或数据库地址格式错误。');
+        throw new Error(`无法解析服务器响应: ${rawText.substring(0, 100)}... (状态码: ${res.status})`);
       }
       if (!res.ok) throw new Error(responseData?.error || '上传失败');
 

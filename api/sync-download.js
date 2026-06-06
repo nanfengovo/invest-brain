@@ -30,18 +30,9 @@ export default async function handler(req) {
     let kvUrl = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
     let kvToken = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
 
-    // Auto-parse Upstash REDIS_URL (e.g. redis://default:PASSWORD@host:port) to REST API
-    if (!kvUrl && !kvToken && process.env.REDIS_URL) {
-      const match = process.env.REDIS_URL.match(/rediss?:\/\/[^:]*:([^@]+)@([^:]+):\d+/);
-      if (match) {
-        kvToken = match[1];
-        kvUrl = `https://${match[2]}`;
-      }
-    }
-
     if (!kvUrl || !kvToken) {
       return new Response(JSON.stringify({ 
-        error: `云端数据库未正确配置，请在 Vercel 环境变量中检查 REDIS_URL 或 KV_REST_API_URL。` 
+        error: `云端数据库未正确配置。请在 Vercel 的 Storage 中创建一个 "KV" 数据库并关联到本项目。` 
       }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' },

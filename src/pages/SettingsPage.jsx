@@ -318,8 +318,13 @@ function SettingsPage() {
         })
       });
 
-      const responseData = await res.json();
-      if (!res.ok) throw new Error(responseData.error || '上传失败');
+      let responseData;
+      try {
+        responseData = await res.json();
+      } catch (e) {
+        throw new Error('服务器端未正确配置数据库，或数据库地址格式错误。');
+      }
+      if (!res.ok) throw new Error(responseData?.error || '上传失败');
 
       Toast.clear();
       Toast.show({ icon: 'success', content: '已成功备份至云端' });
@@ -343,8 +348,13 @@ function SettingsPage() {
         }
       });
 
-      const responseData = await res.json();
-      if (!res.ok) throw new Error(responseData.error || '拉取失败');
+      let responseData;
+      try {
+        responseData = await res.json();
+      } catch (e) {
+        throw new Error('服务器端未正确配置数据库，或数据库地址格式错误。');
+      }
+      if (!res.ok) throw new Error(responseData?.error || '拉取失败');
 
       if (!responseData.mergedData || responseData.usersFound === 0) {
         Toast.clear();
@@ -380,8 +390,13 @@ function SettingsPage() {
         }
       });
 
-      const responseData = await res.json();
-      if (!res.ok) throw new Error(responseData.error || '拉取失败');
+      let responseData;
+      try {
+        responseData = await res.json();
+      } catch (e) {
+        throw new Error('服务器端未正确配置数据库，或数据库地址格式错误。');
+      }
+      if (!res.ok) throw new Error(responseData?.error || '拉取失败');
 
       if (!responseData.mergedData || responseData.usersFound === 0) {
         Toast.clear();

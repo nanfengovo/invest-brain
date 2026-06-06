@@ -32,7 +32,7 @@ export default async function handler(req) {
 
     // Auto-parse Upstash REDIS_URL (e.g. redis://default:PASSWORD@host:port) to REST API
     if (!kvUrl && !kvToken && process.env.REDIS_URL) {
-      const match = process.env.REDIS_URL.match(/redis:\/\/[^:]*:([^@]+)@([^:]+):\d+/);
+      const match = process.env.REDIS_URL.match(/rediss?:\/\/[^:]*:([^@]+)@([^:]+):\d+/);
       if (match) {
         kvToken = match[1];
         kvUrl = `https://${match[2]}`;
@@ -40,14 +40,8 @@ export default async function handler(req) {
     }
 
     if (!kvUrl || !kvToken) {
-      // For debugging, returning the presence of keys, without exposing secrets
-      const hasUpstashUrl = !!process.env.UPSTASH_REDIS_REST_URL;
-      const hasUpstashToken = !!process.env.UPSTASH_REDIS_REST_TOKEN;
-      const hasKvUrl = !!process.env.KV_REST_API_URL;
-      const hasKvToken = !!process.env.KV_REST_API_TOKEN;
-      const hasRedisUrl = !!process.env.REDIS_URL;
       return new Response(JSON.stringify({ 
-        error: `Server KV/Redis not configured. Env status: UPSTASH(${hasUpstashUrl},${hasUpstashToken}) KV(${hasKvUrl},${hasKvToken}) REDIS_URL(${hasRedisUrl})` 
+        error: `云端数据库未正确配置，请在 Vercel 环境变量中检查 REDIS_URL 或 KV_REST_API_URL。` 
       }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' },
@@ -138,7 +132,11 @@ export default async function handler(req) {
 
   } catch (error) {
     console.error('Sync Download Error:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    let errorMessage = error.message;
+    if (errorMessage.includes('Invalid URL') || errorMessage.includes('pattern')) {
+      errorMessage = '连接云端数据库失败，请检查数据库链接格式是否正确。';
+    }
+    return new Response(JSON.stringify({ error: errorMessage }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     });

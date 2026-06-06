@@ -54,135 +54,131 @@ export default function DashboardPage() {
   const glassCardClass = "rounded-2xl bg-gradient-to-br from-slate-800/60 to-slate-900/80 backdrop-blur-xl border border-slate-700/50 shadow-lg shadow-black/20";
 
   return (
-    <div className="bg-slate-950 min-h-screen pb-20 overflow-x-hidden flex flex-col gap-4 relative">
+    <div className="min-h-screen pb-20 overflow-x-hidden flex flex-col gap-4 relative" style={{ backgroundColor: 'var(--color-bg-primary)' }}>
       
-      {/* Background ambient glows for depth */}
-      <div className="absolute top-0 left-0 w-full h-64 bg-indigo-500/10 blur-[100px] pointer-events-none"></div>
-      <div className="absolute bottom-1/3 right-0 w-64 h-64 bg-emerald-500/5 blur-[100px] pointer-events-none"></div>
-
       {/* 顶部区域 (合理化顶部间距) */}
-      <div className="flex justify-between items-center px-4 pt-[calc(env(safe-area-inset-top,0px)+12px)] pb-1 relative z-10">
+      <div className="flex justify-between items-center px-4 pt-[calc(env(safe-area-inset-top,0px)+16px)] pb-1 relative z-10">
         <div className="flex flex-col">
-          <div className="text-2xl font-bold text-white tracking-tight">交易分析 Agent</div>
-          <div className="text-xs text-slate-400 mt-1">{formatDate()}</div>
+          <div className="text-2xl font-bold tracking-tight" style={{ color: 'var(--color-text-primary)' }}>交易分析 Agent</div>
+          <div className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>{formatDate()}</div>
         </div>
-        <div className="flex items-center gap-1.5 bg-slate-800/80 px-2.5 py-1.5 rounded-full border border-slate-700/50 backdrop-blur-md">
-          <div className={`w-1.5 h-1.5 rounded-full animate-pulse shadow-[0_0_8px_currentColor] ${isDbPersistent ? 'bg-emerald-400 text-emerald-400' : 'bg-rose-400 text-rose-400'}`}></div>
-          <div className="text-[10px] font-medium text-slate-300 uppercase tracking-wider">Local</div>
+        <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full" style={{ background: 'var(--color-bg-elevated)', border: '1px solid var(--color-border)' }}>
+          <div className={`w-1.5 h-1.5 rounded-full animate-pulse`} style={{ backgroundColor: isDbPersistent ? 'var(--color-profit)' : 'var(--color-loss)', boxShadow: `0 0 8px ${isDbPersistent ? 'var(--color-profit)' : 'var(--color-loss)'}` }}></div>
+          <div className="text-[10px] font-medium uppercase tracking-wider" style={{ color: 'var(--color-text-secondary)' }}>Local</div>
         </div>
       </div>
 
       {/* 模块 1：Agent 诊断卡 */}
-      <div className={`mx-4 p-4 flex gap-4 items-center ${glassCardClass} relative z-10`}>
-        <div className="bg-slate-800/80 text-emerald-400 p-3 rounded-xl text-xl font-bold flex-shrink-0 font-mono flex items-center justify-center w-12 h-12 shadow-inner border border-slate-700/50">
+      <div className="mx-4 flex gap-4 items-center glass-card relative z-10">
+        <div className="p-3 rounded-xl text-xl font-bold flex-shrink-0 font-mono flex items-center justify-center w-12 h-12" style={{ background: 'var(--color-bg-elevated)', color: 'var(--color-profit)', border: '1px solid var(--color-border)' }}>
           78
         </div>
         <div className="flex flex-col flex-1">
-          <div className="text-sm text-white font-medium">交易人格：纪律严明型</div>
-          <div className="text-xs text-amber-400/90 mt-1.5">⚠️ 最近两笔交易盈亏比偏低</div>
+          <div className="text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>交易人格：纪律严明型</div>
+          <div className="text-xs mt-1.5" style={{ color: 'var(--adm-color-warning)' }}>⚠️ 最近两笔交易盈亏比偏低</div>
         </div>
       </div>
 
       {/* 模块 2：实战绩效卡 */}
-      <div className={`mx-4 p-5 flex flex-col gap-5 mt-2 ${glassCardClass} relative z-10`}>
+      <div className="mx-4 flex flex-col gap-5 mt-2 glass-card relative z-10">
         <div className="flex justify-between items-center">
-          <div className="text-sm font-medium text-slate-400">实战绩效</div>
-          <div className="text-xs font-medium text-indigo-400 bg-indigo-500/10 px-2 py-1 rounded-md cursor-pointer hover:bg-indigo-500/20 transition-colors">
+          <div className="text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }}>实战绩效</div>
+          <div className="text-xs font-medium px-2 py-1 rounded-md cursor-pointer" style={{ color: 'var(--color-accent-light)', background: 'var(--color-accent-bg)' }}>
             + 资产快照
           </div>
         </div>
-        <div className={`${pnlColorClass} text-4xl font-bold tracking-tight drop-shadow-sm`}>
+        <div className="text-4xl font-bold tracking-tight" style={{ color: totalPnl >= 0 ? 'var(--color-profit)' : 'var(--color-loss)' }}>
           {pnlPrefix}${formatCurrency(totalPnl)}
         </div>
-        <div className="grid grid-cols-3 divide-x divide-slate-700/50 pt-3 border-t border-slate-700/30">
-          <div className="flex flex-col items-center gap-1.5">
-            <div className="text-[10px] font-medium text-slate-500 uppercase tracking-wider">胜率</div>
-            <div className="text-base text-white font-semibold font-mono">{winRate}%</div>
+        <div className="grid grid-cols-3 pt-3" style={{ borderTop: '1px solid var(--color-border)' }}>
+          <div className="flex flex-col items-center gap-1.5" style={{ borderRight: '1px solid var(--color-border)' }}>
+            <div className="text-[10px] font-medium uppercase tracking-wider" style={{ color: 'var(--color-text-secondary)' }}>胜率</div>
+            <div className="text-base font-semibold font-mono" style={{ color: 'var(--color-text-primary)' }}>{winRate}%</div>
+          </div>
+          <div className="flex flex-col items-center gap-1.5" style={{ borderRight: '1px solid var(--color-border)' }}>
+            <div className="text-[10px] font-medium uppercase tracking-wider" style={{ color: 'var(--color-text-secondary)' }}>盈亏比</div>
+            <div className="text-base font-semibold font-mono" style={{ color: 'var(--color-text-primary)' }}>{plRatio}</div>
           </div>
           <div className="flex flex-col items-center gap-1.5">
-            <div className="text-[10px] font-medium text-slate-500 uppercase tracking-wider">盈亏比</div>
-            <div className="text-base text-white font-semibold font-mono">{plRatio}</div>
-          </div>
-          <div className="flex flex-col items-center gap-1.5">
-            <div className="text-[10px] font-medium text-slate-500 uppercase tracking-wider">当前敞口</div>
-            <div className="text-base text-white font-semibold font-mono">${formatCurrency(exposure)}</div>
+            <div className="text-[10px] font-medium uppercase tracking-wider" style={{ color: 'var(--color-text-secondary)' }}>当前敞口</div>
+            <div className="text-base font-semibold font-mono" style={{ color: 'var(--color-text-primary)' }}>${formatCurrency(exposure)}</div>
           </div>
         </div>
       </div>
 
       {/* 模块 3：决策执行漏斗卡 */}
-      <div className={`mx-4 p-5 mt-2 ${glassCardClass} relative z-10`}>
-        <div className="text-sm font-medium text-slate-400 mb-5">决策执行漏斗</div>
+      <div className="mx-4 mt-2 glass-card relative z-10">
+        <div className="text-sm font-medium mb-5" style={{ color: 'var(--color-text-secondary)' }}>决策执行漏斗</div>
         <div className="flex justify-between items-center">
           <div className="flex flex-col items-center gap-1.5 flex-1">
-            <div className="text-[11px] text-slate-500">情报</div>
-            <div className="text-lg text-white font-mono font-semibold">{infoCount}</div>
+            <div className="text-[11px]" style={{ color: 'var(--color-text-secondary)' }}>情报</div>
+            <div className="text-lg font-mono font-semibold" style={{ color: 'var(--color-text-primary)' }}>{infoCount}</div>
           </div>
-          <div className="text-slate-600/70 text-sm">→</div>
+          <div className="text-sm" style={{ color: 'var(--color-text-muted)' }}>→</div>
           <div className="flex flex-col items-center gap-1.5 flex-1">
-            <div className="text-[11px] text-slate-500">观点</div>
-            <div className="text-lg text-white font-mono font-semibold">{viewpointCount}</div>
+            <div className="text-[11px]" style={{ color: 'var(--color-text-secondary)' }}>观点</div>
+            <div className="text-lg font-mono font-semibold" style={{ color: 'var(--color-text-primary)' }}>{viewpointCount}</div>
           </div>
-          <div className="text-slate-600/70 text-sm">→</div>
+          <div className="text-sm" style={{ color: 'var(--color-text-muted)' }}>→</div>
           <div className="flex flex-col items-center gap-1.5 flex-1">
-            <div className="text-[11px] text-slate-500">决策</div>
-            <div className="text-lg text-white font-mono font-semibold">{decisionCount}</div>
+            <div className="text-[11px]" style={{ color: 'var(--color-text-secondary)' }}>决策</div>
+            <div className="text-lg font-mono font-semibold" style={{ color: 'var(--color-text-primary)' }}>{decisionCount}</div>
           </div>
-          <div className="text-slate-600/70 text-sm">→</div>
+          <div className="text-sm" style={{ color: 'var(--color-text-muted)' }}>→</div>
           <div className="flex flex-col items-center gap-1.5 flex-1">
-            <div className="text-[11px] text-slate-500">交易</div>
-            <div className={`text-lg font-mono font-semibold ${isWarning ? 'text-rose-400 drop-shadow-[0_0_4px_rgba(251,113,133,0.4)]' : 'text-white'}`}>{tradeCount}</div>
+            <div className="text-[11px]" style={{ color: 'var(--color-text-secondary)' }}>交易</div>
+            <div className={`text-lg font-mono font-semibold`} style={{ color: isWarning ? 'var(--color-loss)' : 'var(--color-text-primary)', textShadow: isWarning ? '0 0 4px var(--color-loss-glow)' : 'none' }}>{tradeCount}</div>
           </div>
         </div>
         {isWarning && (
-          <div className="bg-rose-950/40 border border-rose-900/50 p-3.5 rounded-xl text-rose-300 text-xs mt-5 leading-relaxed backdrop-blur-md">
-            ⚠️ <span className="font-medium">异常：</span>存在 <span className="text-rose-200 font-bold">{strayTradesCount}</span> 笔游离交易未关联决策，执行纪律出现严重偏差。
+          <div className="p-3.5 rounded-xl text-xs mt-5 leading-relaxed backdrop-blur-md" style={{ background: 'var(--color-loss-bg)', border: '1px solid var(--color-loss-glow)', color: 'var(--color-loss)' }}>
+            ⚠️ <span className="font-medium">异常：</span>存在 <span className="font-bold">{strayTradesCount}</span> 笔游离交易未关联决策，执行纪律出现严重偏差。
           </div>
         )}
       </div>
 
       {/* 模块 4：活跃决策 */}
       <div className="mx-4 mt-2 relative z-10">
-        <div className="text-sm font-medium text-slate-400 mb-3 pl-1">活跃决策</div>
+        <div className="text-sm font-medium mb-3 pl-1" style={{ color: 'var(--color-text-secondary)' }}>活跃决策</div>
         {activeDecisions.length > 0 ? (
           <div className="flex flex-col gap-3">
             {activeDecisions.map((d) => (
               <div 
                 key={d.id} 
-                className={`p-4 active:scale-[0.98] transition-transform cursor-pointer ${glassCardClass}`}
+                className="active:scale-[0.98] transition-transform cursor-pointer glass-card"
                 onClick={() => navigate('/decisions')}
               >
                 <div className="flex flex-col gap-2.5">
                   <div className="flex items-center">
-                    <span className="text-[10px] text-indigo-300 bg-indigo-500/15 px-2 py-0.5 rounded border border-indigo-500/20 font-mono tracking-wide">
+                    <span className="text-[10px] px-2 py-0.5 rounded font-mono tracking-wide" style={{ color: 'var(--color-accent-light)', background: 'var(--color-accent-bg)', border: '1px solid rgba(99, 102, 241, 0.2)' }}>
                       [👀 观望中]
                     </span>
                   </div>
-                  <div className="text-sm text-white font-semibold line-clamp-1 mt-0.5 tracking-wide">
+                  <div className="text-sm font-semibold line-clamp-1 mt-0.5 tracking-wide" style={{ color: 'var(--color-text-primary)' }}>
                     {d.title || `${d.symbol} 建仓决策`}
                   </div>
-                  <div className="text-[11px] text-slate-500 mt-1 flex justify-between items-center">
-                    <span>已关联 <span className="text-slate-400 font-medium">{d.trade_ids?.length || 0}</span> 笔交易 · {new Date(d.created_at || Date.now()).toLocaleDateString()}</span>
-                    <span className="text-slate-600">→</span>
+                  <div className="text-[11px] mt-1 flex justify-between items-center" style={{ color: 'var(--color-text-secondary)' }}>
+                    <span>已关联 <span className="font-medium" style={{ color: 'var(--color-text-primary)' }}>{d.trade_ids?.length || 0}</span> 笔交易 · {new Date(d.created_at || Date.now()).toLocaleDateString()}</span>
+                    <span style={{ color: 'var(--color-text-muted)' }}>→</span>
                   </div>
                 </div>
               </div>
             ))}
           </div>
         ) : (
-          <div className={`p-4 ${glassCardClass}`}>
+          <div className="glass-card">
             <div className="flex flex-col gap-2.5">
               <div className="flex items-center">
-                <span className="text-[10px] text-indigo-300 bg-indigo-500/15 px-2 py-0.5 rounded border border-indigo-500/20 font-mono tracking-wide">
+                <span className="text-[10px] px-2 py-0.5 rounded font-mono tracking-wide" style={{ color: 'var(--color-accent-light)', background: 'var(--color-accent-bg)', border: '1px solid rgba(99, 102, 241, 0.2)' }}>
                   [👀 观望中]
                 </span>
               </div>
-              <div className="text-sm text-white font-semibold line-clamp-1 mt-0.5 tracking-wide">
+              <div className="text-sm font-semibold line-clamp-1 mt-0.5 tracking-wide" style={{ color: 'var(--color-text-primary)' }}>
                 NVDA 跌破 $100 建仓
               </div>
-              <div className="text-[11px] text-slate-500 mt-1 flex justify-between items-center">
-                <span>已关联 <span className="text-slate-400 font-medium">2</span> 条情报 · 2天前</span>
-                <span className="text-slate-600">→</span>
+              <div className="text-[11px] mt-1 flex justify-between items-center" style={{ color: 'var(--color-text-secondary)' }}>
+                <span>已关联 <span className="font-medium" style={{ color: 'var(--color-text-primary)' }}>2</span> 条情报 · 2天前</span>
+                <span style={{ color: 'var(--color-text-muted)' }}>→</span>
               </div>
             </div>
           </div>

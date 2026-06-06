@@ -32,21 +32,27 @@ export default async function handler(req) {
       });
     }
 
-    // Initialize Redis (expects UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN in env)
-    if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
-      // Fallback for Vercel KV environment variables
-      if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
-        process.env.UPSTASH_REDIS_REST_URL = process.env.KV_REST_API_URL;
-        process.env.UPSTASH_REDIS_REST_TOKEN = process.env.KV_REST_API_TOKEN;
-      } else {
-        return new Response(JSON.stringify({ error: 'Server KV/Redis not configured' }), {
-          status: 500,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
+    const kvUrl = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
+    const kvToken = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
+
+    if (!kvUrl || !kvToken) {
+      // For debugging, returning the presence of keys, without exposing secrets
+      const hasUpstashUrl = !!process.env.UPSTASH_REDIS_REST_URL;
+      const hasUpstashToken = !!process.env.UPSTASH_REDIS_REST_TOKEN;
+      const hasKvUrl = !!process.env.KV_REST_API_URL;
+      const hasKvToken = !!process.env.KV_REST_API_TOKEN;
+      return new Response(JSON.stringify({ 
+        error: `Server KV/Redis not configured. Env status: UPSTASH(${hasUpstashUrl},${hasUpstashToken}) KV(${hasKvUrl},${hasKvToken})` 
+      }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
 
-    const redis = Redis.fromEnv();
+    const redis = new Redis({
+      url: kvUrl,
+      token: kvToken,
+    });
     
     // Save to Redis (overwrite existing for this user)
     const key = `sync_data:${userId}`;

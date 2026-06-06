@@ -119,9 +119,9 @@ ol {
 
   /* ── Layout: Safe Areas & Component Heights ── */
   --app-shell-max-width: 480px;
-  --safe-area-top: env(safe-area-inset-top, 0px);
-  --safe-area-bottom: max(10px, calc(env(safe-area-inset-bottom, 0px) - 16px));
-  --tabbar-height: 56px;
+  --safe-area-top: max(12px, env(safe-area-inset-top, 0px));
+  --safe-area-bottom: max(8px, calc(env(safe-area-inset-bottom, 0px) - 18px));
+  --tabbar-height: 58px;
   --navbar-height: 48px;
   
   /* ── Antd Mobile Variables ── */
@@ -246,12 +246,12 @@ body {
   padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
 }
 
-@media (min-width: 720px) {
+@media (min-width: 520px) {
   :root,
   [data-theme='dark'],
   [data-theme='light'] {
-    --safe-area-top: 0px;
-    --safe-area-bottom: 10px;
+    --safe-area-top: 18px;
+    --safe-area-bottom: 8px;
   }
 }
 
@@ -1126,6 +1126,13 @@ body {
 
 /* ── Standalone / Installed PWA ── */
 @media (display-mode: standalone) {
+  :root,
+  [data-theme='dark'],
+  [data-theme='light'] {
+    --safe-area-top: max(20px, env(safe-area-inset-top, 0px));
+    --safe-area-bottom: max(8px, calc(env(safe-area-inset-bottom, 0px) - 22px));
+  }
+
   body {
     -webkit-user-select: none;
     user-select: none;

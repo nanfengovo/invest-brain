@@ -24,7 +24,7 @@ const formatDate = () => {
 
 export default function DashboardPage() {
   const navigate = useNavigate();
-  const { holdings, summary, stats, decisions, refreshHoldings, refreshDecisions } = useTradeStore();
+  const { summary, stats, decisions, refreshHoldings, refreshDecisions } = useTradeStore();
   const { isDbPersistent } = useAppStore();
 
   useEffect(() => {
@@ -35,139 +35,174 @@ export default function DashboardPage() {
   const activeDecisions = decisions.filter(d => d.status !== 'CLOSED' && d.status !== 'ENDED');
 
   const totalInvested = Number(summary?.total_buys) || 0;
-  const totalPnl = (Number(summary?.total_sells) || 0) - totalInvested;
+  const totalSells = Number(summary?.total_sells) || 0;
+  const totalPnl = totalSells - totalInvested;
   
-  const infoCount = stats?.info_count ?? 1;
+  const infoCount = stats?.info_count ?? 0;
   const viewpointCount = stats?.viewpoint_count ?? 0;
-  const decisionCount = stats?.decision_count ?? 2;
-  const tradeCount = stats?.trade_count ?? 20;
+  const decisionCount = stats?.decision_count ?? 0;
+  const tradeCount = stats?.trade_count ?? 0;
+  const reviewCount = stats?.review_count ?? 0;
   
-  const winRate = stats?.win_rate ?? 50.0;
-  const plRatio = stats?.pl_ratio ?? '--';
-  const exposure = stats?.exposure ?? 1309.07;
+  const winRate = reviewCount > 0 && typeof stats?.win_rate === 'number' ? `${stats.win_rate}%` : '待复盘';
+  const plRatio = reviewCount > 0 && stats?.pl_ratio ? stats.pl_ratio : '待复盘';
+  const exposure = Math.max(0, totalInvested - totalSells);
 
-  const isWarning = tradeCount > decisionCount;
   const strayTradesCount = Math.max(0, tradeCount - decisionCount);
-  
-  const pnlPrefix = totalPnl >= 0 ? '+' : '-';
-  const pnlColor = totalPnl >= 0 ? 'var(--adm-color-success)' : 'var(--adm-color-danger)';
+  const isWarning = strayTradesCount > 0;
+  const hasDisciplineSample = tradeCount > 0 || decisionCount > 0;
+  const closedTradeCount = Math.max(0, tradeCount - strayTradesCount);
+  const disciplineScore = hasDisciplineSample
+    ? Math.max(0, Math.round((closedTradeCount / Math.max(tradeCount, 1)) * 100))
+    : null;
+  const disciplineDisplay = disciplineScore === null ? '--' : disciplineScore;
+  const disciplineTone = disciplineScore === null ? 'is-empty' : disciplineScore >= 80 ? 'is-good' : disciplineScore >= 60 ? 'is-watch' : 'is-risk';
+  const closureCopy = !hasDisciplineSample
+    ? '暂无交易样本，建立决策和交易后自动计算闭环纪律。'
+    : isWarning
+      ? `有 ${strayTradesCount} 笔交易未关联决策，优先补齐执行闭环。`
+      : '当前没有未关联交易，执行闭环保持完整。';
+  const funnelBadge = isWarning ? '待补齐' : tradeCount > 0 ? '已闭环' : '未开始';
+  const activeDecisionCount = activeDecisions.length;
+  const actionItems = [
+    {
+      label: '补齐闭环',
+      value: strayTradesCount > 0 ? `${strayTradesCount} 笔` : '完成',
+      hint: strayTradesCount > 0 ? '交易未关联决策' : '交易链路正常',
+      route: '/trades',
+      tone: strayTradesCount > 0 ? 'risk' : 'ok',
+    },
+    {
+      label: '复盘队列',
+      value: `${reviewCount} 条`,
+      hint: reviewCount > 0 ? '已有复盘记录' : '暂无复盘记录',
+      route: '/trades',
+      tone: reviewCount > 0 ? 'ok' : 'neutral',
+    },
+    {
+      label: '活跃决策',
+      value: `${activeDecisionCount} 条`,
+      hint: activeDecisionCount > 0 ? '持续跟踪中' : '暂无跟踪项',
+      route: '/decisions',
+      tone: activeDecisionCount > 0 ? 'accent' : 'neutral',
+    },
+    {
+      label: '情报沉淀',
+      value: `${infoCount} 条`,
+      hint: infoCount > 0 ? '可继续提炼观点' : '暂无情报记录',
+      route: '/information',
+      tone: infoCount > 0 ? 'accent' : 'neutral',
+    },
+  ];
 
-  // Premium card base style ensuring contrast against #0a0e17 background
-  const cardStyle = {
-    margin: '0 16px',
-    background: 'rgba(30, 41, 59, 0.75)', // slightly brighter blue-gray for clear boundaries
-    backdropFilter: 'blur(24px)',
-    WebkitBackdropFilter: 'blur(24px)',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
-    borderRadius: '16px',
-    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
-  };
+  const pnlPrefix = totalPnl > 0 ? '+' : totalPnl < 0 ? '-' : '';
 
   return (
-    <div className="w-full h-full flex flex-col gap-3 relative pb-16 safe-pt overflow-x-hidden" style={{ backgroundColor: 'var(--color-bg-primary)' }}>
+    <div className="dashboard-shell">
       
       {/* Header */}
-      <div className="flex justify-between items-center px-5 pb-2 relative z-10">
-        <div className="flex flex-col">
-          <div className="text-2xl font-bold tracking-tight" style={{ color: 'var(--color-text-primary)' }}>交易分析 Agent</div>
-          <div className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>{formatDate()}</div>
+      <div className="dashboard-hero-header flex justify-between items-start relative z-10">
+        <div className="dashboard-hero-copy flex flex-col">
+          <div className="dashboard-hero-title text-2xl font-bold tracking-tight">交易分析 Agent</div>
+          <div className="dashboard-hero-date text-xs mt-1">{formatDate()}</div>
         </div>
-        <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full" style={{ background: 'var(--color-bg-elevated)', border: '1px solid var(--color-border)' }}>
-          <div className={`w-1.5 h-1.5 rounded-full animate-pulse`} style={{ backgroundColor: isDbPersistent ? 'var(--color-profit)' : 'var(--color-loss)', boxShadow: `0 0 8px ${isDbPersistent ? 'var(--color-profit)' : 'var(--color-loss)'}` }}></div>
-          <div className="text-[10px] font-medium uppercase tracking-wider" style={{ color: 'var(--color-text-secondary)' }}>Local</div>
+        <div className={`dashboard-local-badge flex items-center gap-1.5 px-2.5 py-1.5 rounded-full ${isDbPersistent ? 'is-ok' : 'is-risk'}`}>
+          <div className="dashboard-local-badge__dot w-1.5 h-1.5 rounded-full animate-pulse" />
+          <div className="text-[10px] font-medium uppercase tracking-wider">Local</div>
         </div>
       </div>
 
       {/* Module 1: Diagnostics */}
-      <Card style={cardStyle} bodyStyle={{ padding: '16px' }}>
+      <Card className="dashboard-home-card" bodyStyle={{ padding: '16px' }}>
         <div className="flex gap-4 items-center">
-          <div className="p-3 rounded-xl text-3xl font-bold flex flex-col items-center justify-center w-16 h-16 relative" style={{ background: 'var(--color-bg-primary)', color: 'var(--adm-color-success)', border: '1px solid rgba(0, 212, 170, 0.2)' }}>
-            28
-            <span className="text-[10px] font-normal mt-1 text-neutral-400">纪律分</span>
+          <div className={`dashboard-discipline-meter ${disciplineTone} p-3 rounded-xl text-3xl font-bold flex flex-col items-center justify-center w-16 h-16 relative`}>
+            {disciplineDisplay}
+            <span className="text-[10px] font-normal mt-1">纪律分</span>
           </div>
           <div className="flex flex-col flex-1">
-            <div className="text-base font-semibold" style={{ color: 'var(--color-text-primary)' }}>闭环缺口</div>
-            <div className="text-xs mt-1.5 leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
-              有 <span className="text-white font-medium">{strayTradesCount}</span> 笔交易未关联决策，优先补齐执行闭环。
+            <div className="dashboard-home-title text-base font-semibold">闭环缺口</div>
+            <div className="dashboard-home-copy text-xs mt-1.5 leading-relaxed">
+              {closureCopy}
             </div>
           </div>
         </div>
       </Card>
 
       {/* Module 2: Performance Grid */}
-      <Card style={cardStyle} bodyStyle={{ padding: '16px' }}>
+      <Card className="dashboard-home-card" bodyStyle={{ padding: '16px' }}>
         <div className="flex justify-between items-start mb-4">
           <div className="flex flex-col">
-            <span className="text-[10px] text-neutral-400 mb-0.5">实战绩效</span>
-            <span className="text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>账户表现</span>
+            <span className="dashboard-home-eyebrow text-[10px] mb-0.5">实战绩效</span>
+            <span className="dashboard-home-title text-sm font-medium">账户表现</span>
           </div>
-          <div className="text-xs font-medium px-2.5 py-1.5 rounded-full cursor-pointer" style={{ color: 'var(--color-accent-light)', background: 'var(--color-accent-bg)' }}>
+          <div className="dashboard-soft-pill text-xs font-medium px-2.5 py-1.5 rounded-full cursor-pointer">
             资产快照
           </div>
         </div>
         
-        <div className="text-4xl font-bold tracking-tight mb-6" style={{ color: pnlColor }}>
+        <div className={`dashboard-home-pnl text-4xl font-bold tracking-tight mb-6 ${totalPnl < 0 ? 'is-loss' : ''}`}>
           {pnlPrefix} <span className="text-2xl">$</span>{formatCurrency(Math.abs(totalPnl))}
         </div>
         
-        <div className="flex justify-between items-center bg-black/20 rounded-xl p-3 border border-white/5">
-          <div className="flex flex-col gap-1 w-1/3">
-            <span className="text-[10px] text-neutral-400">胜率</span>
-            <span className="text-sm font-bold text-white">{winRate}%</span>
+        <div className="dashboard-home-metrics">
+          <div className="dashboard-metric-tile">
+            <span className="dashboard-home-eyebrow text-[10px]">胜率</span>
+            <span className="dashboard-metric-value text-sm font-bold">{winRate}</span>
+            <span className="dashboard-metric-hint">复盘样本</span>
           </div>
-          <div className="w-[1px] h-8 bg-white/10 mx-2"></div>
-          <div className="flex flex-col gap-1 w-1/3 pl-2">
-            <span className="text-[10px] text-neutral-400">盈亏比</span>
-            <span className="text-sm font-bold text-white">{plRatio}</span>
+          <div className="dashboard-metric-tile">
+            <span className="dashboard-home-eyebrow text-[10px]">盈亏比</span>
+            <span className="dashboard-metric-value text-sm font-bold">{plRatio}</span>
+            <span className="dashboard-metric-hint">盈亏结构</span>
           </div>
-          <div className="w-[1px] h-8 bg-white/10 mx-2"></div>
-          <div className="flex flex-col gap-1 w-1/3 pl-2">
-            <span className="text-[10px] text-neutral-400">当前敞口</span>
-            <span className="text-sm font-bold text-white">${formatCurrency(exposure)}</span>
+          <div className="dashboard-metric-tile">
+            <span className="dashboard-home-eyebrow text-[10px]">当前敞口</span>
+            <span className="dashboard-metric-value text-sm font-bold">${formatCurrency(exposure)}</span>
+            <span className="dashboard-metric-hint">买入 - 卖出</span>
           </div>
         </div>
       </Card>
 
       {/* Module 3: Execution Funnel */}
-      <Card style={cardStyle} bodyStyle={{ padding: '16px' }}>
+      <Card className="dashboard-home-card" bodyStyle={{ padding: '16px' }}>
         <div className="flex justify-between items-start mb-6">
           <div className="flex flex-col">
-            <span className="text-[10px] text-neutral-400 mb-0.5">执行闭环</span>
-            <span className="text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>决策执行漏斗</span>
+            <span className="dashboard-home-eyebrow text-[10px] mb-0.5">执行闭环</span>
+            <span className="dashboard-home-title text-sm font-medium">决策执行漏斗</span>
           </div>
-          <div className="text-[10px] font-medium px-2 py-1 rounded-full cursor-pointer" style={{ color: 'var(--adm-color-danger)', border: '1px solid var(--adm-color-danger)' }}>
-            待复盘
+          <div className={`dashboard-risk-badge ${isWarning ? 'is-risk' : 'is-calm'} text-[10px] font-medium px-2 py-1 rounded-full cursor-pointer`}>
+            {funnelBadge}
           </div>
         </div>
 
         <div className="flex justify-between items-center mb-6 px-1">
           <div className="flex flex-col items-center gap-2 flex-1">
-            <span className="text-[11px] text-neutral-400">情报</span>
-            <div className="w-12 h-12 rounded-lg bg-black/30 flex items-center justify-center text-lg font-bold text-white border border-white/5">{infoCount}</div>
+            <span className="dashboard-home-eyebrow text-[11px]">情报</span>
+            <div className="dashboard-funnel-box w-12 h-12 rounded-lg flex items-center justify-center text-lg font-bold">{infoCount}</div>
           </div>
-          <span className="text-neutral-600 text-xs mt-6">→</span>
+          <span className="dashboard-funnel-arrow text-xs mt-6">→</span>
           <div className="flex flex-col items-center gap-2 flex-1">
-            <span className="text-[11px] text-neutral-400">观点</span>
-            <div className="w-12 h-12 rounded-lg bg-black/30 flex items-center justify-center text-lg font-bold text-white border border-white/5">{viewpointCount}</div>
+            <span className="dashboard-home-eyebrow text-[11px]">观点</span>
+            <div className="dashboard-funnel-box w-12 h-12 rounded-lg flex items-center justify-center text-lg font-bold">{viewpointCount}</div>
           </div>
-          <span className="text-neutral-600 text-xs mt-6">→</span>
+          <span className="dashboard-funnel-arrow text-xs mt-6">→</span>
           <div className="flex flex-col items-center gap-2 flex-1">
-            <span className="text-[11px] text-neutral-400">决策</span>
-            <div className="w-12 h-12 rounded-lg bg-black/30 flex items-center justify-center text-lg font-bold text-white border border-white/5">{decisionCount}</div>
+            <span className="dashboard-home-eyebrow text-[11px]">决策</span>
+            <div className="dashboard-funnel-box w-12 h-12 rounded-lg flex items-center justify-center text-lg font-bold">{decisionCount}</div>
           </div>
-          <span className="text-neutral-600 text-xs mt-6">→</span>
+          <span className="dashboard-funnel-arrow text-xs mt-6">→</span>
           <div className="flex flex-col items-center gap-2 flex-1">
-            <span className="text-[11px] text-neutral-400">交易</span>
-            <div className={`w-12 h-12 rounded-lg flex items-center justify-center text-lg font-bold ${isWarning ? 'bg-rose-500/10 text-rose-500 border border-rose-500/30' : 'bg-black/30 text-white border border-white/5'}`}>
+            <span className="dashboard-home-eyebrow text-[11px]">交易</span>
+            <div className={`dashboard-funnel-box w-12 h-12 rounded-lg flex items-center justify-center text-lg font-bold ${isWarning ? 'is-warning' : ''}`}>
               {tradeCount}
             </div>
           </div>
         </div>
 
         {isWarning && (
-          <div className="p-3 rounded-lg flex flex-col gap-1.5" style={{ background: 'rgba(244, 63, 94, 0.08)', border: '1px solid rgba(244, 63, 94, 0.2)' }}>
-            <span className="text-xs font-semibold text-rose-500">异常交易提醒</span>
-            <span className="text-[11px] text-rose-400/90 leading-relaxed">
+          <div className="dashboard-home-warning p-3 rounded-lg flex flex-col gap-1.5">
+            <span className="text-xs font-semibold">异常交易提醒</span>
+            <span className="text-[11px] leading-relaxed">
               存在 {strayTradesCount} 笔游离交易未关联决策，建议先完成复盘再继续加仓。
             </span>
           </div>
@@ -175,53 +210,62 @@ export default function DashboardPage() {
       </Card>
 
       {/* Module 4: Active Decisions */}
-      <div className="mx-4 mt-2 mb-4">
-        <div className="text-xs font-medium mb-3 pl-1" style={{ color: 'var(--color-text-secondary)' }}>活跃决策追踪</div>
+      <div className="dashboard-active-section mt-2 mb-4">
+        <div className="dashboard-section-label text-xs font-medium mb-3 pl-1">活跃决策追踪</div>
         {activeDecisions.length > 0 ? (
           <div className="flex flex-col gap-3">
             {activeDecisions.map((d) => (
               <Card 
                 key={d.id} 
-                style={{ ...cardStyle, margin: 0, cursor: 'pointer' }} 
+                className="dashboard-home-card dashboard-home-card--flush dashboard-decision-card"
                 bodyStyle={{ padding: '12px 16px' }}
                 onClick={() => navigate('/decisions')}
-                className="active:scale-[0.98] transition-transform"
               >
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center">
-                    <span className="text-[10px] px-1.5 py-0.5 rounded tracking-wide" style={{ color: 'var(--color-accent-light)', background: 'var(--color-accent-bg)' }}>
+                    <span className="dashboard-decision-chip text-[10px] px-1.5 py-0.5 rounded tracking-wide">
                       [👀 观望中]
                     </span>
                   </div>
-                  <div className="text-sm font-semibold text-white tracking-wide truncate">
+                  <div className="dashboard-decision-title text-sm font-semibold tracking-wide truncate">
                     {d.title || `${d.symbol} 建仓决策`}
                   </div>
-                  <div className="text-[10px] mt-1 text-neutral-400 flex justify-between items-center">
-                    <span>关联交易: <span className="text-white">{d.trade_ids?.length || 0}</span> · {new Date(d.created_at || Date.now()).toLocaleDateString()}</span>
-                    <span className="text-neutral-600">→</span>
+                  <div className="dashboard-decision-meta text-[10px] mt-1 flex justify-between items-center">
+                    <span>关联交易: <span className="dashboard-inline-strong">{d.trade_ids?.length || 0}</span> · {new Date(d.created_at || Date.now()).toLocaleDateString()}</span>
+                    <span className="dashboard-decision-arrow">→</span>
                   </div>
                 </div>
               </Card>
             ))}
           </div>
         ) : (
-          <Card style={{ ...cardStyle, margin: 0 }} bodyStyle={{ padding: '12px 16px' }}>
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center">
-                <span className="text-[10px] px-1.5 py-0.5 rounded tracking-wide" style={{ color: 'var(--color-accent-light)', background: 'var(--color-accent-bg)' }}>
-                  [👀 观望中]
-                </span>
+          <Card className="dashboard-home-card dashboard-home-card--flush" bodyStyle={{ padding: '12px 16px' }}>
+            <div className="dashboard-empty-decision">
+              <div>
+                <div className="dashboard-decision-title text-sm font-semibold">暂无活跃决策</div>
+                <div className="dashboard-decision-meta text-[10px] mt-1">新建决策后会在这里持续跟踪执行状态。</div>
               </div>
-              <div className="text-sm font-semibold text-white tracking-wide truncate">
-                NVDA 跌破 $100 建仓
-              </div>
-              <div className="text-[10px] mt-1 text-neutral-400 flex justify-between items-center">
-                <span>关联情报: <span className="text-white">2</span> · 2天前</span>
-                <span className="text-neutral-600">→</span>
-              </div>
+              <button className="dashboard-inline-action" onClick={() => navigate('/decisions')}>新建</button>
             </div>
           </Card>
         )}
+      </div>
+
+      <div className="dashboard-action-section">
+        <div className="dashboard-section-label text-xs font-medium mb-3 pl-1">今日行动</div>
+        <div className="dashboard-action-grid">
+          {actionItems.map((item) => (
+            <button
+              key={item.label}
+              className={`dashboard-action-tile dashboard-action-tile--${item.tone}`}
+              onClick={() => navigate(item.route)}
+            >
+              <span className="dashboard-action-tile__label">{item.label}</span>
+              <span className="dashboard-action-tile__value">{item.value}</span>
+              <span className="dashboard-action-tile__hint">{item.hint}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
     </div>

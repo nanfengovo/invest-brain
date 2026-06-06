@@ -14,7 +14,8 @@
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   border-top: 1px solid var(--color-border);
-  padding-bottom: env(safe-area-inset-bottom, 16px);
+  padding-top: 6px;
+  padding-bottom: var(--safe-area-bottom);
 }
 
 /* ── antd-mobile TabBar overrides ── */
@@ -28,7 +29,7 @@
 .tabbar .adm-tab-bar-item {
   color: var(--color-text-muted);
   transition: color var(--transition-fast);
-  padding: 6px 0 4px;
+  padding: 4px 0 3px;
 }
 
 .tabbar .adm-tab-bar-item-active {
@@ -61,4 +62,12 @@
 /* ── Active indicator glow ── */
 .tabbar .adm-tab-bar-item-active .adm-tab-bar-item-icon {
   filter: drop-shadow(0 0 6px var(--color-accent-glow));
+}
+
+@media (min-width: 520px) {
+  .tabbar {
+    bottom: 16px;
+    overflow: hidden;
+    border-radius: 0 0 20px 20px;
+  }
 }

@@ -33,10 +33,20 @@ export async function fetchWithTimeout(url, options = {}, timeoutMs = 4_000) {
 export async function fetchYahooChart(symbol, {
   interval = '1d',
   range = '1mo',
+  includePrePost = false,
   timeoutMs = 4_500,
 } = {}) {
   const yahooSymbol = mapYahooSymbol(symbol);
-  const apiUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=${encodeURIComponent(interval)}&range=${encodeURIComponent(range)}`;
+  const params = new URLSearchParams({
+    interval,
+    range,
+  });
+
+  if (includePrePost) {
+    params.set('includePrePost', 'true');
+  }
+
+  const apiUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?${params.toString()}`;
   const response = await fetchWithTimeout(apiUrl, { headers: YAHOO_HEADERS }, timeoutMs);
 
   if (!response.ok) {

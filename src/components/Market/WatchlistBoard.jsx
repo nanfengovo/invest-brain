@@ -29,6 +29,17 @@ const getTypeLabel = (item) => {
   return item.typeDisp || item.quoteType || '标的';
 };
 
+const formatChange = (value) => {
+  if (value === null || value === undefined) return '--';
+  const sign = value > 0 ? '+' : '';
+  return `${sign}${value.toFixed(2)}%`;
+};
+
+const getDirectionIcon = (value) => {
+  if (value === null || value === undefined || value === 0) return '';
+  return value > 0 ? '▲' : '▼';
+};
+
 export default function WatchlistBoard({ items, colorConvention, onRemove }) {
   const navigate = useNavigate();
 
@@ -48,14 +59,13 @@ export default function WatchlistBoard({ items, colorConvention, onRemove }) {
         const isUpRaw = (item.pctChange || 0) > 0;
         const isNeutral = item.pctChange === null || item.pctChange === undefined || item.pctChange === 0;
         const toneClass = getToneClass(item.pctChange, colorConvention);
-        const sign = isUpRaw ? '+' : '';
-        const pctFormatted = item.pctChange !== null && item.pctChange !== undefined
-          ? `${sign}${item.pctChange.toFixed(2)}%`
-          : '--';
+        const extendedToneClass = getToneClass(item.extendedMarket?.pctChange, colorConvention);
+        const pctFormatted = formatChange(item.pctChange);
+        const flashClass = item.movement ? `market-flash--${item.movement}` : '';
 
         return (
           <div
-            className="market-watchlist-row"
+            className={`market-watchlist-row ${flashClass}`}
             key={item.symbol}
             role="button"
             tabIndex={0}
@@ -84,6 +94,13 @@ export default function WatchlistBoard({ items, colorConvention, onRemove }) {
                 <span>{isUpRaw ? '▲' : (isNeutral ? '' : '▼')}</span>
                 <span>{pctFormatted}</span>
               </div>
+              {item.extendedMarket && (
+                <div className={`market-watchlist-row__extended ${extendedToneClass}`}>
+                  <span>{item.extendedMarket.label}</span>
+                  <span>{formatNumber(item.extendedMarket.price)}</span>
+                  <span>{getDirectionIcon(item.extendedMarket.pctChange)} {formatChange(item.extendedMarket.pctChange)}</span>
+                </div>
+              )}
             </div>
 
             <button

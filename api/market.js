@@ -3,6 +3,7 @@ import { fetchYahooChart } from './_lib/yahoo.js';
 const CACHE_TTL_MS = 5_000;
 const STALE_TTL_MS = 30_000;
 const YAHOO_TIMEOUT_MS = 2_600;
+const YAHOO_EXTENDED_TIMEOUT_MS = 4_500;
 
 const marketCache = globalThis.__INVEST_BRAIN_MARKET_CACHE__ || new Map();
 globalThis.__INVEST_BRAIN_MARKET_CACHE__ = marketCache;
@@ -13,7 +14,70 @@ const getCachedQuote = (symbol, now, maxAge = CACHE_TTL_MS) => {
   return cached.data;
 };
 
-const fetchQuote = async (originalSymbol) => {
+const getChange = (price, previousClose) => {
+  if (!Number.isFinite(price) || !Number.isFinite(previousClose) || previousClose === 0) {
+    return { absChange: null, pctChange: null };
+  }
+
+  const absChange = price - previousClose;
+  return {
+    absChange,
+    pctChange: (absChange / previousClose) * 100,
+  };
+};
+
+const findExtendedQuote = (result, previousClose) => {
+  const meta = result?.meta || {};
+  const timestamps = result?.timestamp || [];
+  const quote = result?.indicators?.quote?.[0] || {};
+  const periods = meta.currentTradingPeriod || {};
+  const rows = [];
+
+  timestamps.forEach((timestamp, index) => {
+    const close = Number(quote.close?.[index]);
+    if (!Number.isFinite(close) || close <= 0) return;
+
+    const isPre = timestamp >= periods.pre?.start && timestamp <= periods.pre?.end;
+    const isPost = timestamp >= periods.post?.start && timestamp <= periods.post?.end;
+    if (!isPre && !isPost) return;
+
+    rows.push({
+      timestamp,
+      session: isPre ? 'pre' : 'post',
+      price: close,
+    });
+  });
+
+  const latest = rows.at(-1);
+  if (!latest) return null;
+
+  const { absChange, pctChange } = getChange(latest.price, previousClose);
+  return {
+    session: latest.session,
+    label: latest.session === 'pre' ? '盘前' : '盘后',
+    price: latest.price,
+    absChange,
+    pctChange,
+    time: latest.timestamp,
+  };
+};
+
+const fetchExtendedQuote = async (originalSymbol, previousClose) => {
+  try {
+    const { result } = await fetchYahooChart(originalSymbol, {
+      interval: '1m',
+      range: '1d',
+      includePrePost: true,
+      timeoutMs: YAHOO_EXTENDED_TIMEOUT_MS,
+    });
+
+    return findExtendedQuote(result, previousClose);
+  } catch {
+    return null;
+  }
+};
+
+const fetchQuote = async (originalSymbol, { includeExtended = false } = {}) => {
   const { result, yahooSymbol } = await fetchYahooChart(originalSymbol, {
     interval: '1d',
     range: '1d',
@@ -23,18 +87,31 @@ const fetchQuote = async (originalSymbol) => {
 
   if (!meta) return null;
 
-  const price = meta.regularMarketPrice ?? 0;
-  const prevClose = meta.chartPreviousClose ?? meta.regularMarketPreviousClose ?? 0;
-  const absChange = price - prevClose;
-  const pctChange = prevClose !== 0 ? (absChange / prevClose) * 100 : 0;
+  const price = Number(meta.regularMarketPrice);
+  const prevClose = Number(meta.chartPreviousClose ?? meta.previousClose ?? meta.regularMarketPreviousClose);
+  const regularPrice = Number.isFinite(price) ? price : null;
+  const previousClose = Number.isFinite(prevClose) ? prevClose : null;
+  const { absChange, pctChange } = getChange(regularPrice, previousClose);
+  const extendedMarket = includeExtended && meta.hasPrePostMarketData
+    ? await fetchExtendedQuote(originalSymbol, previousClose)
+    : null;
+  const displayPrice = extendedMarket?.price ?? regularPrice;
+  const displayAbsChange = extendedMarket?.absChange ?? absChange;
+  const displayPctChange = extendedMarket?.pctChange ?? pctChange;
 
   return {
     symbol: originalSymbol,
     name: meta.shortName || meta.longName || yahooSymbol,
-    price,
+    price: regularPrice,
+    regularMarketPrice: regularPrice,
+    displayPrice,
     pctChange,
     absChange,
-    prevClose,
+    displayPctChange,
+    displayAbsChange,
+    prevClose: previousClose,
+    extendedMarket,
+    hasPrePostMarketData: Boolean(meta.hasPrePostMarketData),
     regularMarketDayHigh: meta.regularMarketDayHigh ?? null,
     regularMarketDayLow: meta.regularMarketDayLow ?? null,
     regularMarketOpen: meta.regularMarketOpen ?? null,
@@ -63,6 +140,9 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Missing symbols parameter' });
     }
 
+    const includeExtended = ['1', 'true', 'yes'].includes(
+      String(searchParams.get('extended') || '').toLowerCase()
+    );
     const symbolsArray = Array.from(
       new Set(
         symbolsParam
@@ -76,25 +156,26 @@ export default async function handler(req, res) {
     const pendingSymbols = [];
 
     for (const symbol of symbolsArray) {
-      const fresh = getCachedQuote(symbol, now);
+      const cacheKey = includeExtended ? `${symbol}::extended` : `${symbol}::regular`;
+      const fresh = getCachedQuote(cacheKey, now);
       if (fresh) {
         results[symbol] = fresh;
         continue;
       }
 
-      const stale = getCachedQuote(symbol, now, STALE_TTL_MS);
+      const stale = getCachedQuote(cacheKey, now, STALE_TTL_MS);
       if (stale) {
         results[symbol] = stale;
       }
-      pendingSymbols.push(symbol);
+      pendingSymbols.push({ symbol, cacheKey });
     }
 
-    const promises = pendingSymbols.map(async (originalSymbol) => {
+    const promises = pendingSymbols.map(async ({ symbol: originalSymbol, cacheKey }) => {
       try {
-        const quote = await fetchQuote(originalSymbol);
+        const quote = await fetchQuote(originalSymbol, { includeExtended });
         if (!quote) return;
 
-        marketCache.set(originalSymbol, {
+        marketCache.set(cacheKey, {
           fetchedAt: Date.now(),
           data: quote,
         });

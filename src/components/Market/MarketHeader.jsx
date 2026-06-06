@@ -184,7 +184,7 @@ export default function MarketHeader({ watchlist = [], onAddWatchItem }) {
                   交易中
                 </span>
               </div>
-              <p>全球主要指数实时监控</p>
+              <p>{watchlist.length > 0 ? '关注股票实时监控' : '全球主要指数实时监控'}</p>
             </div>
           </div>
           

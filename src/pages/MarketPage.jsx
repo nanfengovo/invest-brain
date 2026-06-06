@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Toast } from 'antd-mobile';
 import { useAppStore } from '../stores/useAppStore';
 import MarketHeader from '../components/Market/MarketHeader';
@@ -11,6 +11,7 @@ const SHARE_BASE_URL = 'https://invest-brain.vercel.app';
 const MARKET_DATA_CACHE_KEY = 'ib_market_page_cache';
 const MARKET_CLIENT_CACHE_TTL_MS = 30_000;
 const MARKET_POLL_INTERVAL_MS = 8_000;
+const MARKET_FLASH_MS = 1_100;
 
 const INDICES = [
   { symbol: 'gb_ixic', name: '纳斯达克' },
@@ -72,6 +73,26 @@ const copyText = async (text) => {
 
 const getUniqueSymbols = (symbols) => Array.from(new Set(symbols.filter(Boolean)));
 
+const getMovementPrice = (quote) => {
+  if (!quote) return null;
+  return parseMarketNumber(quote.extendedMarket?.price ?? quote.displayPrice ?? quote.price);
+};
+
+const normalizeExtendedMarket = (extendedMarket) => {
+  if (!extendedMarket?.price) return null;
+
+  const price = parseMarketNumber(extendedMarket.price);
+  if (price === null) return null;
+
+  return {
+    session: extendedMarket.session || '',
+    label: extendedMarket.label || '',
+    price,
+    pctChange: parseMarketNumber(extendedMarket.pctChange),
+    absChange: parseMarketNumber(extendedMarket.absChange),
+  };
+};
+
 const readCachedMarketData = () => {
   if (typeof window === 'undefined') return {};
 
@@ -110,24 +131,70 @@ export default function MarketPage() {
   } = useAppStore();
   const [marketData, setMarketData] = useState(() => readCachedMarketData());
   const [loading, setLoading] = useState(() => Object.keys(readCachedMarketData()).length === 0);
+  const [movementMap, setMovementMap] = useState({});
+  const priceMemoryRef = useRef({});
+  const flashTimersRef = useRef({});
+
+  const triggerMovement = (symbol, direction) => {
+    if (!symbol || !direction) return;
+
+    clearTimeout(flashTimersRef.current[symbol]);
+    setMovementMap((prev) => ({
+      ...prev,
+      [symbol]: direction,
+    }));
+
+    flashTimersRef.current[symbol] = setTimeout(() => {
+      setMovementMap((prev) => {
+        if (prev[symbol] !== direction) return prev;
+        const next = { ...prev };
+        delete next[symbol];
+        return next;
+      });
+      delete flashTimersRef.current[symbol];
+    }, MARKET_FLASH_MS);
+  };
+
+  useEffect(() => {
+    return () => {
+      Object.values(flashTimersRef.current).forEach(clearTimeout);
+    };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
     let activeController = null;
+    const hasWatchlist = marketWatchlist.length > 0;
+    const primaryConfigs = hasWatchlist ? marketWatchlist : INDICES;
+    const primarySymbols = getUniqueSymbols(primaryConfigs.map(item => item.symbol));
 
-    const criticalSymbols = getUniqueSymbols([
-      ...INDICES.map(i => i.symbol),
-      ...FUTURES.map(f => f.symbol),
-    ]);
+    const futureSymbols = getUniqueSymbols(FUTURES.map(f => f.symbol));
     const secondarySymbols = getUniqueSymbols([
       ...SECTORS.map(s => s.symbol),
       ...marketWatchlist.map(item => item.symbol),
-    ]).filter((symbol) => !criticalSymbols.includes(symbol));
+    ]).filter((symbol) => !primarySymbols.includes(symbol) && !futureSymbols.includes(symbol));
 
     const mergeMarketData = (nextData) => {
       if (!mounted || !nextData || Object.keys(nextData).length === 0) return;
 
       setMarketData((prevData) => {
+        Object.entries(nextData).forEach(([symbol, quote]) => {
+          const nextPrice = getMovementPrice(quote);
+          const previousPrice = priceMemoryRef.current[symbol] ?? getMovementPrice(prevData[symbol]);
+
+          if (
+            Number.isFinite(nextPrice)
+            && Number.isFinite(previousPrice)
+            && nextPrice !== previousPrice
+          ) {
+            triggerMovement(symbol, nextPrice > previousPrice ? 'up' : 'down');
+          }
+
+          if (Number.isFinite(nextPrice)) {
+            priceMemoryRef.current[symbol] = nextPrice;
+          }
+        });
+
         const merged = {
           ...prevData,
           ...nextData,
@@ -137,11 +204,14 @@ export default function MarketPage() {
       });
     };
 
-    const fetchSymbolGroup = async (symbols, signal) => {
+    const fetchSymbolGroup = async (symbols, signal, { extended = false } = {}) => {
       if (!symbols.length) return {};
 
       const symbolParam = symbols.join(',');
-      const res = await fetch(`/api/market?symbols=${encodeURIComponent(symbolParam)}`, { signal });
+      const params = new URLSearchParams({ symbols: symbolParam });
+      if (extended) params.set('extended', '1');
+
+      const res = await fetch(`/api/market?${params.toString()}`, { signal });
       if (!res.ok) throw new Error('Network response was not ok');
 
       const json = await res.json();
@@ -155,14 +225,25 @@ export default function MarketPage() {
       activeController = new AbortController();
       const { signal } = activeController;
 
-      const criticalRequest = fetchSymbolGroup(criticalSymbols, signal);
+      const primaryRequest = fetchSymbolGroup(primarySymbols, signal, { extended: hasWatchlist });
+      const futuresRequest = fetchSymbolGroup(futureSymbols, signal);
       const secondaryRequest = fetchSymbolGroup(secondarySymbols, signal);
 
       try {
-        mergeMarketData(await criticalRequest);
+        mergeMarketData(await primaryRequest);
       } catch (err) {
         if (err.name !== 'AbortError') {
-          console.error('Failed to fetch critical market data:', err);
+          console.error('Failed to fetch primary market data:', err);
+        }
+      } finally {
+        if (mounted && isInitial) setLoading(false);
+      }
+
+      try {
+        mergeMarketData(await futuresRequest);
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          console.error('Failed to fetch futures market data:', err);
         }
       } finally {
         if (mounted && isInitial) setLoading(false);
@@ -194,26 +275,36 @@ export default function MarketPage() {
   const mapData = (configList) => {
     return configList.map(config => {
       const data = marketData[config.symbol] || {};
+      const extendedMarket = normalizeExtendedMarket(data.extendedMarket);
       return {
         ...config,
+        name: config.name || data.name,
         price: parseMarketNumber(data.price),
         pctChange: parseMarketNumber(data.pctChange),
         absChange: parseMarketNumber(data.absChange),
+        prevClose: parseMarketNumber(data.prevClose),
+        extendedMarket,
+        movement: movementMap[config.symbol] || '',
       };
     });
   };
 
-  const indexItems = mapData(INDICES);
+  const hasWatchlist = marketWatchlist.length > 0;
+  const primaryItems = mapData(hasWatchlist ? marketWatchlist : INDICES);
   const futureItems = mapData(FUTURES);
   const sectorItems = mapData(SECTORS);
   const watchlistItems = marketWatchlist.map((item) => {
     const data = marketData[item.symbol] || {};
+    const extendedMarket = normalizeExtendedMarket(data.extendedMarket);
     return {
       ...item,
       name: data.name || item.name,
       price: parseMarketNumber(data.price),
       pctChange: parseMarketNumber(data.pctChange),
       absChange: parseMarketNumber(data.absChange),
+      prevClose: parseMarketNumber(data.prevClose),
+      extendedMarket,
+      movement: movementMap[item.symbol] || '',
     };
   });
 
@@ -259,11 +350,12 @@ export default function MarketPage() {
       />
       
       <div className="market-page__content">
-        <section aria-label="全球主要指数">
+        <section aria-label={hasWatchlist ? '我的关注行情' : '全球主要指数'}>
           <IndexCardScroller
-            items={indexItems}
+            items={primaryItems}
             colorConvention={colorConvention}
             loading={loading}
+            variant={hasWatchlist ? 'watchlist' : 'indices'}
           />
         </section>
 

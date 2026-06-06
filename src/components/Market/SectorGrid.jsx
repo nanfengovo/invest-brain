@@ -9,6 +9,14 @@ const getToneClass = (value, colorConvention) => {
     : (redUp ? 'market-tone--green' : 'market-tone--red');
 };
 
+const formatNumber = (value) => {
+  if (value === null || value === undefined) return '--';
+  return value.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+};
+
 export default function SectorGrid({ items, colorConvention }) {
   const navigate = useNavigate();
 
@@ -23,11 +31,12 @@ export default function SectorGrid({ items, colorConvention }) {
         const toneClass = getToneClass(item.pctChange, colorConvention);
         const sign = isUpRaw ? '+' : '';
         const pctFormatted = hasData ? `${sign}${item.pctChange.toFixed(2)}%` : '--';
+        const flashClass = item.movement ? `market-flash--${item.movement}` : '';
 
         return (
           <button
             type="button"
-            className="market-sector-row"
+            className={`market-sector-row ${flashClass}`}
             key={`${item.symbol || 'sector'}-${index}`}
             onClick={() => item.symbol && navigate(`/stock/${item.symbol}`)}
           >
@@ -37,9 +46,12 @@ export default function SectorGrid({ items, colorConvention }) {
               </span>
               <span className="market-sector-row__name">{item.name}</span>
             </div>
-            <div className={`market-sector-row__change ${toneClass}`}>
-              <span>{isUpRaw ? '▲' : (isNeutral ? '' : '▼')}</span>
-              <span>{pctFormatted}</span>
+            <div className="market-sector-row__quote">
+              <span className="market-sector-row__price">{formatNumber(item.price)}</span>
+              <span className={`market-sector-row__change ${toneClass}`}>
+                <span>{isUpRaw ? '▲' : (isNeutral ? '' : '▼')}</span>
+                <span>{pctFormatted}</span>
+              </span>
             </div>
           </button>
         );

@@ -17,6 +17,17 @@ const getToneClass = (value, colorConvention) => {
     : (redUp ? 'market-tone--green' : 'market-tone--red');
 };
 
+const formatChange = (value) => {
+  if (value === null || value === undefined) return '--';
+  const sign = value > 0 ? '+' : '';
+  return `${sign}${value.toFixed(2)}%`;
+};
+
+const getDirectionIcon = (value) => {
+  if (value === null || value === undefined || value === 0) return '';
+  return value > 0 ? '▲' : '▼';
+};
+
 const Sparkline = ({ isUp, toneClass, id }) => {
   const pathData = isUp
     ? "M 0 30 Q 10 25, 20 28 T 40 15 T 60 10 T 80 5" 
@@ -61,15 +72,17 @@ export default function IndexCardScroller({ items, colorConvention, variant = 'i
         const isUpRaw = (item.pctChange || 0) > 0;
         const isNeutral = !hasData || item.pctChange === 0;
         const toneClass = getToneClass(item.pctChange, colorConvention);
+        const extendedToneClass = getToneClass(item.extendedMarket?.pctChange, colorConvention);
         const sign = isUpRaw ? '+' : '';
-        const pctFormatted = hasData ? `${sign}${item.pctChange.toFixed(2)}%` : '--';
+        const pctFormatted = hasData ? formatChange(item.pctChange) : '--';
         const absFormatted = item.absChange !== null ? `${sign}${item.absChange.toFixed(2)}` : '--';
         const safeId = (item.symbol || `index-${index}`).replace(/[^a-zA-Z0-9]/g, '-');
+        const flashClass = item.movement ? `market-flash--${item.movement}` : '';
 
         return (
           <button
             type="button"
-            className="market-index-card"
+            className={`market-index-card ${flashClass}`}
             key={item.symbol || index}
             onClick={() => item.symbol && navigate(`/stock/${item.symbol}`)}
           >
@@ -84,11 +97,21 @@ export default function IndexCardScroller({ items, colorConvention, variant = 'i
             
             <div className={`market-index-card__change ${toneClass}`}>
               <div className="market-index-card__change-main">
-                <span>{isUpRaw ? '▲' : (isNeutral ? '' : '▼')}</span>
+                <span>{isNeutral ? '' : getDirectionIcon(item.pctChange)}</span>
                 <span>{pctFormatted}</span>
               </div>
               <span className="market-index-card__change-sub">{absFormatted}</span>
             </div>
+
+            {item.extendedMarket && (
+              <div className="market-index-card__extended">
+                <span className="market-index-card__extended-label">{item.extendedMarket.label}</span>
+                <span>{formatNumber(item.extendedMarket.price)}</span>
+                <span className={extendedToneClass}>
+                  {getDirectionIcon(item.extendedMarket.pctChange)} {formatChange(item.extendedMarket.pctChange)}
+                </span>
+              </div>
+            )}
           </button>
         );
       })}

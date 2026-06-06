@@ -25,8 +25,17 @@ export default async function handler(req) {
     const url = new URL(req.url);
     const targetUserId = url.searchParams.get('userId');
 
-    const kvUrl = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
-    const kvToken = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
+    let kvUrl = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
+    let kvToken = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
+
+    // Auto-parse Upstash REDIS_URL (e.g. redis://default:PASSWORD@host:port) to REST API
+    if (!kvUrl && !kvToken && process.env.REDIS_URL) {
+      const match = process.env.REDIS_URL.match(/redis:\/\/[^:]*:([^@]+)@([^:]+):\d+/);
+      if (match) {
+        kvToken = match[1];
+        kvUrl = `https://${match[2]}`;
+      }
+    }
 
     if (!kvUrl || !kvToken) {
       // For debugging, returning the presence of keys, without exposing secrets
@@ -34,8 +43,9 @@ export default async function handler(req) {
       const hasUpstashToken = !!process.env.UPSTASH_REDIS_REST_TOKEN;
       const hasKvUrl = !!process.env.KV_REST_API_URL;
       const hasKvToken = !!process.env.KV_REST_API_TOKEN;
+      const hasRedisUrl = !!process.env.REDIS_URL;
       return new Response(JSON.stringify({ 
-        error: `Server KV/Redis not configured. Env status: UPSTASH(${hasUpstashUrl},${hasUpstashToken}) KV(${hasKvUrl},${hasKvToken})` 
+        error: `Server KV/Redis not configured. Env status: UPSTASH(${hasUpstashUrl},${hasUpstashToken}) KV(${hasKvUrl},${hasKvToken}) REDIS_URL(${hasRedisUrl})` 
       }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' },

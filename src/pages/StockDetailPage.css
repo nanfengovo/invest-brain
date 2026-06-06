@@ -42,10 +42,32 @@
 .stock-detail__actions {
   display: flex;
   align-items: center;
-  gap: 16px;
-  width: 40px;
+  gap: 10px;
+  width: 72px;
   justify-content: flex-end;
   font-size: 20px;
+}
+
+.stock-detail__action-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.stock-detail__action-button:active {
+  background: var(--color-border);
+  color: var(--color-text);
+}
+
+.stock-detail__action-button svg {
+  width: 18px;
+  height: 18px;
 }
 
 .stock-detail__header {

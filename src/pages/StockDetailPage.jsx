@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Toast } from 'antd-mobile';
-import { LeftOutline, SearchOutline, CloseOutline } from 'antd-mobile-icons';
+import { LeftOutline, SearchOutline, CloseOutline, SendOutline } from 'antd-mobile-icons';
 import KlineChart from '../components/Market/KlineChart';
 import { useAppStore } from '../stores/useAppStore';
 import './StockDetailPage.css';
+
+const SHARE_BASE_URL = 'https://invest-brain.vercel.app';
 
 const TABS = [
   { id: '1m', label: '分时', interval: '1m', range: '1d' },
@@ -35,6 +37,23 @@ const normalizeSearchResults = (items = []) => {
       return SEARCHABLE_QUOTE_TYPES.has(item.quoteType);
     })
     .slice(0, 12);
+};
+
+const copyText = async (text) => {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textArea = document.createElement('textarea');
+  textArea.value = text;
+  textArea.setAttribute('readonly', '');
+  textArea.style.position = 'fixed';
+  textArea.style.opacity = '0';
+  document.body.appendChild(textArea);
+  textArea.select();
+  document.execCommand('copy');
+  document.body.removeChild(textArea);
 };
 
 export default function StockDetailPage() {
@@ -118,18 +137,35 @@ export default function StockDetailPage() {
   }, [symbol, activeTab]);
 
   const handleShare = async () => {
+    const normalizedSymbol = String(symbol || '').toUpperCase();
+    const shareUrl = new URL(`/stock/${encodeURIComponent(normalizedSymbol)}`, SHARE_BASE_URL).toString();
+    const shareData = {
+      title: `${normalizedSymbol} 实时行情`,
+      text: `查看 ${normalizedSymbol} 实时行情、K线和全网舆情`,
+      url: shareUrl,
+    };
+
     try {
+      await copyText(shareUrl);
+
       if (navigator.share) {
-        await navigator.share({
-          title: `${symbol} - InvestBrain`,
-          url: window.location.href,
-        });
-      } else {
-        alert('系统不支持原生分享，链接已复制到剪贴板！');
-        navigator.clipboard.writeText(window.location.href);
+        await navigator.share(shareData);
+        return;
       }
-    } catch (e) {
-      console.log('Share error:', e);
+
+      Toast.show({ content: '股票链接已复制，可粘贴到微信发送' });
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        Toast.show({ content: '股票链接已复制，可粘贴到微信发送' });
+        return;
+      }
+
+      try {
+        await copyText(shareUrl);
+        Toast.show({ content: '股票链接已复制，可粘贴到微信发送' });
+      } catch {
+        Toast.show({ content: shareUrl, duration: 4000 });
+      }
     }
   };
 
@@ -193,10 +229,22 @@ export default function StockDetailPage() {
             <div className="stock-detail__market-status">实时行情 (USD)</div>
           </div>
           <div className="stock-detail__actions">
-            <SearchOutline onClick={() => setIsSearching(true)} />
-            <svg onClick={handleShare} viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
-              <path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92c0-1.61-1.31-2.92-2.92-2.92z"/>
-            </svg>
+            <button
+              type="button"
+              className="stock-detail__action-button"
+              aria-label="搜索股票"
+              onClick={() => setIsSearching(true)}
+            >
+              <SearchOutline />
+            </button>
+            <button
+              type="button"
+              className="stock-detail__action-button"
+              aria-label="分享股票"
+              onClick={handleShare}
+            >
+              <SendOutline />
+            </button>
           </div>
         </div>
       )}

@@ -170,10 +170,21 @@ export default function StockDetailPage() {
       <div className="stock-detail__ai-insights">
         <div className="ai-insights-header">
           <h3>全网舆情 (Last 30 Days)</h3>
-          <button className="ai-btn">生成分析报告</button>
+          <button 
+            className="ai-btn"
+            onClick={() => {
+              // 提醒用户去配置他们自己部署的 Streamlit URL
+              const url = window.prompt("请输入您部署成功的 Streamlit URL (例如: https://xxx.streamlit.app):");
+              if (url) {
+                window.open(`${url}?q=${symbol}`, '_blank');
+              }
+            }}
+          >
+            生成分析报告
+          </button>
         </div>
         <div className="ai-insights-content">
-          <p>点击按钮，拉起 Python API 获取 {symbol.toUpperCase()} 近 30 天全网深度情感分析与大模型总结。</p>
+          <p>点击上方按钮，即可在新窗口拉起您的 Streamlit 专属 AI 引擎，拉取 {symbol.toUpperCase()} 近 30 天的全网舆情报告。</p>
         </div>
       </div>
       <SearchModal visible={searchVisible} onClose={() => setSearchVisible(false)} />

@@ -1,36 +1,44 @@
-# InvestBrain - AI 决策辅助后端
+# InvestBrain - AI 决策辅助后端 (Streamlit 版)
 
-这是一个轻量级的 Python FastAPI 接口，专用于在云端运行 `last30days-skill` 爬虫大模型引擎，并为您的 InvestBrain 移动端提供舆情分析接口。
+专为部署至 **Streamlit Community Cloud (share.streamlit.io)** 量身定制的 `last30days-skill` UI 封装。
 
-## 🚀 部署指南 (Streamlit / Hugging Face / Render)
+## 🚀 免费一键部署指南
 
-由于 Vercel 的环境限制，我们将此模块独立部署。推荐部署到完全免费的平台。
+1. **推送到 GitHub**:
+   将当前文件夹（`last30days-api-deployment`）下的所有文件推送到您的 GitHub 个人仓库中。
 
-### 选项 1: 部署到 Render (最推荐, 支持 Node 和 Python)
-1. 将此文件夹上传到您的 GitHub。
-2. 注册并登录 [Render.com](https://render.com)。
-3. 点击 **New -> Web Service**，连接您的 GitHub 仓库。
-4. **Environment**: `Python 3`
-5. **Build Command**: `pip install -r requirements.txt && npm install -g npx` (注意: Render 默认环境可能需要安装 Node)
-6. **Start Command**: `uvicorn main:app --host 0.0.0.0 --port $PORT`
-7. **Environment Variables**: 添加您的 API Keys，如 `GEMINI_API_KEY` 或 `ANTHROPIC_API_KEY`。
+2. **登录 Streamlit**:
+   访问 [share.streamlit.io](https://share.streamlit.io/) 并使用 GitHub 登录。
 
-### 选项 2: 部署到 Hugging Face Spaces
-1. 注册并登录 [Hugging Face](https://huggingface.co/spaces)。
-2. 创建一个新的 Space，SDK 选择 **Docker**。
-3. 将此文件夹的代码上传。
-4. 您需要在文件夹中添加一个简单的 `Dockerfile`：
-   ```dockerfile
-   FROM python:3.11
-   RUN apt-get update && apt-get install -y nodejs npm
-   WORKDIR /app
-   COPY requirements.txt .
-   RUN pip install -r requirements.txt
-   COPY . .
-   CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "7860"]
-   ```
-5. 在 Space 的 Settings 中配置 Secrets (API Keys)。
+3. **新建应用 (New App)**:
+   - **Repository**: 选择您刚刚推送的仓库。
+   - **Branch**: `main`
+   - **Main file path**: `app.py`
+   - 点击 **Deploy!**
 
-## 🔌 接口测试
-部署成功后，测试您的接口：
-`https://<your-domain>/api/research?q=AAPL`
+4. **配置环境变量 (Secrets)**:
+   - 在部署页面的右侧，点击 `⋮` -> **Settings** -> **Secrets**。
+   - 在里面填入大模型的 API Key，例如：
+     ```toml
+     GEMINI_API_KEY = "你的_API_KEY"
+     ```
+   - 点击 Save 保存。
+
+## 🔌 如何在移动端配合使用？
+
+系统部署成功后，你会得到一个专属的 URL（例如 `https://your-app-name.streamlit.app`）。
+
+在您的 React 移动端源码中，找到 `src/pages/StockDetailPage.jsx`。
+找到按钮 `<button className="ai-btn">生成分析报告</button>`。
+将它的点击事件修改为打开您部署的网址，例如：
+
+```javascript
+<button 
+  className="ai-btn" 
+  onClick={() => window.open(`https://your-app-name.streamlit.app/?q=${symbol}`, '_blank')}
+>
+  生成深度 AI 简报
+</button>
+```
+
+前端点击按钮时，就会新开一个极具极客风格的 Streamlit 黑客面板，为您展示该股票的全网抓取动画并呈现大模型生成的报告！

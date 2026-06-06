@@ -295,15 +295,21 @@ export const db = {
     return this.exec('DELETE FROM trades WHERE id = ?', [id]);
   },
 
-  async getTradesByAsset(assetId) {
-    return this.query(
-      `SELECT t.*, d.title as decision_title
-       FROM trades t
-       LEFT JOIN decisions d ON t.decision_id = d.id
-       WHERE t.asset_id = ?
-       ORDER BY t.trade_time DESC`,
-      [assetId]
-    );
+  async getTradesByAssetAndBroker(assetId, broker = null) {
+    let sql = `SELECT t.*, d.title as decision_title
+               FROM trades t
+               LEFT JOIN decisions d ON t.decision_id = d.id
+               WHERE t.asset_id = ?`;
+    const params = [assetId];
+    if (broker) {
+      sql += ` AND t.broker = ?`;
+      params.push(broker);
+    } else {
+      sql += ` AND (t.broker IS NULL OR t.broker = '')`;
+    }
+    sql += ` ORDER BY t.trade_time DESC`;
+    
+    return this.query(sql, params);
   },
 
   // ==========================================
@@ -405,6 +411,7 @@ export const db = {
         a.name,
         a.type,
         a.sector,
+        t.broker,
         SUM(CASE 
           WHEN t.direction IN ('BUY', 'OPEN') THEN t.quantity 
           WHEN t.direction IN ('SELL', 'CLOSE') THEN -t.quantity 
@@ -425,7 +432,7 @@ export const db = {
         MAX(t.trade_time) as last_trade
        FROM trades t
        JOIN assets a ON t.asset_id = a.id
-       GROUP BY a.id
+       GROUP BY a.id, t.broker
        HAVING total_quantity > 0.0001
        ORDER BY a.symbol`
     );

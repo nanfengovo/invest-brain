@@ -44,16 +44,17 @@ export default function HoldingsPage() {
   }, [refreshHoldings]);
 
   const handleToggle = useCallback(
-    async (assetId) => {
-      if (expandedId === assetId) {
+    async (assetId, broker) => {
+      const key = `${assetId}-${broker || ''}`;
+      if (expandedId === key) {
         setExpandedId(null);
         setExpandedTrades([]);
         return;
       }
-      setExpandedId(assetId);
+      setExpandedId(key);
       setTradesLoading(true);
       try {
-        const trades = await db.getTradesByAsset(assetId);
+        const trades = await db.getTradesByAssetAndBroker(assetId, broker);
         setExpandedTrades(trades);
       } catch (err) {
         console.error('Failed to load trades for asset:', err);
@@ -131,14 +132,15 @@ export default function HoldingsPage() {
         ) : holdings.length > 0 ? (
           <div className="holdings-page__list">
             {holdings.map((holding, idx) => {
+              const holdingKey = `${holding.asset_id}-${holding.broker || ''}`;
               const positionValue =
                 (Number(holding.total_quantity) || 0) *
                 (Number(holding.avg_cost) || 0);
-              const isExpanded = expandedId === holding.asset_id;
+              const isExpanded = expandedId === holdingKey;
 
               return (
                 <div
-                  key={holding.asset_id}
+                  key={holdingKey}
                   className={`holdings-page__card glass-card ${
                     isExpanded ? 'holdings-page__card--expanded' : ''
                   }`}
@@ -147,7 +149,7 @@ export default function HoldingsPage() {
                   {/* Card Main Content */}
                   <div
                     className="holdings-page__card-main"
-                    onClick={() => handleToggle(holding.asset_id)}
+                    onClick={() => handleToggle(holding.asset_id, holding.broker)}
                   >
                     <div className="holdings-page__card-left">
                       <div className="holdings-page__symbol-row">
@@ -162,8 +164,15 @@ export default function HoldingsPage() {
                           {TYPE_LABELS[holding.type] || holding.type || 'STOCK'}
                         </span>
                       </div>
-                      <div className="holdings-page__name">
-                        {holding.name || holding.symbol}
+                      <div className="holdings-page__name-row">
+                        <span className="holdings-page__name">
+                          {holding.name || holding.symbol}
+                        </span>
+                        {holding.broker && (
+                          <span className="holdings-page__broker-badge">
+                            🏦 {holding.broker}
+                          </span>
+                        )}
                       </div>
                       {holding.sector && (
                         <div className="holdings-page__sector">

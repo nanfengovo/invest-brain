@@ -171,6 +171,7 @@
 .trade-card__account-tag {
   display: inline-flex;
   align-items: center;
+  gap: 4px;
   padding: 2px 8px;
   border-radius: var(--radius-full);
   font-size: 11px;
@@ -178,6 +179,16 @@
   background: rgba(136, 153, 170, 0.1);
   color: var(--color-text-secondary);
   border: 1px solid rgba(136, 153, 170, 0.12);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trade-card__account-tag::before {
+  content: '💼';
+  font-size: 10px;
+  flex-shrink: 0;
 }
 
 .trade-card__broker-tag {

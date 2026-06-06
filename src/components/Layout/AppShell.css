@@ -6,7 +6,10 @@
   display: flex;
   flex-direction: column;
   flex: 1;
-  height: 100%;
+  height: 100vh;
+  /* Use env() for iOS PWA safe areas */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
   background: var(--color-bg-primary);
   overflow: hidden;
 }

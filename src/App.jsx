@@ -15,6 +15,7 @@ import InformationDetail from './pages/InformationDetail';
 import HoldingsPage from './pages/HoldingsPage';
 import InsightsPage from './pages/InsightsPage';
 import MarketPage from './pages/MarketPage';
+import StockDetailPage from './pages/StockDetailPage';
 import LoadingSpinner from './components/common/LoadingSpinner';
 
 function App({ onReady }) {
@@ -114,6 +115,7 @@ function App({ onReady }) {
       <Routes>
         <Route path="/" element={<DashboardPage />} />
         <Route path="/market" element={<MarketPage />} />
+        <Route path="/stock/:symbol" element={<StockDetailPage />} />
         <Route path="/trades" element={<TradesPage />} />
         <Route path="/holdings" element={<HoldingsPage />} />
         <Route path="/decisions" element={<DecisionsPage />} />

@@ -1,8 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { SearchOutline } from 'antd-mobile-icons';
+import SearchModal from '../common/SearchModal';
 import './MarketHeader.css';
 
 export default function MarketHeader() {
+  const [searchVisible, setSearchVisible] = useState(false);
+
   return (
     <div className="market-header">
       <div className="market-header__left">
@@ -28,10 +31,11 @@ export default function MarketHeader() {
           <span className="flag active">🇺🇸</span>
           <span className="flag">🇭🇰</span>
         </div>
-        <div className="market-header__search">
+        <div className="market-header__search" onClick={() => setSearchVisible(true)}>
           <SearchOutline />
         </div>
       </div>
+      <SearchModal visible={searchVisible} onClose={() => setSearchVisible(false)} />
     </div>
   );
 }

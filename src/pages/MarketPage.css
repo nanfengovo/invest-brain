@@ -1,6 +1,7 @@
 .market-page {
   padding: 16px;
-  padding-bottom: 80px; /* Safe area for tabbar */
+  padding-top: calc(16px + var(--safe-area-top));
+  padding-bottom: calc(80px + var(--safe-area-bottom)); /* Safe area for tabbar */
   background: var(--bg-main);
   min-height: 100vh;
   color: var(--color-text);

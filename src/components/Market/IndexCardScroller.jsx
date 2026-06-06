@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import './IndexCardScroller.css';
 
 // Simple SVG sparkline component
@@ -26,6 +27,8 @@ const Sparkline = ({ isUp }) => {
 };
 
 export default function IndexCardScroller({ items, colorConvention }) {
+  const navigate = useNavigate();
+
   if (!items || items.length === 0) return null;
 
   return (
@@ -50,7 +53,11 @@ export default function IndexCardScroller({ items, colorConvention }) {
         const absFormatted = `${sign}${item.absChange.toFixed(2)}`;
 
         return (
-          <div className="index-card" key={item.symbol || index}>
+          <div 
+            className="index-card" 
+            key={item.symbol || index}
+            onClick={() => item.symbol && navigate(`/stock/${item.symbol}`)}
+          >
             <div className="index-card__header">
               <span className="index-card__name">{item.name}</span>
               <Sparkline isUp={isUpRaw} />

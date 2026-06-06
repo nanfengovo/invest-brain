@@ -1,7 +1,10 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import './SectorGrid.css';
 
 export default function SectorGrid({ items, colorConvention }) {
+  const navigate = useNavigate();
+
   if (!items || items.length === 0) return null;
 
   return (
@@ -23,7 +26,11 @@ export default function SectorGrid({ items, colorConvention }) {
         const pctFormatted = `${sign}${item.pctChange.toFixed(2)}%`;
 
         return (
-          <div className="sector-item" key={item.symbol || index}>
+          <div 
+            className="sector-item" 
+            key={item.symbol || index}
+            onClick={() => item.symbol && navigate(`/stock/${item.symbol}`)}
+          >
             <div className="sector-item__left">
               <span className="sector-item__icon">{item.icon || '📊'}</span>
               <span className="sector-item__name">{item.name}</span>

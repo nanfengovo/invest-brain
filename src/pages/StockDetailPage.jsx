@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { Toast } from 'antd-mobile';
 import { LeftOutline, SearchOutline } from 'antd-mobile-icons';
 import KlineChart from '../components/Market/KlineChart';
 import SearchModal from '../components/common/SearchModal';
@@ -18,7 +19,7 @@ const TABS = [
 export default function StockDetailPage() {
   const { symbol } = useParams();
   const navigate = useNavigate();
-  const { colorConvention } = useAppStore();
+  const { colorConvention, streamlitUrl } = useAppStore();
   
   const [activeTab, setActiveTab] = useState('1d');
   const [chartData, setChartData] = useState([]);
@@ -173,10 +174,12 @@ export default function StockDetailPage() {
           <button 
             className="ai-btn"
             onClick={() => {
-              // 提醒用户去配置他们自己部署的 Streamlit URL
-              const url = window.prompt("请输入您部署成功的 Streamlit URL (例如: https://xxx.streamlit.app):");
-              if (url) {
+              if (streamlitUrl) {
+                let url = streamlitUrl;
+                if (!url.endsWith('/')) url += '/';
                 window.open(`${url}?q=${symbol}`, '_blank');
+              } else {
+                Toast.show({ content: '请先在设置页配置 AI 引擎地址' });
               }
             }}
           >

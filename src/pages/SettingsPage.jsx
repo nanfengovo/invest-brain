@@ -18,12 +18,15 @@ function SettingsPage() {
     saveGeminiApiKey,
     syncUserId,
     syncSecret,
-    saveSyncConfig
+    saveSyncConfig,
+    streamlitUrl,
+    setStreamlitUrl
   } = useAppStore();
 
   const { stats, refreshAll } = useTradeStore();
   const [storageInfo, setStorageInfo] = useState(null);
   const [apiKeyInput, setApiKeyInput] = useState(geminiApiKey);
+  const [streamlitUrlInput, setStreamlitUrlInput] = useState(streamlitUrl);
   const [syncUserIdInput, setSyncUserIdInput] = useState(syncUserId);
   const [syncSecretInput, setSyncSecretInput] = useState(syncSecret);
   const [autoSync, setAutoSync] = useState(localStorage.getItem('invest_auto_sync') === 'true');
@@ -37,6 +40,10 @@ function SettingsPage() {
     setSyncUserIdInput(syncUserId);
     setSyncSecretInput(syncSecret);
   }, [syncUserId, syncSecret]);
+
+  useEffect(() => {
+    setStreamlitUrlInput(streamlitUrl);
+  }, [streamlitUrl]);
 
   useEffect(() => {
     // Get storage estimate
@@ -543,6 +550,44 @@ function SettingsPage() {
               size="small"
               fill="solid"
               onClick={handleSaveApiKey}
+              style={{ borderRadius: '6px' }}
+            >
+              保存
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Streamlit AI Configuration */}
+      <div className="section">
+        <div className="section__title">AI 舆情分析引擎 (Streamlit)</div>
+        <div className="settings-card glass-card">
+          <div className="settings-card__row" style={{ cursor: 'default' }}>
+            <span className="settings-card__icon">🧠</span>
+            <div className="settings-card__content">
+              <div className="settings-card__label">Streamlit 部署地址</div>
+              <div className="settings-card__desc">
+                配置您部署在 Streamlit Cloud 的分析引擎地址，以便在行情详情页一键调用
+              </div>
+            </div>
+          </div>
+          <div className="settings-card__input-row">
+            <div className="settings-card__input-wrapper">
+              <Input
+                placeholder="https://xxx.streamlit.app"
+                value={streamlitUrlInput}
+                onChange={setStreamlitUrlInput}
+                clearable
+              />
+            </div>
+            <Button
+              color="primary"
+              size="small"
+              fill="solid"
+              onClick={() => {
+                setStreamlitUrl(streamlitUrlInput);
+                Toast.show({ icon: 'success', content: '引擎地址已保存' });
+              }}
               style={{ borderRadius: '6px' }}
             >
               保存

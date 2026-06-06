@@ -62,6 +62,13 @@ export const useAppStore = create((set) => ({
 
   setActiveTab: (tab) => set({ activeTab: tab }),
 
+  // Streamlit AI URL
+  streamlitUrl: localStorage.getItem('ib_streamlit_url') || 'https://invest-brain-dataanaly.streamlit.app/',
+  setStreamlitUrl: (url) => {
+    localStorage.setItem('ib_streamlit_url', url);
+    set({ streamlitUrl: url });
+  },
+
   // Loading overlay
   globalLoading: false,
   globalLoadingText: '',

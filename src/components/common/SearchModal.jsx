@@ -27,10 +27,10 @@ export default function SearchModal({ visible, onClose }) {
       try {
         // We can use Yahoo Finance Search API directly from the client or create a proxy
         // Yahoo search is public and generally doesn't enforce CORS for search
-        const res = await fetch(`https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=10&newsCount=0`);
+        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
         const json = await res.json();
-        if (json && json.quotes) {
-          setResults(json.quotes.filter(q => q.isYahooFinance));
+        if (json && json.success && json.data) {
+          setResults(json.data.filter(q => q.isYahooFinance));
         }
       } catch (err) {
         console.error('Search failed:', err);

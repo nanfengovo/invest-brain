@@ -70,7 +70,7 @@ export default function StockDetailPage() {
     }
   };
 
-  const isUp = quote && quote.regularMarketPrice >= quote.previousClose;
+  const isUp = quote && quote.regularMarketPrice >= quote.chartPreviousClose;
   let colorClass = 'neutral';
   if (quote) {
     if (colorConvention === 'red-up-green-down') {
@@ -88,8 +88,8 @@ export default function StockDetailPage() {
     return num.toLocaleString();
   };
 
-  const changeValue = quote ? (quote.regularMarketPrice - quote.previousClose).toFixed(2) : '0.00';
-  const changePct = quote ? ((quote.regularMarketPrice - quote.previousClose) / quote.previousClose * 100).toFixed(2) : '0.00';
+  const changeValue = quote ? (quote.regularMarketPrice - quote.chartPreviousClose).toFixed(2) : '0.00';
+  const changePct = quote ? ((quote.regularMarketPrice - quote.chartPreviousClose) / quote.chartPreviousClose * 100).toFixed(2) : '0.00';
   const sign = isUp ? '+' : '';
 
   return (
@@ -135,7 +135,7 @@ export default function StockDetailPage() {
           </div>
           <div className="metric-item">
             <span className="label">昨收</span>
-            <span className="value">{quote?.previousClose?.toFixed(2) || '-'}</span>
+            <span className="value">{quote?.chartPreviousClose?.toFixed(2) || '-'}</span>
           </div>
         </div>
         <div className="metric-col">

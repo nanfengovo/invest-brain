@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { Modal } from 'antd-mobile';
 import { useAppStore } from './stores/useAppStore';
@@ -7,16 +7,17 @@ import { initDB, db } from './db/database';
 import { hasBackup, restoreAutoBackup } from './utils/autoBackup';
 import AppShell from './components/Layout/AppShell';
 import DashboardPage from './pages/DashboardPage';
-import TradesPage from './pages/TradesPage';
-import DecisionsPage from './pages/DecisionsPage';
-import SettingsPage from './pages/SettingsPage';
-import InformationPage from './pages/InformationPage';
-import InformationDetail from './pages/InformationDetail';
-import HoldingsPage from './pages/HoldingsPage';
-import InsightsPage from './pages/InsightsPage';
-import MarketPage from './pages/MarketPage';
-import StockDetailPage from './pages/StockDetailPage';
 import LoadingSpinner from './components/common/LoadingSpinner';
+
+const TradesPage = lazy(() => import('./pages/TradesPage'));
+const DecisionsPage = lazy(() => import('./pages/DecisionsPage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const InformationPage = lazy(() => import('./pages/InformationPage'));
+const InformationDetail = lazy(() => import('./pages/InformationDetail'));
+const HoldingsPage = lazy(() => import('./pages/HoldingsPage'));
+const InsightsPage = lazy(() => import('./pages/InsightsPage'));
+const MarketPage = lazy(() => import('./pages/MarketPage'));
+const StockDetailPage = lazy(() => import('./pages/StockDetailPage'));
 
 function App({ onReady }) {
   const [initError, setInitError] = useState(null);
@@ -112,18 +113,20 @@ function App({ onReady }) {
 
   return (
     <AppShell>
-      <Routes>
-        <Route path="/" element={<DashboardPage />} />
-        <Route path="/market" element={<MarketPage />} />
-        <Route path="/stock/:symbol" element={<StockDetailPage />} />
-        <Route path="/trades" element={<TradesPage />} />
-        <Route path="/holdings" element={<HoldingsPage />} />
-        <Route path="/decisions" element={<DecisionsPage />} />
-        <Route path="/information" element={<InformationPage />} />
-        <Route path="/information/:id" element={<InformationDetail />} />
-        <Route path="/insights" element={<InsightsPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
-      </Routes>
+      <Suspense fallback={<LoadingSpinner text="正在加载页面..." />}>
+        <Routes>
+          <Route path="/" element={<DashboardPage />} />
+          <Route path="/market" element={<MarketPage />} />
+          <Route path="/stock/:symbol" element={<StockDetailPage />} />
+          <Route path="/trades" element={<TradesPage />} />
+          <Route path="/holdings" element={<HoldingsPage />} />
+          <Route path="/decisions" element={<DecisionsPage />} />
+          <Route path="/information" element={<InformationPage />} />
+          <Route path="/information/:id" element={<InformationDetail />} />
+          <Route path="/insights" element={<InsightsPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+        </Routes>
+      </Suspense>
     </AppShell>
   );
 }

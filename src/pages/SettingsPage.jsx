@@ -26,6 +26,7 @@ function SettingsPage() {
   const [apiKeyInput, setApiKeyInput] = useState(geminiApiKey);
   const [syncUserIdInput, setSyncUserIdInput] = useState(syncUserId);
   const [syncSecretInput, setSyncSecretInput] = useState(syncSecret);
+  const [autoSync, setAutoSync] = useState(localStorage.getItem('invest_auto_sync') === 'true');
   const [lastBackupTime, setLastBackupTime] = useState(localStorage.getItem('ib_last_autobackup_time'));
 
   useEffect(() => {
@@ -555,26 +556,6 @@ function SettingsPage() {
                 clearable
               />
             </div>
-          </div>
-          <div className="settings-card__input-row">
-            <div className="settings-card__input-wrapper">
-              <Input
-                placeholder="同步暗号 (Secret)"
-                value={syncSecretInput}
-                onChange={setSyncSecretInput}
-                type="password"
-                clearable
-              />
-            </div>
-            <Button
-              color="primary"
-              size="small"
-              fill="solid"
-              onClick={handleSaveSyncConfig}
-              style={{ borderRadius: '6px' }}
-            >
-              保存
-            </Button>
           </div>
 
           <div className="settings-card__divider" />

@@ -41,31 +41,54 @@ export async function triggerAutoBackup() {
     }
 
     const idb = await openBackupDB();
-    return new Promise((resolve, reject) => {
+    await new Promise((resolve, reject) => {
       const transaction = idb.transaction([STORE_NAME], 'readwrite');
       const store = transaction.objectStore(STORE_NAME);
 
       const backupObject = {
         timestamp: Date.now(),
         format: exportResult.format || 'binary',
-        data: exportResult.data, // ArrayBuffer/Uint8Array or JSON string
+        data: exportResult.data,
       };
 
       const putRequest = store.put(backupObject, BACKUP_KEY);
 
-      putRequest.onsuccess = () => {
-        const timeStr = new Date().toISOString();
-        localStorage.setItem('ib_last_autobackup_time', timeStr);
-        console.log(`[AutoBackup] Database backed up to IndexedDB at ${timeStr}`);
-        resolve();
-      };
-
-      putRequest.onerror = (e) => {
-        reject(new Error(`Failed to save backup to IndexedDB: ${e.target.error}`));
-      };
+      putRequest.onsuccess = () => resolve();
+      putRequest.onerror = (e) => reject(new Error(`Failed to save backup: ${e.target.error}`));
     });
+
+    console.log(`[AutoBackup] Saved locally at ${new Date().toLocaleTimeString()}`);
+
+    // ===== Cloud Auto-Backup =====
+    const autoSyncEnabled = localStorage.getItem('invest_auto_sync') === 'true';
+    if (autoSyncEnabled) {
+      const syncUserId = localStorage.getItem('invest_sync_user_id');
+      const syncSecret = localStorage.getItem('invest_sync_secret');
+      if (syncUserId && syncSecret) {
+        // Run cloud backup in background without blocking
+        setTimeout(async () => {
+          try {
+            const dbData = await db.exportDBJSON();
+            await fetch('/api/sync-upload', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${syncSecret}`
+              },
+              body: JSON.stringify({
+                userId: syncUserId,
+                data: dbData
+              })
+            });
+            console.log(`[AutoSync] Cloud backup successful at ${new Date().toLocaleTimeString()}`);
+          } catch (cloudErr) {
+            console.error('[AutoSync] Cloud backup failed:', cloudErr);
+          }
+        }, 1000); // slight delay to prioritize UI
+      }
+    }
   } catch (err) {
-    console.error('[AutoBackup] Automatic backup failed:', err);
+    console.error('[AutoBackup] Error during auto-backup:', err);
   }
 }
 

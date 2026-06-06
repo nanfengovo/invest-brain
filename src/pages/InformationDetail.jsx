@@ -9,6 +9,8 @@ import LoadingSpinner from '../components/common/LoadingSpinner';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import './InformationDetail.css';
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -275,17 +277,27 @@ export default function InformationDetail() {
   };
 
   // Determine embed type
-  const youtubeId = useMemo(() => info?.url ? getYouTubeId(info.url) : null, [info?.url]);
-  const bilibiliId = useMemo(() => info?.url ? getBilibiliId(info.url) : null, [info?.url]);
-  const isTwitter = useMemo(() => isTwitterUrl(info?.url), [info?.url]);
+  const realUrlMatch = info?.url?.match(/(https?:\/\/[^\s]+)/);
+  const validUrl = realUrlMatch ? realUrlMatch[1] : null;
+
+  const youtubeId = useMemo(() => validUrl ? getYouTubeId(validUrl) : null, [validUrl]);
+  const bilibiliId = useMemo(() => validUrl ? getBilibiliId(validUrl) : null, [validUrl]);
+  const isTwitter = useMemo(() => isTwitterUrl(validUrl), [validUrl]);
   const isPdf = useMemo(() => info?.file_path?.toLowerCase().endsWith('.pdf'), [info?.file_path]);
 
-  // Content: show full by default, allow collapse for very long content
-  const COLLAPSE_THRESHOLD = 800;
-  const isLongContent = info?.content && info.content.length > COLLAPSE_THRESHOLD;
-  const displayContent = isLongContent && contentCollapsed
-    ? info.content.slice(0, COLLAPSE_THRESHOLD) + '...'
-    : info?.content;
+  // Content: show full by default, no collapse
+  const displayContent = useMemo(() => {
+    let text = info?.content || '';
+    if (info?.url && info.url !== validUrl) {
+      const extraText = info.url.replace(validUrl || '', '').trim();
+      if (extraText && extraText !== info.url) {
+        text = extraText + '\n\n' + text;
+      } else if (!validUrl && info.url) {
+        text = info.url + '\n\n' + text;
+      }
+    }
+    return text.trim();
+  }, [info?.content, info?.url, validUrl]);
 
   const [actionSheetVisible, setActionSheetVisible] = useState(false);
   const deleteInformation = useTradeStore(s => s.deleteInformation);
@@ -561,31 +573,43 @@ export default function InformationDetail() {
           </div>
         )}
 
-        {/* ── Link Preview Card ── */}
-        {info.url && !youtubeId && !bilibiliId && (
-          <div className="info-detail__link-card">
-            <div className="info-detail__link-card-icon">
-              <img
-                src={`https://www.google.com/s2/favicons?domain=${extractDomain(info.url)}&sz=32`}
-                alt=""
-                width="20"
-                height="20"
-                onError={(e) => { e.target.style.display = 'none'; }}
+        {/* ── Link Preview Card & Web Preview ── */}
+        {validUrl && !youtubeId && !bilibiliId && (
+          <>
+            <div className="info-detail__link-card">
+              <div className="info-detail__link-card-icon">
+                <img
+                  src={`https://www.google.com/s2/favicons?domain=${extractDomain(validUrl)}&sz=32`}
+                  alt=""
+                  width="20"
+                  height="20"
+                  onError={(e) => { e.target.style.display = 'none'; }}
+                />
+              </div>
+              <div className="info-detail__link-card-body">
+                <div className="info-detail__link-card-domain">{extractDomain(validUrl)}</div>
+                <div className="info-detail__link-card-url">{validUrl}</div>
+              </div>
+              <a
+                href={validUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="info-detail__link-card-btn"
+              >
+                {isTwitter ? '打开 𝕏' : '打开链接'}
+              </a>
+            </div>
+
+            <div className="info-detail__web-preview">
+              <iframe
+                src={validUrl}
+                title="Web Preview"
+                className="info-detail__iframe"
+                sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+                loading="lazy"
               />
             </div>
-            <div className="info-detail__link-card-body">
-              <div className="info-detail__link-card-domain">{extractDomain(info.url)}</div>
-              <div className="info-detail__link-card-url">{info.url}</div>
-            </div>
-            <a
-              href={info.url}
-              target="_blank"
-              rel="noreferrer"
-              className="info-detail__link-card-btn"
-            >
-              {isTwitter ? '打开 𝕏' : '打开链接'}
-            </a>
-          </div>
+          </>
         )}
 
         {/* ── Uploaded Media (OPFS file) ── */}
@@ -636,21 +660,15 @@ export default function InformationDetail() {
           </div>
         )}
 
-        {/* ── Content Body — Full Display ── */}
-        {info.content && (
+        {/* ── Content Body — Markdown Display ── */}
+        {displayContent && (
           <div className="info-detail__body glass-card">
             <div className="info-detail__body-label">正文内容</div>
-            <div className="info-detail__body-text">
-              {displayContent}
+            <div className="info-detail__markdown-wrapper">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {displayContent}
+              </ReactMarkdown>
             </div>
-            {isLongContent && (
-              <button
-                className="info-detail__body-toggle"
-                onClick={() => setContentCollapsed(!contentCollapsed)}
-              >
-                {contentCollapsed ? '展开全文 ▼' : '收起 ▲'}
-              </button>
-            )}
           </div>
         )}
 

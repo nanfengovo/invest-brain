@@ -4,6 +4,8 @@ import { AddOutline, LinkOutline, PictureOutline, VideoOutline, FileOutline } fr
 import { useNavigate } from 'react-router-dom';
 import { useTradeStore } from '../stores/useTradeStore';
 import InformationForm from '../components/Information/InformationForm';
+import InformationFilter from '../components/Information/InformationFilter';
+import { FilterOutline } from 'antd-mobile-icons';
 import './InformationPage.css';
 
 const BookIcon = () => (
@@ -38,7 +40,15 @@ export default function InformationPage() {
   const [activeTab, setActiveTab] = useState('ALL');
   const [viewMode, setViewMode] = useState('INBOX'); // 'INBOX' or 'ARCHIVED'
   const [showAdd, setShowAdd] = useState(false);
+  const [showFilter, setShowFilter] = useState(false);
   
+  const [filters, setFilters] = useState({
+    keyword: '',
+    asset: 'ALL',
+    sector: 'ALL',
+    tag: 'ALL',
+  });
+
   const informations = useTradeStore((s) => s.informations);
   const refreshInformations = useTradeStore((s) => s.refreshInformations);
 
@@ -56,9 +66,47 @@ export default function InformationPage() {
     refreshInformations(viewMode === 'ARCHIVED' ? 'ARCHIVED' : null);
   }, [viewMode, refreshInformations]);
 
-  const filteredInfo = activeTab === 'ALL' 
-    ? informations 
-    : informations.filter(i => i.type === activeTab);
+  // Extract available filters dynamically
+  const availableAssets = useMemo(() => {
+    const assets = new Set(informations.map(i => i.asset_symbol || i.asset_id).filter(Boolean));
+    return Array.from(assets);
+  }, [informations]);
+
+  const availableSectors = useMemo(() => {
+    const sectors = new Set(informations.map(i => i.sector).filter(Boolean));
+    return Array.from(sectors);
+  }, [informations]);
+
+  const availableTags = useMemo(() => {
+    // Collect all tags from viewpoints
+    // But viewpoints are async, so maybe we just rely on tags stored in informations?
+    // In our schema, info.viewpoints is not directly in `informations` array unless we joined it.
+    // For now, let's keep it simple or just leave tags if they are in info.tags (not standard).
+    return [];
+  }, [informations]);
+
+  const filteredInfo = useMemo(() => {
+    let result = informations;
+    if (activeTab !== 'ALL') {
+      result = result.filter(i => i.type === activeTab);
+    }
+    
+    // Apply filters
+    result = result.filter(i => {
+      if (filters.keyword && !(
+        (i.title && i.title.toLowerCase().includes(filters.keyword.toLowerCase())) ||
+        (i.content && i.content.toLowerCase().includes(filters.keyword.toLowerCase()))
+      )) {
+        return false;
+      }
+      if (filters.asset !== 'ALL' && i.asset_symbol !== filters.asset && i.asset_id !== filters.asset) return false;
+      if (filters.sector !== 'ALL' && i.sector !== filters.sector) return false;
+      // Tag filtering would require viewpoint tags, omit for now if not available
+      return true;
+    });
+    
+    return result;
+  }, [informations, activeTab, filters]);
 
   return (
     <div className="info-page">
@@ -76,6 +124,14 @@ export default function InformationPage() {
             onClick={() => setViewMode('ARCHIVED')}
           >
             已归档
+          </div>
+        </div>
+        <div className="info-page__header-actions">
+          <div className="info-page__action-btn" onClick={() => setShowFilter(true)}>
+            <FilterOutline />
+            {(filters.keyword || filters.asset !== 'ALL' || filters.sector !== 'ALL') && (
+              <div className="info-page__action-dot" />
+            )}
           </div>
         </div>
       </div>
@@ -96,38 +152,55 @@ export default function InformationPage() {
 
       <div className="info-page__list">
         {filteredInfo.length === 0 ? (
-          <div className="info-page__empty">暂无相关情报</div>
+          <div className="info-page__empty">
+            <div className="info-page__empty-icon">📝</div>
+            <div className="info-page__empty-title">暂无相关情报</div>
+            <div className="info-page__empty-subtitle">记录你的第一条投资线索</div>
+          </div>
         ) : (
           filteredInfo.map(info => (
-            <Card 
+            <div 
               key={info.id} 
-              className="info-card"
+              className="info-card-premium"
               onClick={() => navigate(`/information/${info.id}`)}
             >
-              <div className="info-card__header">
-                <div className="info-card__title">{info.title}</div>
-                <Tag color={TYPE_COLORS[info.type] || 'default'} fill="outline">
+              <div className="info-card-premium__header">
+                <div className="info-card-premium__title">{info.title}</div>
+                <div className={`info-card-premium__badge badge-${info.type.toLowerCase()}`}>
                   {TYPE_LABELS[info.type] || info.type}
-                </Tag>
+                </div>
               </div>
+              
               {info.content && (
-                <div className="info-card__preview">
-                  {info.content.length > 60 ? info.content.substring(0, 60) + '…' : info.content}
+                <div className="info-card-premium__preview">
+                  {info.content.length > 80 ? info.content.substring(0, 80) + '...' : info.content}
                 </div>
               )}
-              <div className="info-card__footer">
-                <div className="info-card__type">
-                  {TYPE_ICONS[info.type] || <LinkOutline />}
+              
+              <div className="info-card-premium__footer">
+                <div className="info-card-premium__meta">
+                  <div className="info-card-premium__meta-item">
+                    {TYPE_ICONS[info.type] || <LinkOutline />}
+                  </div>
+                  {info.asset_symbol && (
+                    <div className="info-card-premium__tag">
+                      {info.asset_symbol}
+                    </div>
+                  )}
+                  {info.sector && (
+                    <div className="info-card-premium__tag">
+                      {info.sector}
+                    </div>
+                  )}
+                  <div className="info-card-premium__meta-item">
+                    观点: {info.viewpoint_count || 0}
+                  </div>
                 </div>
-                <div className="info-card__meta">
-                  <span>观点: {info.viewpoint_count || 0}</span>
-                  {info.asset_id && <span>关联: {info.asset_id}</span>}
-                  <span className="info-card__date">
-                    {new Date(info.created_at * 1000).toLocaleDateString()}
-                  </span>
+                <div className="info-card-premium__date">
+                  {new Date(info.created_at * 1000).toLocaleDateString()}
                 </div>
               </div>
-            </Card>
+            </div>
           ))
         )}
       </div>
@@ -142,6 +215,23 @@ export default function InformationPage() {
       >
         <AddOutline fontSize={28} />
       </FloatingBubble>
+
+      <Popup
+        visible={showFilter}
+        onMaskClick={() => setShowFilter(false)}
+        position="right"
+        bodyStyle={{ width: '85vw' }}
+      >
+        <InformationFilter
+          filters={filters}
+          onChange={(newFilters) => setFilters(prev => ({ ...prev, ...newFilters }))}
+          onReset={() => setFilters({ keyword: '', asset: 'ALL', sector: 'ALL', tag: 'ALL' })}
+          onClose={() => setShowFilter(false)}
+          availableAssets={availableAssets}
+          availableSectors={availableSectors}
+          availableTags={availableTags}
+        />
+      </Popup>
 
       <Popup
         visible={showAdd}

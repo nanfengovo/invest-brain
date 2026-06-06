@@ -11,6 +11,198 @@ export const config = {
   maxDuration: 60,
 };
 
+const DEFAULT_GEMINI_MODELS = [
+  'gemini-3.1-flash-lite',
+  'gemini-2.5-flash-lite',
+  'gemini-3.5-flash',
+  'gemini-3-flash',
+  'gemini-2.5-flash',
+];
+
+const MAX_READER_CHARS = 9000;
+const MAX_RETURN_CONTENT_CHARS = 3500;
+const MAX_USER_CONTENT_CHARS = 9000;
+
+function uniqueValues(values) {
+  return [...new Set(values.map(v => String(v || '').trim()).filter(Boolean))];
+}
+
+function getGeminiModelPool(...configuredValues) {
+  const configuredModels = configuredValues
+    .flatMap(value => String(value || '').split(','))
+    .map(model => model.trim())
+    .filter(Boolean);
+
+  return uniqueValues([...configuredModels, ...DEFAULT_GEMINI_MODELS]);
+}
+
+function truncateText(text, limit) {
+  const normalized = String(text || '').replace(/\s+\n/g, '\n').trim();
+  return normalized.length > limit ? `${normalized.slice(0, limit).trim()}...` : normalized;
+}
+
+function decodeHtmlEntities(text) {
+  return String(text || '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&mdash;/g, '—')
+    .replace(/&ndash;/g, '–')
+    .replace(/&#(\d+);/g, (_, code) => {
+      const value = Number(code);
+      return Number.isFinite(value) ? String.fromCharCode(value) : _;
+    });
+}
+
+function cleanMarkdownForPrompt(markdown) {
+  return String(markdown || '')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/Don.t miss what.s happening[\s\S]*?Sign up[^\n]*\n?/i, '')
+    .replace(/## New to X\?[\s\S]*$/i, '')
+    .trim();
+}
+
+function buildJinaReaderUrl(url) {
+  return `https://r.jina.ai/${url}`;
+}
+
+async function fetchReaderMarkdown(url) {
+  const response = await fetch(buildJinaReaderUrl(url), {
+    headers: {
+      'Accept': 'text/plain, text/markdown;q=0.9, */*;q=0.8',
+      'User-Agent': 'InvestBrain/1.0 (+https://investbrain.local)',
+    },
+    signal: AbortSignal.timeout(12000),
+    redirect: 'follow',
+  });
+
+  if (!response.ok) {
+    throw new Error(`Jina Reader returned ${response.status}`);
+  }
+
+  const markdown = cleanMarkdownForPrompt(await response.text());
+  if (!markdown || markdown.length < 80) {
+    throw new Error('Jina Reader returned too little content');
+  }
+
+  return truncateText(markdown, MAX_READER_CHARS);
+}
+
+function parseJsonObject(text) {
+  const raw = String(text || '').trim();
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate = fenced ? fenced[1].trim() : raw;
+  const objectMatch = candidate.match(/\{[\s\S]*\}/);
+  if (!objectMatch) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(objectMatch[0]);
+  } catch {
+    return null;
+  }
+}
+
+function parseStructuredSummary(rawResponse) {
+  const json = parseJsonObject(rawResponse);
+  if (json) {
+    return {
+      title: String(json.title || '').trim(),
+      summary: String(json.summary || '').trim(),
+    };
+  }
+
+  const titleLineMatch = rawResponse.match(/标题[::：]\s*(.+)/m);
+  const summaryLineMatch = rawResponse.match(/摘要[::：]\s*(.+)/m);
+  if (titleLineMatch) {
+    return {
+      title: titleLineMatch[1].trim(),
+      summary: summaryLineMatch ? summaryLineMatch[1].trim() : '',
+    };
+  }
+
+  return {
+    title: rawResponse.trim(),
+    summary: '',
+  };
+}
+
+function cleanGeneratedTitle(title) {
+  return String(title || '')
+    .replace(/^["'\u201c\u201d\u00ab]/, '')
+    .replace(/["'\u201c\u201d\u00bb]$/, '')
+    .replace(/\*\*?/g, '')
+    .replace(/^标题[::：]\s*/i, '')
+    .trim()
+    .slice(0, 60);
+}
+
+async function callGeminiWithModelPool({ apiKey, models, parts, maxOutputTokens = 700 }) {
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  let lastError = null;
+
+  for (const currentModel of models) {
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      console.log(`[Summarize API] Trying model: ${currentModel} (attempt ${attempt + 1})`);
+      try {
+        const geminiResponse = await fetch(geminiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts }],
+            generationConfig: {
+              temperature: 0.2,
+              maxOutputTokens,
+              responseMimeType: 'application/json',
+            },
+          }),
+          signal: AbortSignal.timeout(45000),
+        });
+
+        if (!geminiResponse.ok) {
+          const errText = await geminiResponse.text();
+          console.warn(`[Summarize API] Model ${currentModel} HTTP ${geminiResponse.status}`);
+          lastError = { status: geminiResponse.status, text: errText, model: currentModel };
+          if ((geminiResponse.status === 429 || geminiResponse.status === 503) && attempt === 0) {
+            await sleep(1200);
+            continue;
+          }
+          break;
+        }
+
+        const data = await geminiResponse.json();
+        const rawResponse = (data.candidates?.[0]?.content?.parts || [])
+          .map(part => part.text || '')
+          .join('\n')
+          .trim();
+
+        if (!rawResponse) {
+          lastError = { status: 200, text: 'Empty model response', model: currentModel };
+          break;
+        }
+
+        return { rawResponse, model: currentModel };
+      } catch (err) {
+        console.error(`[Summarize API] Model ${currentModel} exception:`, err);
+        lastError = { status: 500, text: err.message, model: currentModel };
+        break;
+      }
+    }
+  }
+
+  const details = lastError
+    ? `${lastError.model || 'unknown model'}: ${lastError.text}`
+    : 'Unknown error';
+  throw new Error(details);
+}
+
 export default async function handler(req, res) {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -42,6 +234,7 @@ export default async function handler(req, res) {
     let extractedContent = null;
     let extractedAuthor = null;
     let extractedSummary = null;
+    let contentSource = null;
 
     // 1. If URL is provided, try parsing it (with graceful fallback)
     if (url) {
@@ -51,7 +244,18 @@ export default async function handler(req, res) {
         try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; }
       })();
       
-      // Special handling for X/Twitter: use public oEmbed API to get tweet text
+      try {
+        console.log(`[Summarize API] Fetching Reader markdown for URL: ${url}`);
+        const readerMarkdown = await fetchReaderMarkdown(url);
+        pageDetails += `LLM友好 Markdown 正文（Jina Reader 抽取）:\n${readerMarkdown}\n`;
+        extractedContent = readerMarkdown;
+        contentSource = 'jina-reader';
+      } catch (e) {
+        console.warn(`[Summarize API] Jina Reader failed:`, e.message);
+        pageDetails += `Jina Reader 抽取失败：${e.message}\n`;
+      }
+
+      // Special handling for X/Twitter: use public oEmbed API as author/text fallback.
       const isTwitter = ['x.com', 'twitter.com'].some(d => urlHost === d || urlHost.endsWith('.' + d));
       
       if (isTwitter) {
@@ -71,17 +275,20 @@ export default async function handler(req, res) {
               .replace(/\s+/g, ' ')
               .trim();
             const author = oembedData.author_name || '';
-            pageDetails += `来源平台: X/Twitter\n作者: ${author}\n推文内容: ${tweetText}`;
-            extractedContent = tweetText;
+            pageDetails += `来源平台: X/Twitter\n作者: ${author}\noEmbed 推文内容: ${tweetText}`;
+            if (!extractedContent) {
+              extractedContent = tweetText;
+              contentSource = 'x-oembed';
+            }
             extractedAuthor = author;
           } else {
-            pageDetails += `来源平台: X/Twitter\n无法获取推文内容（oEmbed 返回 ${oembedResp.status}），请根据 URL 推断。`;
+            pageDetails += `来源平台: X/Twitter\n无法获取推文内容（oEmbed 返回 ${oembedResp.status}）。`;
           }
         } catch (e) {
           console.warn(`[Summarize API] X oEmbed failed:`, e.message);
           pageDetails += `来源平台: X/Twitter\n无法获取推文内容（${e.message}）。`;
         }
-      } else {
+      } else if (!extractedContent) {
         try {
           console.log(`[Summarize API] Fetching metadata for URL: ${url}`);
           const response = await fetch(url, {
@@ -98,15 +305,15 @@ export default async function handler(req, res) {
             const htmlText = await response.text();
 
             const titleMatch = htmlText.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-            const rawTitle = titleMatch ? titleMatch[1].trim() : '';
+            const rawTitle = titleMatch ? decodeHtmlEntities(titleMatch[1]).trim() : '';
 
             const ogTitleMatch = htmlText.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i) ||
                                  htmlText.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i);
-            const ogTitle = ogTitleMatch ? ogTitleMatch[1].trim() : '';
+            const ogTitle = ogTitleMatch ? decodeHtmlEntities(ogTitleMatch[1]).trim() : '';
 
             const descMatch = htmlText.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i) ||
                               htmlText.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i);
-            const desc = descMatch ? descMatch[1].trim() : '';
+            const desc = descMatch ? decodeHtmlEntities(descMatch[1]).trim() : '';
 
             // Deep content extraction: extract article body text
             let bodyText = '';
@@ -128,16 +335,10 @@ export default async function handler(req, res) {
               const contentHtml = articleMatch?.[1] || mainMatch?.[1] || bodyMatch?.[1] || cleaned;
 
               // Strip remaining HTML tags to get plain text
-              bodyText = contentHtml
+              bodyText = decodeHtmlEntities(contentHtml
                 .replace(/<[^>]+>/g, ' ')
-                .replace(/&nbsp;/g, ' ')
-                .replace(/&amp;/g, '&')
-                .replace(/&lt;/g, '<')
-                .replace(/&gt;/g, '>')
-                .replace(/&quot;/g, '"')
-                .replace(/&#39;/g, "'")
                 .replace(/\s+/g, ' ')
-                .trim();
+                .trim());
 
               // Trim to first 3000 characters
               if (bodyText.length > 3000) {
@@ -150,13 +351,15 @@ export default async function handler(req, res) {
             pageDetails += `网页原始标题: ${rawTitle}\n社交网络标题(og): ${ogTitle}\n描述信息: ${desc}`;
             if (bodyText) {
               pageDetails += `\n正文摘要: ${bodyText}`;
+              extractedContent = bodyText;
+              contentSource = 'html-fallback';
             }
           } else {
-            pageDetails += `抓取网页失败（状态码 ${response.status}），请根据 URL 格式推断内容。`;
+            pageDetails += `抓取网页失败（状态码 ${response.status}）。`;
           }
         } catch (e) {
           console.warn(`[Summarize API] URL fetch failed (expected for SPAs):`, e.message);
-          pageDetails += `无法抓取网页（${e.message}），请根据 URL 格式和你的知识推断内容。`;
+          pageDetails += `无法抓取网页（${e.message}）。`;
         }
       }
       summaryPromptText += `【用户提供了来源链接信息】\n${pageDetails}\n\n`;
@@ -164,11 +367,21 @@ export default async function handler(req, res) {
 
     // 2. If text content is provided
     if (content) {
-      summaryPromptText += `【用户提供了摘录/正文内容】\n${content}\n\n`;
+      summaryPromptText += `【用户提供了摘录/正文内容】\n${truncateText(content, MAX_USER_CONTENT_CHARS)}\n\n`;
     }
 
     // 3. Build instructions
-    let instruction = '你是一个专业的投资情报分析助手。请仔细阅读以上提供的所有信息（包括正文内容、网页标题、描述等），深入理解文章的核心观点和论据，然后提炼出一个精准的中文卡片标题。\n\n规则：\n1. 标题必须简短，严格控制在 30 个字以内。\n2. 必须基于文章的核心观点和实质内容来总结，不要只翻译或复述网页标题。\n3. 突出核心事件或观点（如：公司动态、财务数据、市场趋势、投资观点等）。\n4. 如果涉及具体数字或数据，应在标题中体现。\n5. 不要输出任何多余的废话、解释或 Markdown 格式，只输出纯文字标题。\n\n同时，请提供一个不超过100字的内容摘要（用于卡片预览），格式为：\n标题: xxx\n摘要: xxx';
+    let instruction = `你是一个专业的投资情报分析助手。请基于上面已经抓取到的正文、Markdown、网页标题、描述或图片内容，生成信息卡片标题和摘要。
+
+规则：
+1. 全部输出简体中文，股票代码、公司名、产品名、平台名可保留英文。
+2. 标题严格控制在 30 个汉字以内，必须概括核心事实或观点，不要只翻译网页标题。
+3. 摘要控制在 100 个汉字以内，说明文章/帖子真正讲了什么，以及它和投资情报的关系。
+4. 如果正文不足，只能写“内容不足，需人工补充正文”，不要根据 URL、域名或常识猜测。
+5. 只输出 JSON，不要 Markdown，不要解释。
+
+JSON 格式：
+{"title":"...","summary":"..."}`;
     
     parts.push({ text: summaryPromptText + instruction });
 
@@ -184,93 +397,33 @@ export default async function handler(req, res) {
       parts.push({ text: '另外，参考上面这张图片的内容进行综合标题总结。' });
     }
 
-    // Call Gemini API with retry + fallback
-    const summarizeModels = [
-      'gemini-2.5-flash',
-      'gemini-3.5-flash',
-      'gemini-3.1-flash-lite',
-    ];
+    const summarizeModels = getGeminiModelPool(
+      process.env.GEMINI_SUMMARY_MODELS,
+      process.env.GEMINI_MODELS,
+      process.env.GEMINI_MODEL,
+    );
 
-    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-    let lastError = null;
-    let success = false;
     let generatedTitle = '';
+    let modelUsed = '';
 
-    for (const currentModel of summarizeModels) {
-      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
-      
-      // Retry up to 2 times for each model on 503/429
-      for (let attempt = 0; attempt < 2; attempt++) {
-        console.log(`[Summarize API] Trying model: ${currentModel} (attempt ${attempt + 1})`);
-        try {
-          const geminiResponse = await fetch(geminiUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ parts }],
-              generationConfig: {
-                temperature: 0.3,
-                maxOutputTokens: 500,
-              },
-            }),
-          });
-
-          if (!geminiResponse.ok) {
-            const errText = await geminiResponse.text();
-            console.warn(`[Summarize API] Model ${currentModel} HTTP ${geminiResponse.status}`);
-            lastError = { status: geminiResponse.status, text: errText };
-            if ((geminiResponse.status === 503 || geminiResponse.status === 429) && attempt === 0) {
-              await sleep(3000);
-              continue; // retry same model
-            }
-            break; // move to next model
-          }
-
-          const data = await geminiResponse.json();
-          const rawResponse = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
-          
-          // Parse title and summary from structured response
-          const titleLineMatch = rawResponse.match(/标题[::：]\s*(.+)/m);
-          const summaryLineMatch = rawResponse.match(/摘要[::：]\s*(.+)/m);
-          
-          if (titleLineMatch) {
-            generatedTitle = titleLineMatch[1].trim();
-            if (summaryLineMatch) {
-              extractedSummary = summaryLineMatch[1].trim().substring(0, 100);
-            }
-          } else {
-            // Fallback: treat entire response as title (no structured format)
-            generatedTitle = rawResponse;
-          }
-          
-          // Validate: title must be at least 4 characters, otherwise try next model
-          if (generatedTitle.length < 4) {
-            console.warn(`[Summarize API] Model ${currentModel} returned too-short title: "${generatedTitle}", trying next`);
-            lastError = { status: 200, text: `Title too short: "${generatedTitle}"` };
-            break; // try next model
-          }
-          
-          success = true;
-          console.log(`[Summarize API] Success with model: ${currentModel}, title: "${generatedTitle}"`);
-          break;
-        } catch (err) {
-          console.error(`[Summarize API] Model ${currentModel} exception:`, err);
-          lastError = { status: 500, text: err.message };
-          break;
-        }
-      }
-      if (success) break;
-    }
-
-    if (!success) {
+    try {
+      const { rawResponse, model } = await callGeminiWithModelPool({
+        apiKey,
+        models: summarizeModels,
+        parts,
+      });
+      modelUsed = model;
+      const parsed = parseStructuredSummary(rawResponse);
+      generatedTitle = parsed.title;
+      extractedSummary = parsed.summary ? parsed.summary.slice(0, 100) : extractedSummary;
+    } catch (err) {
       return res.status(502).json({
         error: 'Gemini API error (All summary models failed)',
-        details: lastError ? lastError.text : 'Unknown error'
+        details: err.message,
       });
     }
 
-    // Clean up title (remove double quotes, markdown bold, etc.)
-    const cleanTitle = generatedTitle.replace(/^["'\u201c\u201d\u00ab]/, '').replace(/["'\u201c\u201d\u00bb]$/, '').replace(/\*\*?/g, '').trim();
+    const cleanTitle = cleanGeneratedTitle(generatedTitle);
 
     // For Twitter posts, generate summary from tweet text if not already set
     if (!extractedSummary && extractedContent) {
@@ -280,8 +433,10 @@ export default async function handler(req, res) {
     return res.status(200).json({ 
       title: cleanTitle || '未命名情报',
       summary: extractedSummary || null,
-      content: extractedContent,
-      author: extractedAuthor
+      content: extractedContent ? truncateText(extractedContent, MAX_RETURN_CONTENT_CHARS) : null,
+      author: extractedAuthor,
+      contentSource,
+      model: modelUsed,
     });
   } catch (err) {
     console.error('[Summarize API] Exception:', err);

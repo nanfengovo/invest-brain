@@ -215,6 +215,14 @@ if use_chinese_report:
 SKILL_REPO_URL = "https://github.com/mvanhorn/last30days-skill.git"
 DEFAULT_SKILL_ROOT = Path(os.environ.get("LAST30DAYS_SKILL_ROOT", "/tmp/last30days-skill"))
 SCRIPT_RELATIVE_PATH = Path("skills/last30days/scripts/last30days.py")
+DEFAULT_GEMINI_MODELS = [
+    "gemini-3.1-flash-lite",
+    "gemini-2.5-flash-lite",
+    "gemini-3.5-flash",
+    "gemini-3-flash",
+    "gemini-2.5-flash",
+]
+MAX_GEMINI_INPUT_CHARS = 36000
 
 
 def is_python_supported():
@@ -269,13 +277,75 @@ def build_last30days_command(query):
     ]
 
 
+def unique_values(values):
+    seen = set()
+    result = []
+    for value in values:
+        value = str(value or "").strip()
+        if value and value not in seen:
+            result.append(value)
+            seen.add(value)
+    return result
+
+
+def split_csv_models(value):
+    return [item.strip() for item in str(value or "").split(",") if item.strip()]
+
+
+def get_gemini_model_pool():
+    configured = []
+    for secret_name in ("GEMINI_REPORT_MODELS", "GEMINI_MODELS", "GEMINI_MODEL"):
+        configured.extend(split_csv_models(get_secret_value(secret_name)))
+    return unique_values([*configured, *DEFAULT_GEMINI_MODELS])
+
+
+def truncate_text(text, limit):
+    text = str(text or "").strip()
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + "\n\n[内容已截断，保留最相关的前半部分供模型生成中文简报。]"
+
+
+def post_gemini_request(api_key, model, prompt, max_output_tokens=4096):
+    endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    payload = {
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{"text": prompt}],
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.2,
+            "maxOutputTokens": max_output_tokens,
+        },
+    }
+
+    request = urllib.request.Request(
+        endpoint,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    with urllib.request.urlopen(request, timeout=55) as response:
+        response_data = json.loads(response.read().decode("utf-8"))
+
+    parts = (
+        response_data
+        .get("candidates", [{}])[0]
+        .get("content", {})
+        .get("parts", [])
+    )
+    return "\n".join(part.get("text", "") for part in parts).strip()
+
+
 def call_gemini_for_chinese_report(raw_markdown, query):
     api_key = get_secret_value("GEMINI_API_KEY", "GOOGLE_API_KEY")
     if not api_key:
         return None, "未配置 GEMINI_API_KEY。"
 
-    model = get_secret_value("GEMINI_MODEL") or "gemini-2.0-flash"
-    endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    model_pool = get_gemini_model_pool()
     prompt = f"""
 你是 InvestBrain 的中文投资研究助手。请把下面的 last30days 原始研究结果整理成中文 Markdown 简报。
 
@@ -290,53 +360,39 @@ def call_gemini_for_chinese_report(raw_markdown, query):
    - ### 风险与催化
    - ### 跟踪清单
 5. 如果原始材料不足，明确写出“证据不足”，不要强行给确定结论。
+6. 如果原始材料主要是英文，你必须用中文总结其含义，不要把英文长段落原样搬进正文。
+7. 每条关键证据尽量包含来源平台、日期、链接和一句中文解释。
 
 研究对象：{query}
 
 原始结果：
-{raw_markdown}
+{truncate_text(raw_markdown, MAX_GEMINI_INPUT_CHARS)}
 """.strip()
 
-    payload = {
-        "contents": [
-            {
-                "role": "user",
-                "parts": [{"text": prompt}],
-            }
-        ],
-        "generationConfig": {
-            "temperature": 0.2,
-            "maxOutputTokens": 4096,
-        },
-    }
+    last_error = None
+    for model in model_pool:
+        for attempt in range(2):
+            try:
+                text = post_gemini_request(api_key, model, prompt)
+                if text:
+                    return text, None
+                last_error = f"{model}: Gemini 未返回可用中文内容。"
+                break
+            except urllib.error.HTTPError as exc:
+                last_error = f"{model}: Gemini API 返回 {exc.code}"
+                if exc.code in (429, 503) and attempt == 0:
+                    time.sleep(1.2)
+                    continue
+                break
+            except Exception as exc:
+                last_error = f"{model}: {exc}"
+                break
 
-    request = urllib.request.Request(
-        endpoint,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
+    return None, last_error or "全部 Gemini 模型均不可用。"
 
-    try:
-        with urllib.request.urlopen(request, timeout=55) as response:
-            response_data = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        return None, f"Gemini API 返回 {exc.code}"
-    except Exception as exc:
-        return None, str(exc)
 
-    parts = (
-        response_data
-        .get("candidates", [{}])[0]
-        .get("content", {})
-        .get("parts", [])
-    )
-    text = "\n".join(part.get("text", "") for part in parts).strip()
-
-    if not text:
-        return None, "Gemini 未返回可用中文内容。"
-
-    return text, None
+def clean_markdown_inline(text):
+    return re.sub(r"\s+", " ", str(text or "").replace("**", "").replace("__", "")).strip()
 
 
 def extract_first_match(pattern, text, default="暂未识别"):
@@ -346,44 +402,160 @@ def extract_first_match(pattern, text, default="暂未识别"):
     return match.group(1).strip()
 
 
+def extract_ranked_evidence(raw_markdown, limit=8):
+    evidence_block = raw_markdown
+    envelope = re.search(
+        r"<!-- EVIDENCE FOR SYNTHESIS.*?-->([\s\S]*?)<!-- END EVIDENCE FOR SYNTHESIS -->",
+        raw_markdown,
+        flags=re.IGNORECASE,
+    )
+    if envelope:
+        evidence_block = envelope.group(1)
+
+    items = []
+    current = None
+    current_cluster = ""
+
+    for line in evidence_block.splitlines():
+        cluster_match = re.match(r"^###\s+\d+\.\s+(.+?)\s+\(score\s+[^)]*\)", line.strip())
+        if cluster_match:
+            current_cluster = clean_markdown_inline(cluster_match.group(1))
+            continue
+
+        item_match = re.match(r"^\d+\.\s+\[([^\]]+)\]\s+(.+)$", line.strip())
+        if item_match:
+            if current:
+                items.append(current)
+                if len(items) >= limit:
+                    break
+            current = {
+                "source": clean_markdown_inline(item_match.group(1)),
+                "title": clean_markdown_inline(item_match.group(2)),
+                "cluster": current_cluster,
+                "date": "",
+                "url": "",
+                "why": "",
+                "evidence": "",
+            }
+            continue
+
+        if not current:
+            continue
+
+        detail_match = re.match(r"^\s+-\s+(.+)$", line)
+        if not detail_match:
+            continue
+
+        detail = detail_match.group(1).strip()
+        if detail.startswith("URL:"):
+            current["url"] = detail.replace("URL:", "", 1).strip()
+        elif detail.startswith("Why:"):
+            current["why"] = clean_markdown_inline(detail.replace("Why:", "", 1))
+        elif detail.startswith("Evidence:"):
+            current["evidence"] = clean_markdown_inline(detail.replace("Evidence:", "", 1))
+        elif not current["date"] and re.search(r"\d{4}-\d{2}-\d{2}|date unknown", detail, flags=re.IGNORECASE):
+            current["date"] = clean_markdown_inline(detail.split("|")[0])
+
+    if current and len(items) < limit:
+        items.append(current)
+
+    return items
+
+
+def score_keyword_sentiment(raw_markdown):
+    text = raw_markdown.lower()
+    positive_words = [
+        "bullish", "beat", "growth", "strong", "upgrade", "optimism", "rally",
+        "momentum", "record", "demand", "raise", "upside", "positive", "buy",
+        "long", "outperform", "surge", "accelerate",
+    ]
+    negative_words = [
+        "bearish", "miss", "lawsuit", "risk", "concern", "weak", "downgrade",
+        "crash", "cut", "pressure", "decline", "fall", "recession", "tariff",
+        "antitrust", "slowdown", "negative", "sell", "short", "underperform",
+    ]
+    positive = sum(text.count(word) for word in positive_words)
+    negative = sum(text.count(word) for word in negative_words)
+    if positive >= negative * 1.4 and positive >= 2:
+        label = "偏正面"
+    elif negative >= positive * 1.4 and negative >= 2:
+        label = "偏负面"
+    elif positive or negative:
+        label = "分歧较大"
+    else:
+        label = "证据不足"
+    return label, positive, negative
+
+
+def source_summary_from_items(items):
+    counts = {}
+    for item in items:
+        source = item.get("source") or "未知来源"
+        counts[source] = counts.get(source, 0) + 1
+    if not counts:
+        return "暂未识别"
+    return "、".join(f"{source} {count} 条" for source, count in sorted(counts.items()))
+
+
+def build_evidence_bullets(items):
+    if not items:
+        return "- 暂未从原始结果中抽取到可读证据条目，请展开下方原始英文证据人工核对。"
+
+    bullets = []
+    for item in items[:6]:
+        date = item.get("date") or "日期未明"
+        source = item.get("source") or "未知来源"
+        title = item.get("title") or item.get("cluster") or "未命名证据"
+        url = item.get("url")
+        evidence = item.get("evidence") or item.get("why") or ""
+        line = f"- **{title}**（{source}，{date}）"
+        if evidence:
+            line += f"：{evidence[:220]}"
+        if url:
+            line += f" [原文]({url})"
+        bullets.append(line)
+    return "\n".join(bullets)
+
+
 def build_basic_chinese_report(raw_markdown, query, reason):
     safe_query = re.sub(r"\s+", " ", query.upper()).strip()[:80] or "当前标的"
     date_range = extract_first_match(r"Date range:\s*([^\n]+)", raw_markdown)
     sources = extract_first_match(r"Sources:\s*([^\n]+)", raw_markdown)
+    evidence_items = extract_ranked_evidence(raw_markdown)
+    sentiment_label, positive_hits, negative_hits = score_keyword_sentiment(raw_markdown)
+    extracted_sources = source_summary_from_items(evidence_items)
     reason_text = reason or "中文增强服务暂不可用"
 
     return f"""
 ### 核心结论
 
-已完成 **{safe_query}** 最近 30 天的舆情检索。当前中文增强服务状态：**{reason_text}**。系统已切换为基础中文摘要模式，原始英文证据会折叠保留在下方，避免中文简报正文混入英文长文。
+已完成 **{safe_query}** 最近 30 天的舆情检索。中文增强模型暂未成功返回：**{reason_text}**。系统已切换为本地结构化摘要模式，以下结论只基于 last30days 抓取结果中的标题、来源、日期、链接和摘录做整理。
 
 ### 最近 30 天情绪
 
 - 日期范围：{date_range}
 - 数据来源：{sources}
-- 由于中文增强服务暂不可用，本次不对原始英文材料做确定性情绪翻译，避免误读或编造。
+- 可读证据来源分布：{extracted_sources}
+- 关键词情绪：**{sentiment_label}**（正向词 {positive_hits} 次，负向词 {negative_hits} 次）。这是本地规则判断，不等同于模型深度研判。
 
 ### 关键证据
 
-- 已完成 last30days 原始证据抓取。
-- 证据原文保留在下方折叠区，便于核对来源、时间与上下文。
-- 配置 `GEMINI_API_KEY` 后，系统会自动输出完整中文研报。
+{build_evidence_bullets(evidence_items)}
 
 ### 风险与催化
 
-- 当前仅提供基础中文摘要，交易前需要继续复核原始证据。
-- 舆情材料可能存在来源偏差、讨论噪音和时间滞后。
-- 请结合实时行情、财报、公告和仓位纪律判断。
+- 当前中文报告不是逐句翻译，英文原文仍需展开核对，尤其要检查标题党、断章取义和来源偏差。
+- 如果证据集中在单一平台，情绪代表性会偏弱。
+- 舆情只能提示市场关注点，交易前仍需结合实时行情、财报、公告、期权/成交量和仓位纪律。
 
 ### 跟踪清单
 
-- 优先复核下方折叠区中的高频讨论主题、来源集中度和时间新鲜度。
-- 如需完整中文翻译与结构化观点，请在 Streamlit Secrets 中配置 `GEMINI_API_KEY`。
-- 对交易决策仍需结合实时行情、财报、公告和仓位纪律。
+- 优先复核上方关键证据对应的原文链接，确认发布时间和上下文。
+- 如果经常触发 429，请把 `GEMINI_REPORT_MODELS` 设置为高 RPD 模型优先，例如 `gemini-3.1-flash-lite,gemini-2.5-flash-lite,gemini-3.5-flash`。
+- 若需要更高质量中文研报，可在额度充足时把 `gemini-3.5-flash` 或 `gemini-2.5-flash` 放到模型池前面。
 """.strip()
 
 
-@st.cache_data(ttl=3600)
 def localize_report(raw_markdown, query, language):
     if language not in ("zh", "zh-cn", "cn", "chinese"):
         return raw_markdown, None

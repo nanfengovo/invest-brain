@@ -21,8 +21,11 @@
    - 在里面填入大模型的 API Key，例如：
      ```toml
      GEMINI_API_KEY = "你的_API_KEY"
+     GEMINI_REPORT_MODELS = "gemini-3.1-flash-lite,gemini-2.5-flash-lite,gemini-3.5-flash,gemini-3-flash,gemini-2.5-flash"
      ```
    - 点击 Save 保存。
+
+   `GEMINI_REPORT_MODELS` 可选，但建议配置。Google AI Studio 的同一个 API Key 可以调用多个可用模型；这里会按顺序尝试，遇到 429/503 会自动切到下一个模型。日常使用建议把 RPD 更高的 Lite 模型放前面，把质量更强但 RPD 较低的 Flash 模型放后面。
 
 ## 🔌 如何在移动端配合使用？
 

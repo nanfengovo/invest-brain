@@ -14,7 +14,7 @@
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   border-top: 1px solid var(--color-border);
-  padding-bottom: var(--safe-area-bottom);
+  padding-bottom: env(safe-area-inset-bottom, 16px);
 }
 
 /* ── antd-mobile TabBar overrides ── */

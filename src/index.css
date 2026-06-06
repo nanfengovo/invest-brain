@@ -30,13 +30,9 @@ html,
 body {
   height: 100%;
   width: 100%;
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
   overflow: hidden;
   overscroll-behavior-y: none;
+  margin: 0;
 }
 
 img,
@@ -239,6 +235,15 @@ body {
   flex-direction: column;
   isolation: isolate;
   overflow: hidden;
+}
+
+/* ── Safe Area Helpers ── */
+.safe-pt {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
+}
+
+.safe-pb {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
 }
 
 @media (min-width: 720px) {

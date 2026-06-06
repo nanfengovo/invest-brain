@@ -41,10 +41,142 @@ export default function KlineChart({ data, interval }) {
       animation: false,
       tooltip: {
         trigger: 'axis',
-        axisPointer: { type: 'cross' },
-        backgroundColor: isDark ? 'rgba(19, 26, 42, 0.92)' : 'rgba(255, 255, 255, 0.95)',
-        borderColor: splitLineColor,
-        textStyle: { color: isDark ? '#e8ecf1' : '#1e293b', fontSize: 12 },
+        axisPointer: { 
+          type: 'cross',
+          lineStyle: {
+            color: 'rgba(255, 255, 255, 0.3)',
+            width: 1,
+            type: 'dashed'
+          }
+        },
+        backgroundColor: 'rgba(15, 23, 42, 0.85)',
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+        borderWidth: 1,
+        padding: 12,
+        extraCssText: 'backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-radius: 12px; box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.5); border: 1px solid rgba(255, 255, 255, 0.1);',
+        position: function (pos, params, dom, rect, size) {
+          const x = pos[0];
+          const y = pos[1];
+          const viewWidth = size.viewSize[0];
+          const viewHeight = size.viewSize[1];
+          const tooltipWidth = size.contentSize[0];
+          const tooltipHeight = size.contentSize[1];
+          
+          let left = x + 15;
+          let top = y - tooltipHeight / 2;
+          
+          if (left + tooltipWidth > viewWidth) {
+            left = x - tooltipWidth - 15;
+          }
+          if (left < 0) left = 10;
+          
+          if (top + tooltipHeight > viewHeight) {
+            top = viewHeight - tooltipHeight - 10;
+          }
+          if (top < 10) top = 10;
+          
+          return [left, top];
+        },
+        formatter: function (params) {
+          if (!params || params.length === 0) return '';
+          
+          const date = params[0].axisValue;
+          let html = `<div style="font-family: sans-serif; font-size: 11px; color: #e2e8f0; min-width: 150px; line-height: 1.5;">`;
+          html += `<div style="font-weight: 600; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 4px; margin-bottom: 6px; color: #94a3b8; font-family: monospace;">${date}</div>`;
+          
+          let kline = null;
+          let ma5 = null;
+          let ma20 = null;
+          let volume = null;
+          
+          params.forEach(p => {
+            if (p.seriesName === 'K Line') {
+              kline = p;
+            } else if (p.seriesName === 'MA5') {
+              ma5 = p;
+            } else if (p.seriesName === 'MA20') {
+              ma20 = p;
+            } else if (p.seriesName === 'Volume') {
+              volume = p;
+            }
+          });
+          
+          if (kline && kline.value) {
+            let open, close, low, high;
+            if (kline.value.length >= 5) {
+              open = parseFloat(kline.value[1]);
+              close = parseFloat(kline.value[2]);
+              low = parseFloat(kline.value[3]);
+              high = parseFloat(kline.value[4]);
+            } else {
+              open = parseFloat(kline.value[0]);
+              close = parseFloat(kline.value[1]);
+              low = parseFloat(kline.value[2]);
+              high = parseFloat(kline.value[3]);
+            }
+            
+            const isUp = close >= open;
+            const color = isUp ? upColor : downColor;
+            const dot = `<span style="display:inline-block;margin-right:6px;border-radius:10px;width:7px;height:7px;background-color:${color};"></span>`;
+            
+            html += `<div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+              <span style="color: #94a3b8;">${dot}开盘 (Open)</span>
+              <span style="font-weight: 600; font-family: monospace;">${open.toFixed(2)}</span>
+            </div>`;
+            html += `<div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+              <span style="color: #94a3b8;">${dot}收盘 (Close)</span>
+              <span style="font-weight: 600; color: ${color}; font-family: monospace;">${close.toFixed(2)}</span>
+            </div>`;
+            html += `<div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+              <span style="color: #94a3b8;">${dot}最低 (Low)</span>
+              <span style="font-weight: 600; font-family: monospace;">${low.toFixed(2)}</span>
+            </div>`;
+            html += `<div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+              <span style="color: #94a3b8;">${dot}最高 (High)</span>
+              <span style="font-weight: 600; font-family: monospace;">${high.toFixed(2)}</span>
+            </div>`;
+          }
+          
+          if (volume && volume.value !== undefined) {
+            let volVal = typeof volume.value === 'object' && volume.value !== null ? volume.value.value : volume.value;
+            if (Array.isArray(volVal)) {
+              volVal = volVal[1];
+            }
+            if (volVal !== undefined && volVal !== null) {
+              const formattedVol = Number(volVal).toLocaleString();
+              const dot = `<span style="display:inline-block;margin-right:6px;border-radius:10px;width:7px;height:7px;background-color:#64748b;"></span>`;
+              html += `<div style="display: flex; justify-content: space-between; margin-top: 5px; margin-bottom: 5px; border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 5px;">
+                <span style="color: #94a3b8;">${dot}成交量 (Vol)</span>
+                <span style="font-weight: 600; font-family: monospace;">${formattedVol}</span>
+              </div>`;
+            }
+          }
+          
+          if (ma5 && ma5.value !== undefined) {
+            let val = Array.isArray(ma5.value) ? ma5.value[1] : ma5.value;
+            if (val !== undefined && val !== '-' && val !== null) {
+              const dot = `<span style="display:inline-block;margin-right:6px;border-radius:10px;width:7px;height:7px;background-color:#f59e0b;"></span>`;
+              html += `<div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+                <span style="color: #94a3b8;">${dot}MA5</span>
+                <span style="font-weight: 600; color: #f59e0b; font-family: monospace;">${Number(val).toFixed(2)}</span>
+              </div>`;
+            }
+          }
+          
+          if (ma20 && ma20.value !== undefined) {
+            let val = Array.isArray(ma20.value) ? ma20.value[1] : ma20.value;
+            if (val !== undefined && val !== '-' && val !== null) {
+              const dot = `<span style="display:inline-block;margin-right:6px;border-radius:10px;width:7px;height:7px;background-color:#818cf8;"></span>`;
+              html += `<div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+                <span style="color: #94a3b8;">${dot}MA20</span>
+                <span style="font-weight: 600; color: #818cf8; font-family: monospace;">${Number(val).toFixed(2)}</span>
+              </div>`;
+            }
+          }
+          
+          html += '</div>';
+          return html;
+        }
       },
       axisPointer: {
         link: [{ xAxisIndex: 'all' }],

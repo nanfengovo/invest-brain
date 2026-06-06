@@ -1,9 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Toast } from 'antd-mobile';
-import { LeftOutline, SearchOutline } from 'antd-mobile-icons';
+import { LeftOutline, SearchOutline, CloseOutline } from 'antd-mobile-icons';
 import KlineChart from '../components/Market/KlineChart';
-import SearchModal from '../components/common/SearchModal';
 import { useAppStore } from '../stores/useAppStore';
 import './StockDetailPage.css';
 
@@ -25,7 +24,48 @@ export default function StockDetailPage() {
   const [chartData, setChartData] = useState([]);
   const [quote, setQuote] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [searchVisible, setSearchVisible] = useState(false);
+  
+  // Inline search states
+  const [isSearching, setIsSearching] = useState(false);
+  const [query, setQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [loadingSearch, setLoadingSearch] = useState(false);
+  const searchInputRef = useRef(null);
+
+  useEffect(() => {
+    if (!isSearching) {
+      setQuery('');
+      setSearchResults([]);
+    } else {
+      setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 50);
+    }
+  }, [isSearching]);
+
+  useEffect(() => {
+    const searchTimer = setTimeout(async () => {
+      if (query.trim().length < 1) {
+        setSearchResults([]);
+        return;
+      }
+      
+      setLoadingSearch(true);
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+        const json = await res.json();
+        if (json && json.success && json.data) {
+          setSearchResults(json.data.filter(q => q.isYahooFinance));
+        }
+      } catch (err) {
+        console.error('Search failed:', err);
+      } finally {
+        setLoadingSearch(false);
+      }
+    }, 500);
+
+    return () => clearTimeout(searchTimer);
+  }, [query]);
   
   useEffect(() => {
     let mounted = true;
@@ -95,26 +135,101 @@ export default function StockDetailPage() {
 
   return (
     <div className="stock-detail-page">
-      <div className="stock-detail__navbar">
-        <LeftOutline className="stock-detail__back" onClick={() => navigate(-1)} />
-        <div className="stock-detail__nav-title">
-          <div className="stock-detail__symbol">{symbol.toUpperCase()}</div>
-          <div className="stock-detail__market-status">实时行情 (USD)</div>
+      {isSearching ? (
+        // Active Search Header
+        <div className="flex items-center gap-3 px-4 h-11 mb-2">
+          <div className="flex-1 flex items-center gap-2 bg-white/10 rounded-full h-9 px-3 border border-white/5">
+            <SearchOutline className="text-gray-400 text-base flex-shrink-0" />
+            <input 
+              ref={searchInputRef}
+              type="text"
+              className="flex-1 text-white text-sm bg-transparent outline-none h-full"
+              placeholder="搜索股票代码/拼音/名称"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            {query && (
+              <CloseOutline 
+                className="text-gray-400 text-base cursor-pointer flex-shrink-0" 
+                onClick={() => setQuery('')} 
+              />
+            )}
+          </div>
+          <button 
+            onClick={() => setIsSearching(false)} 
+            className="text-indigo-400 text-sm font-semibold whitespace-nowrap active:scale-95 transition-transform"
+          >
+            取消
+          </button>
         </div>
-        <div className="stock-detail__actions">
-          <SearchOutline onClick={() => setSearchVisible(true)} />
-          <svg onClick={handleShare} viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
-            <path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92c0-1.61-1.31-2.92-2.92-2.92z"/>
-          </svg>
+      ) : (
+        // Standard Navbar
+        <div className="stock-detail__navbar">
+          <LeftOutline className="stock-detail__back" onClick={() => navigate(-1)} />
+          <div className="stock-detail__nav-title">
+            <div className="stock-detail__symbol">{symbol.toUpperCase()}</div>
+            <div className="stock-detail__market-status">实时行情 (USD)</div>
+          </div>
+          <div className="stock-detail__actions">
+            <SearchOutline onClick={() => setIsSearching(true)} />
+            <svg onClick={handleShare} viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+              <path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92c0-1.61-1.31-2.92-2.92-2.92z"/>
+            </svg>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Search overlay & result list */}
+      {isSearching && (
+        <div className="fixed inset-x-0 bottom-0 top-[calc(44px+8px+var(--safe-area-top))] bg-[#0B0E14]/98 z-50 overflow-y-auto px-4 pb-20">
+          {query.trim().length === 0 ? (
+            // Mask layer
+            <div className="fixed inset-x-0 bottom-0 top-[calc(44px+8px+var(--safe-area-top))] bg-black/60 -mx-4" />
+          ) : (
+            // Search Results Panel
+            <div className="py-2">
+              {loadingSearch && (
+                <div className="py-8 text-center text-gray-400 text-sm">搜索中...</div>
+              )}
+              
+              {!loadingSearch && searchResults.length > 0 && (
+                <div className="flex flex-col">
+                  {searchResults.map((item, idx) => (
+                    <div 
+                      key={idx} 
+                      className="flex justify-between items-center py-4 border-b border-white/5 active:bg-white/5 px-2 rounded-lg cursor-pointer"
+                      onClick={() => {
+                        setIsSearching(false);
+                        navigate(`/stock/${item.symbol}`);
+                      }}
+                    >
+                      <div className="flex flex-col gap-1">
+                        <span className="text-base font-semibold text-white">{item.symbol}</span>
+                        <span className="text-xs text-gray-400">{item.shortname || item.longname}</span>
+                      </div>
+                      <div className="text-xs text-gray-500 bg-white/5 px-2 py-0.5 rounded border border-white/5">
+                        {item.exchDisp}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              {!loadingSearch && searchResults.length === 0 && (
+                <div className="py-8 text-center text-gray-400 text-sm">未找到匹配的股票</div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="stock-detail__header">
-        <div className={`stock-detail__price ${colorClass}`}>
+        <div className={`stock-detail__price ${colorClass} font-extrabold`}>
           {quote ? quote.regularMarketPrice.toFixed(2) : '--.--'}
         </div>
-        <div className={`stock-detail__changes ${colorClass}`}>
-          {sign}{changeValue} {sign}{changePct}%
+        <div className={`stock-detail__changes ${colorClass} flex items-center gap-3`}>
+          <span>{sign}{changeValue}</span>
+          <span>{sign}{changePct}%</span>
         </div>
       </div>
 
@@ -167,7 +282,7 @@ export default function StockDetailPage() {
         )}
       </div>
 
-      {/* Placeholder for AI Insights module */}
+      {/* AI Insights module */}
       <div className="stock-detail__ai-insights">
         <div className="ai-insights-header">
           <h3>全网舆情 (Last 30 Days)</h3>
@@ -190,7 +305,6 @@ export default function StockDetailPage() {
           <p>点击上方按钮，即可在新窗口拉起您的 Streamlit 专属 AI 引擎，拉取 {symbol.toUpperCase()} 近 30 天的全网舆情报告。</p>
         </div>
       </div>
-      <SearchModal visible={searchVisible} onClose={() => setSearchVisible(false)} />
     </div>
   );
 }

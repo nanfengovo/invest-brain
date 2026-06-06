@@ -4,6 +4,7 @@ import { NavBar, Button, Toast, Tag, TextArea, Divider, List, ActionSheet, Swipe
 import { LinkOutline, AppstoreOutline, MoreOutline, EditSOutline, AddOutline } from 'antd-mobile-icons';
 import { db } from '../db/database';
 import { useTradeStore } from '../stores/useTradeStore';
+import { useAppStore } from '../stores/useAppStore';
 import { getFileUrlFromOPFS } from '../utils/opfsUtils';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { Document, Page, pdfjs } from 'react-pdf';
@@ -128,32 +129,63 @@ function getTagColor(tag) {
   return preset ? preset.color : '#6366f1';
 }
 
+const splitList = (value) => String(value || '')
+  .split(/[,\n，、]/)
+  .map((item) => item.trim())
+  .filter(Boolean);
+
+const getStatusLabel = (status) => {
+  const labels = {
+    DRAFT: '观点',
+    WATCH: '观望',
+    ACTIVE: '执行中',
+    CLOSED: '已闭环',
+    ENDED: '已结束',
+    ABANDONED: '已放弃',
+  };
+  return labels[status] || status || '未定义';
+};
+
 export default function InformationDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [info, setInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [viewpoints, setViewpoints] = useState([]);
+  const [linkedDecisions, setLinkedDecisions] = useState([]);
   const [fileUrl, setFileUrl] = useState(null);
-  const [contentCollapsed, setContentCollapsed] = useState(false);
-  
+
   // PDF state
   const [pdfNumPages, setPdfNumPages] = useState(null);
   const [pdfPageNumber, setPdfPageNumber] = useState(1);
-  
+
   const [newViewpoint, setNewViewpoint] = useState('');
   const [newVpTags, setNewVpTags] = useState([]);
+  const [selectedQuote, setSelectedQuote] = useState('');
+  const syncUserId = useAppStore(s => s.syncUserId);
+  const addMarketWatchItem = useAppStore(s => s.addMarketWatchItem);
+  const [authorName, setAuthorName] = useState(
+    syncUserId || localStorage.getItem('invest_sync_user_id') || '我'
+  );
   const [submittingVp, setSubmittingVp] = useState(false);
-  
+
   // Tag editing state
   const [editTypeVisible, setEditTypeVisible] = useState(false);
   const [editAssetVisible, setEditAssetVisible] = useState(false);
   const [editSectorVisible, setEditSectorVisible] = useState(false);
   const [editAssetValue, setEditAssetValue] = useState('');
   const [editSectorValue, setEditSectorValue] = useState('');
-  
+
   const addViewpoint = useTradeStore(s => s.addViewpoint);
-  const updateViewpoint = useTradeStore(s => s.updateViewpoint);
+
+  const reloadContext = async () => {
+    const [vps, decisionsForInfo] = await Promise.all([
+      db.getViewpoints(id),
+      db.getDecisionsByInformation(id),
+    ]);
+    setViewpoints(vps || []);
+    setLinkedDecisions(decisionsForInfo || []);
+  };
 
   useEffect(() => {
     let currentUrl = null;
@@ -166,11 +198,10 @@ export default function InformationDetail() {
           return;
         }
         setInfo(infoData);
-        setEditAssetValue(infoData.asset_symbol || infoData.asset_id || '');
-        setEditSectorValue(infoData.sector || '');
-        
-        const vps = await db.getViewpoints(id);
-        setViewpoints(vps || []);
+        setEditAssetValue(infoData.asset_symbols || infoData.asset_symbol || infoData.asset_id || '');
+        setEditSectorValue(infoData.sectors || infoData.sector || '');
+
+        await reloadContext();
 
         if (infoData.file_path) {
           currentUrl = await getFileUrlFromOPFS(infoData.file_path);
@@ -184,7 +215,7 @@ export default function InformationDetail() {
       }
     }
     loadData();
-    
+
     return () => {
       if (currentUrl) {
         URL.revokeObjectURL(currentUrl);
@@ -201,13 +232,16 @@ export default function InformationDetail() {
         info_id: id,
         content: newViewpoint.trim(),
         tags: newVpTags.length > 0 ? newVpTags : null,
+        author: authorName.trim() || '我',
+        quote: selectedQuote.trim() || null,
+        target_type: info?.type || 'GENERAL',
       });
       if (res.success) {
         Toast.show({ icon: 'success', content: '添加成功' });
         setNewViewpoint('');
         setNewVpTags([]);
-        const vps = await db.getViewpoints(id);
-        setViewpoints(vps || []);
+        setSelectedQuote('');
+        await reloadContext();
       } else {
         Toast.show({ icon: 'fail', content: '添加失败' });
       }
@@ -217,7 +251,17 @@ export default function InformationDetail() {
   };
 
   const handleCreateDecision = () => {
-    navigate(`/decisions?info_id=${id}`);
+    navigate(`/decisions?info_id=${id}&new=1`);
+  };
+
+  const captureSelectedText = () => {
+    const text = window.getSelection?.().toString().trim() || '';
+    if (!text) {
+      Toast.show({ content: '先在正文、PDF 文本层或页面里选中一段内容' });
+      return;
+    }
+    setSelectedQuote(text.slice(0, 500));
+    Toast.show({ icon: 'success', content: '已引用选中文本' });
   };
 
   // Tag editing handlers
@@ -236,32 +280,47 @@ export default function InformationDetail() {
   const handleEditAsset = async () => {
     const symbol = editAssetValue.toUpperCase().trim();
     const updateInformation = useTradeStore.getState().updateInformation;
-    
+
     let assetId = null;
-    if (symbol) {
+    const assetIds = splitList(symbol).map((item) => item.toUpperCase());
+    if (assetIds.length > 0) {
       try {
-        await db.upsertAsset({ id: symbol, symbol, name: symbol, type: 'STOCK' });
-        assetId = symbol;
+        for (const assetSymbol of assetIds) {
+          await db.upsertAsset({ id: assetSymbol, symbol: assetSymbol, name: assetSymbol, type: 'STOCK' });
+          addMarketWatchItem({
+            symbol: assetSymbol,
+            name: assetSymbol,
+            quoteType: 'EQUITY',
+            typeDisp: '股票',
+          });
+        }
+        assetId = assetIds[0];
       } catch (err) {
         console.warn('Asset upsert failed:', err);
       }
     }
-    
-    const res = await updateInformation({ ...info, asset_id: assetId });
+
+    const res = await updateInformation({ ...info, asset_id: assetId, asset_ids: assetIds });
     if (res.success) {
-      setInfo(prev => ({ ...prev, asset_id: assetId, asset_symbol: symbol || null }));
-      Toast.show({ icon: 'success', content: symbol ? '关联资产已更新' : '已取消关联' });
+      setInfo(prev => ({
+        ...prev,
+        asset_id: assetId,
+        asset_symbol: assetId,
+        asset_symbols: assetIds.join(',') || null,
+      }));
+      Toast.show({ icon: 'success', content: assetIds.length ? '关联资产已更新' : '已取消关联' });
     }
     setEditAssetVisible(false);
   };
 
   const handleEditSector = async () => {
     const sector = editSectorValue.trim() || null;
+    const sectors = splitList(editSectorValue);
     const updateInformation = useTradeStore.getState().updateInformation;
-    const res = await updateInformation({ ...info, sector });
+    const res = await updateInformation({ ...info, sector: sectors[0] || sector, sectors });
     if (res.success) {
-      setInfo(prev => ({ ...prev, sector }));
-      Toast.show({ icon: 'success', content: sector ? '板块已更新' : '已清除板块' });
+      setInfo(prev => ({ ...prev, sector: sectors[0] || null, sectors: sectors.join(',') || null }));
+      Toast.show({ icon: 'success', content: sectors.length ? '板块已更新' : '已清除板块' });
     }
     setEditSectorVisible(false);
   };
@@ -270,8 +329,7 @@ export default function InformationDetail() {
     const updateVpStatus = useTradeStore.getState().updateViewpointStatus;
     const res = await updateVpStatus(vpId, newStatus);
     if (res.success) {
-      const vps = await db.getViewpoints(id);
-      setViewpoints(vps || []);
+      await reloadContext();
       Toast.show({ icon: 'success', content: `已标记为${VP_STATUS_CONFIG[newStatus]?.label || newStatus}` });
     }
   };
@@ -336,7 +394,7 @@ export default function InformationDetail() {
   const getVpSwipeActions = (vp) => {
     const status = vp.status || 'ACTIVE';
     const actions = [];
-    
+
     if (status !== 'VALIDATED') {
       actions.push({
         key: 'validate',
@@ -382,9 +440,12 @@ export default function InformationDetail() {
   if (loading) return <LoadingSpinner />;
   if (!info) return null;
 
+  const infoAssets = splitList(info.asset_symbols || info.asset_symbol || info.asset_id);
+  const infoSectors = splitList(info.sectors || info.sector);
+
   return (
     <div className="info-detail">
-      <NavBar 
+      <NavBar
         onBack={() => navigate(-1)}
         right={<MoreOutline style={{ fontSize: 24 }} onClick={() => setActionSheetVisible(true)} />}
       >
@@ -398,15 +459,15 @@ export default function InformationDetail() {
         onAction={handleAction}
         cancelText="取消"
       />
-      
+
       <div className="info-detail__content">
         <div className="info-detail__header">
           <h1 className="info-detail__title">{info.title}</h1>
-          
+
           {/* ── Editable Tags ── */}
           <div className="info-detail__tags">
-            <Tag 
-              color={TYPE_COLORS[info.type] || 'default'} 
+            <Tag
+              color={TYPE_COLORS[info.type] || 'default'}
               fill="outline"
               className="info-detail__tag-editable"
               onClick={() => setEditTypeVisible(true)}
@@ -414,24 +475,27 @@ export default function InformationDetail() {
               {TYPE_LABELS[info.type] || info.type}
               <EditSOutline className="info-detail__tag-edit-icon" />
             </Tag>
-            
-            {info.asset_symbol || info.asset_id ? (
-              <Tag 
-                color="primary" 
-                fill="outline"
-                className="info-detail__tag-editable"
-                onClick={() => {
-                  setEditAssetValue(info.asset_symbol || info.asset_id || '');
-                  setEditAssetVisible(true);
-                }}
-              >
-                <AppstoreOutline style={{ marginRight: 4 }} />
-                {info.asset_symbol || info.asset_id}
-                <EditSOutline className="info-detail__tag-edit-icon" />
-              </Tag>
+
+            {infoAssets.length > 0 ? (
+              infoAssets.map((asset) => (
+                <Tag
+                  key={asset}
+                  color="primary"
+                  fill="outline"
+                  className="info-detail__tag-editable"
+                  onClick={() => {
+                    setEditAssetValue(infoAssets.join(','));
+                    setEditAssetVisible(true);
+                  }}
+                >
+                  <AppstoreOutline style={{ marginRight: 4 }} />
+                  {asset}
+                  <EditSOutline className="info-detail__tag-edit-icon" />
+                </Tag>
+              ))
             ) : (
-              <Tag 
-                color="default" 
+              <Tag
+                color="default"
                 fill="outline"
                 className="info-detail__tag-add"
                 onClick={() => {
@@ -443,23 +507,26 @@ export default function InformationDetail() {
                 关联资产
               </Tag>
             )}
-            
-            {info.sector ? (
-              <Tag 
-                color="success" 
-                fill="outline"
-                className="info-detail__tag-editable"
-                onClick={() => {
-                  setEditSectorValue(info.sector || '');
-                  setEditSectorVisible(true);
-                }}
-              >
-                {info.sector}
-                <EditSOutline className="info-detail__tag-edit-icon" />
-              </Tag>
+
+            {infoSectors.length > 0 ? (
+              infoSectors.map((sector) => (
+                <Tag
+                  key={sector}
+                  color="success"
+                  fill="outline"
+                  className="info-detail__tag-editable"
+                  onClick={() => {
+                    setEditSectorValue(infoSectors.join(','));
+                    setEditSectorVisible(true);
+                  }}
+                >
+                  {sector}
+                  <EditSOutline className="info-detail__tag-edit-icon" />
+                </Tag>
+              ))
             ) : (
-              <Tag 
-                color="default" 
+              <Tag
+                color="default"
                 fill="outline"
                 className="info-detail__tag-add"
                 onClick={() => {
@@ -471,12 +538,12 @@ export default function InformationDetail() {
                 板块
               </Tag>
             )}
-            
+
             {info.source === 'AI' && (
               <Tag color="warning" fill="outline">AI-</Tag>
             )}
           </div>
-          
+
           <div className="info-detail__date">
             创建于 {formatTimestamp(info.created_at)}
           </div>
@@ -508,9 +575,9 @@ export default function InformationDetail() {
           bodyClassName="info-detail__edit-popup"
         >
           <div className="info-detail__edit-popup-content">
-            <div className="info-detail__edit-popup-title">关联资产代码</div>
+            <div className="info-detail__edit-popup-title">关联资产代码（可多个）</div>
             <Input
-              placeholder="如: AAPL, BTC, MRVL"
+              placeholder="用逗号分隔，如 AAPL,NVDA,MRVL"
               value={editAssetValue}
               onChange={setEditAssetValue}
               clearable
@@ -531,9 +598,9 @@ export default function InformationDetail() {
           bodyClassName="info-detail__edit-popup"
         >
           <div className="info-detail__edit-popup-content">
-            <div className="info-detail__edit-popup-title">关联板块</div>
+            <div className="info-detail__edit-popup-title">关联模块/板块（可多个）</div>
             <Input
-              placeholder="如: 科技, AI, 半导体"
+              placeholder="用逗号分隔，如 AI,半导体,电网"
               value={editSectorValue}
               onChange={setEditSectorValue}
               clearable
@@ -632,9 +699,9 @@ export default function InformationDetail() {
                 </Document>
                 {pdfNumPages && (
                   <div className="info-detail__pdf-controls">
-                    <Button 
-                      size="mini" 
-                      disabled={pdfPageNumber <= 1} 
+                    <Button
+                      size="mini"
+                      disabled={pdfPageNumber <= 1}
                       onClick={() => setPdfPageNumber(p => p - 1)}
                     >
                       上一页
@@ -642,9 +709,9 @@ export default function InformationDetail() {
                     <span className="info-detail__pdf-page-info">
                       {pdfPageNumber} / {pdfNumPages}
                     </span>
-                    <Button 
-                      size="mini" 
-                      disabled={pdfPageNumber >= pdfNumPages} 
+                    <Button
+                      size="mini"
+                      disabled={pdfPageNumber >= pdfNumPages}
                       onClick={() => setPdfPageNumber(p => p + 1)}
                     >
                       下一页
@@ -672,7 +739,37 @@ export default function InformationDetail() {
           </div>
         )}
 
-        <Divider>标注与观点</Divider>
+        <div className="info-detail__linked-decisions glass-card">
+          <div className="info-detail__linked-header">
+            <div>
+              <div className="info-detail__linked-title">关联决策</div>
+              <div className="info-detail__linked-subtitle">这条信息可以沉淀出多个投资决策</div>
+            </div>
+            <Button size="mini" color="primary" onClick={handleCreateDecision}>新建</Button>
+          </div>
+          {linkedDecisions.length > 0 ? (
+            <div className="info-detail__linked-list">
+              {linkedDecisions.map((decision) => (
+                <button
+                  type="button"
+                  key={decision.id}
+                  className="info-detail__linked-item"
+                  onClick={() => navigate('/decisions')}
+                >
+                  <span className="info-detail__linked-status">{getStatusLabel(decision.status)}</span>
+                  <span className="info-detail__linked-name">{decision.title}</span>
+                  <span className="info-detail__linked-meta">
+                    {decision.asset_symbol || decision.asset_id || '未绑定标的'} · 重要度 {decision.priority || 3}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="info-detail__linked-empty">暂无决策，从这条信息生成后会自动绑定来源。</div>
+          )}
+        </div>
+
+        <Divider>批注与评论</Divider>
 
         {/* ── Viewpoints List ── */}
         <div className="info-detail__viewpoints">
@@ -684,7 +781,7 @@ export default function InformationDetail() {
                 const vpTags = parseTags(vp.tags);
                 const vpStatus = vp.status || 'ACTIVE';
                 const statusConfig = VP_STATUS_CONFIG[vpStatus] || VP_STATUS_CONFIG.ACTIVE;
-                
+
                 return (
                   <SwipeAction
                     key={vp.id}
@@ -693,21 +790,21 @@ export default function InformationDetail() {
                     <List.Item className="vp-item">
                       <div className="vp-item__header">
                         <div className="vp-item__status-tags">
-                          <span 
+                          <span
                             className="vp-item__status-badge"
-                            style={{ 
-                              color: statusConfig.color, 
+                            style={{
+                              color: statusConfig.color,
                               background: statusConfig.bg,
-                              borderColor: statusConfig.color 
+                              borderColor: statusConfig.color
                             }}
                           >
                             {statusConfig.label}
                           </span>
                           {vpTags.map((tag, i) => (
-                            <span 
-                              key={i} 
+                            <span
+                              key={i}
                               className="vp-item__tag-pill"
-                              style={{ 
+                              style={{
                                 color: getTagColor(tag),
                                 background: `${getTagColor(tag)}18`,
                                 borderColor: `${getTagColor(tag)}40`
@@ -721,11 +818,17 @@ export default function InformationDetail() {
                           v{vp.version || 1}
                         </span>
                       </div>
+                      <div className="vp-item__meta-line">
+                        <span className="vp-item__author">{vp.author || '我'}</span>
+                        <span>{formatTimestamp(vp.created_at)}</span>
+                      </div>
+                      {vp.quote && (
+                        <blockquote className="vp-item__quote">{vp.quote}</blockquote>
+                      )}
                       <div className="vp-item__content">{vp.content}</div>
                       <div className="vp-item__date">
-                        {formatTimestamp(vp.created_at)}
                         {vp.updated_at && vp.updated_at !== vp.created_at && (
-                          <span className="vp-item__edited"> · 编辑于 {formatTimestamp(vp.updated_at)}</span>
+                          <span className="vp-item__edited">编辑于 {formatTimestamp(vp.updated_at)}</span>
                         )}
                       </div>
                     </List.Item>
@@ -738,6 +841,35 @@ export default function InformationDetail() {
 
         {/* ── Add Viewpoint ── */}
         <div className="info-detail__add-vp">
+          <div className="info-detail__comment-tools">
+            <div className="info-detail__author-field">
+              <span className="info-detail__author-label">花名</span>
+              <Input
+                value={authorName}
+                onChange={setAuthorName}
+                placeholder="我"
+                clearable
+                className="info-detail__author-input"
+              />
+            </div>
+            <Button size="mini" fill="outline" onClick={captureSelectedText}>
+              引用选中文本
+            </Button>
+          </div>
+
+          {selectedQuote && (
+            <div className="info-detail__selected-quote">
+              <div className="info-detail__selected-quote-text">{selectedQuote}</div>
+              <button
+                type="button"
+                className="info-detail__selected-quote-clear"
+                onClick={() => setSelectedQuote('')}
+              >
+                移除引用
+              </button>
+            </div>
+          )}
+
           <TextArea
             placeholder="输入你的观点、分析或灵感..."
             value={newViewpoint}
@@ -745,7 +877,7 @@ export default function InformationDetail() {
             autoSize={{ minRows: 3, maxRows: 6 }}
             className="vp-textarea"
           />
-          
+
           <div className="info-detail__vp-tags-selector">
             <div className="info-detail__vp-tags-label">标签（可选）</div>
             <div className="info-detail__vp-tags-options">
@@ -757,7 +889,7 @@ export default function InformationDetail() {
                     '--chip-color': preset.color,
                   }}
                   onClick={() => {
-                    setNewVpTags(prev => 
+                    setNewVpTags(prev =>
                       prev.includes(preset.value)
                         ? prev.filter(t => t !== preset.value)
                         : [...prev, preset.value]
@@ -769,10 +901,10 @@ export default function InformationDetail() {
               ))}
             </div>
           </div>
-          
-          <Button 
-            color="primary" 
-            size="small" 
+
+          <Button
+            color="primary"
+            size="small"
             onClick={handleAddViewpoint}
             loading={submittingVp}
             disabled={!newViewpoint.trim()}

@@ -139,6 +139,15 @@
   margin-left: var(--dashboard-side-gutter);
 }
 
+.dashboard-active-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding-left: 4px;
+}
+
 .dashboard-discipline-meter {
   border: 1px solid var(--dashboard-meter-border);
   background: var(--dashboard-meter-bg);

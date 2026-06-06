@@ -10,16 +10,28 @@
 
 /* ── Header ── */
 .decisions-page__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
   margin-bottom: 16px;
   animation: slideUp var(--transition-slow) ease both;
 }
 
 .decisions-page__title {
+  margin: 0;
   font-size: 26px;
   font-weight: 700;
   color: var(--color-text-primary);
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
   line-height: 1.2;
+}
+
+.decisions-page__subtitle {
+  margin-top: 4px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 /* ── Filter Tabs ── */

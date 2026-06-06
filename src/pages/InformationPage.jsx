@@ -35,13 +35,18 @@ const TYPE_LABELS = {
   BOOK: '书籍',
 };
 
+const splitList = (value) => String(value || '')
+  .split(/[,\n，、]/)
+  .map((item) => item.trim())
+  .filter(Boolean);
+
 export default function InformationPage() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('ALL');
   const [viewMode, setViewMode] = useState('INBOX'); // 'INBOX' or 'ARCHIVED'
   const [showAdd, setShowAdd] = useState(false);
   const [showFilter, setShowFilter] = useState(false);
-  
+
   const [filters, setFilters] = useState({
     keyword: '',
     asset: 'ALL',
@@ -68,12 +73,16 @@ export default function InformationPage() {
 
   // Extract available filters dynamically
   const availableAssets = useMemo(() => {
-    const assets = new Set(informations.map(i => i.asset_symbol || i.asset_id).filter(Boolean));
+    const assets = new Set(
+      informations.flatMap(i => splitList(i.asset_symbols || i.asset_symbol || i.asset_id))
+    );
     return Array.from(assets);
   }, [informations]);
 
   const availableSectors = useMemo(() => {
-    const sectors = new Set(informations.map(i => i.sector).filter(Boolean));
+    const sectors = new Set(
+      informations.flatMap(i => splitList(i.sectors || i.sector))
+    );
     return Array.from(sectors);
   }, [informations]);
 
@@ -90,7 +99,7 @@ export default function InformationPage() {
     if (activeTab !== 'ALL') {
       result = result.filter(i => i.type === activeTab);
     }
-    
+
     // Apply filters
     result = result.filter(i => {
       if (filters.keyword && !(
@@ -99,12 +108,14 @@ export default function InformationPage() {
       )) {
         return false;
       }
-      if (filters.asset !== 'ALL' && i.asset_symbol !== filters.asset && i.asset_id !== filters.asset) return false;
-      if (filters.sector !== 'ALL' && i.sector !== filters.sector) return false;
+      const infoAssets = splitList(i.asset_symbols || i.asset_symbol || i.asset_id);
+      const infoSectors = splitList(i.sectors || i.sector);
+      if (filters.asset !== 'ALL' && !infoAssets.includes(filters.asset)) return false;
+      if (filters.sector !== 'ALL' && !infoSectors.includes(filters.sector)) return false;
       // Tag filtering would require viewpoint tags, omit for now if not available
       return true;
     });
-    
+
     return result;
   }, [informations, activeTab, filters]);
 
@@ -113,13 +124,13 @@ export default function InformationPage() {
       <div className="info-page__header">
         <h1>情报与资讯</h1>
         <div className="info-page__capsule-toggle">
-          <div 
+          <div
             className={`info-page__capsule-option ${viewMode === 'INBOX' ? 'active' : ''}`}
             onClick={() => setViewMode('INBOX')}
           >
             收件箱
           </div>
-          <div 
+          <div
             className={`info-page__capsule-option ${viewMode === 'ARCHIVED' ? 'active' : ''}`}
             onClick={() => setViewMode('ARCHIVED')}
           >
@@ -158,50 +169,60 @@ export default function InformationPage() {
             <div className="info-page__empty-subtitle">记录你的第一条投资线索</div>
           </div>
         ) : (
-          filteredInfo.map(info => (
-            <div 
-              key={info.id} 
-              className="info-card-premium"
-              onClick={() => navigate(`/information/${info.id}`)}
-            >
-              <div className="info-card-premium__header">
-                <div className="info-card-premium__title">{info.title}</div>
-                <div className={`info-card-premium__badge badge-${info.type.toLowerCase()}`}>
-                  {TYPE_LABELS[info.type] || info.type}
-                </div>
-              </div>
-              
-              {info.content && (
-                <div className="info-card-premium__preview">
-                  {info.content.length > 80 ? info.content.substring(0, 80) + '...' : info.content}
-                </div>
-              )}
-              
-              <div className="info-card-premium__footer">
-                <div className="info-card-premium__meta">
-                  <div className="info-card-premium__meta-item">
-                    {TYPE_ICONS[info.type] || <LinkOutline />}
-                  </div>
-                  {info.asset_symbol && (
-                    <div className="info-card-premium__tag">
-                      {info.asset_symbol}
-                    </div>
-                  )}
-                  {info.sector && (
-                    <div className="info-card-premium__tag">
-                      {info.sector}
-                    </div>
-                  )}
-                  <div className="info-card-premium__meta-item">
-                    观点: {info.viewpoint_count || 0}
+          filteredInfo.map(info => {
+            const infoAssets = splitList(info.asset_symbols || info.asset_symbol || info.asset_id);
+            const infoSectors = splitList(info.sectors || info.sector);
+
+            return (
+              <div
+                key={info.id}
+                className="info-card-premium"
+                onClick={() => navigate(`/information/${info.id}`)}
+              >
+                <div className="info-card-premium__header">
+                  <div className="info-card-premium__title">{info.title}</div>
+                  <div className={`info-card-premium__badge badge-${info.type.toLowerCase()}`}>
+                    {TYPE_LABELS[info.type] || info.type}
                   </div>
                 </div>
-                <div className="info-card-premium__date">
-                  {new Date(info.created_at * 1000).toLocaleDateString()}
+
+                {info.content && (
+                  <div className="info-card-premium__preview">
+                    {info.content.length > 80 ? info.content.substring(0, 80) + '...' : info.content}
+                  </div>
+                )}
+
+                <div className="info-card-premium__footer">
+                  <div className="info-card-premium__meta">
+                    <div className="info-card-premium__meta-item">
+                      {TYPE_ICONS[info.type] || <LinkOutline />}
+                    </div>
+                    {infoAssets.slice(0, 3).map((asset) => (
+                      <div key={asset} className="info-card-premium__tag">
+                        {asset}
+                      </div>
+                    ))}
+                    {infoSectors.slice(0, 3).map((sector) => (
+                      <div key={sector} className="info-card-premium__tag">
+                        {sector}
+                      </div>
+                    ))}
+                    <div className="info-card-premium__meta-item">
+                      评论: {info.viewpoint_count || 0}
+                    </div>
+                    {info.decision_count > 0 && (
+                      <div className="info-card-premium__meta-item">
+                        决策: {info.decision_count}
+                      </div>
+                    )}
+                  </div>
+                  <div className="info-card-premium__date">
+                    {new Date(info.created_at * 1000).toLocaleDateString()}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 

@@ -4,7 +4,6 @@ import { useTradeStore } from '../../stores/useTradeStore';
 import { useAppStore } from '../../stores/useAppStore';
 import { saveFileToOPFS } from '../../utils/opfsUtils';
 import { db } from '../../db/database';
-import AssetSelector from '../common/AssetSelector';
 import './InformationForm.css';
 
 const TYPE_OPTIONS = [
@@ -13,6 +12,17 @@ const TYPE_OPTIONS = [
   { label: '图表/图片', value: 'IMAGE' },
   { label: '书籍/研报', value: 'BOOK' },
 ];
+
+const splitList = (value) => Array.from(
+  new Set(
+    String(value || '')
+      .split(/[,\n，、]/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+  )
+);
+
+const splitSymbols = (value) => splitList(value).map((symbol) => symbol.toUpperCase());
 
 export default function InformationForm({ onClose }) {
   const [form] = Form.useForm();
@@ -23,6 +33,7 @@ export default function InformationForm({ onClose }) {
   const [saving, setSaving] = useState(false);
   
   const addInformation = useTradeStore((s) => s.addInformation);
+  const addMarketWatchItem = useAppStore((s) => s.addMarketWatchItem);
 
   // Reset form state when component mounts (each time popup opens)
   useEffect(() => {
@@ -44,6 +55,10 @@ export default function InformationForm({ onClose }) {
       // Auto trigger change to type "IMAGE" if the uploaded file is an image
       if (file.type.startsWith('image/')) {
         form.setFieldsValue({ type: ['IMAGE'] });
+      } else if (file.type.startsWith('video/')) {
+        form.setFieldsValue({ type: ['VIDEO'] });
+      } else if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.epub')) {
+        form.setFieldsValue({ type: ['BOOK'] });
       }
 
       Toast.show({ icon: 'success', content: '上传成功' });
@@ -160,23 +175,28 @@ export default function InformationForm({ onClose }) {
     setSaving(true);
     try {
       let assetId = null;
+      const assetIds = splitSymbols(values.asset_ids_text);
+      const sectors = splitList(values.sectors_text);
 
-      // If user provided an asset code, upsert the asset record first
-      if (values.asset_id) {
-        const symbol = values.asset_id.toUpperCase().trim();
-        assetId = symbol; // Use symbol as ID
+      // If user provided asset codes, upsert asset records first.
+      for (const symbol of assetIds) {
+        assetId = assetId || symbol;
         try {
           await db.upsertAsset({
             id: symbol,
             symbol: symbol,
             name: symbol,
             type: 'STOCK',
-            sector: values.sector || null,
+            sector: sectors[0] || null,
+          });
+          addMarketWatchItem({
+            symbol,
+            name: symbol,
+            quoteType: 'EQUITY',
+            typeDisp: '股票',
           });
         } catch (err) {
           console.warn('[InformationForm] Asset upsert failed:', err);
-          // Don't block save — just set assetId to null
-          assetId = null;
         }
       }
 
@@ -187,7 +207,9 @@ export default function InformationForm({ onClose }) {
         url: values.url || null,
         content: values.content || null,
         asset_id: assetId,
-        sector: values.sector || null,
+        asset_ids: assetIds,
+        sector: sectors[0] || null,
+        sectors,
         file_path: filePath,
       };
       
@@ -266,12 +288,12 @@ export default function InformationForm({ onClose }) {
           </Form.Item>
           
           <Form.Header>关联数据</Form.Header>
-          <Form.Item name="asset_id" label="关联股票/资产代码 (可选)">
-            <AssetSelector />
+          <Form.Item name="asset_ids_text" label="关联股票/资产代码">
+            <Input placeholder="可多个，用逗号分隔，如 AAPL,NVDA,TSLA" clearable />
           </Form.Item>
           
-          <Form.Item name="sector" label="关联板块 (可选)">
-            <Input placeholder="如: 科技, AI" clearable />
+          <Form.Item name="sectors_text" label="关联模块/板块">
+            <Input placeholder="可多个，用逗号分隔，如 AI,半导体,电网" clearable />
           </Form.Item>
           
           <Form.Header>附件上传</Form.Header>
@@ -280,11 +302,11 @@ export default function InformationForm({ onClose }) {
               <label className="info-form__upload-btn">
                 <input
                   type="file"
-                  accept="image/*,.pdf"
+                  accept="image/*,video/*,.pdf,.epub"
                   onChange={handleFileChange}
                   disabled={uploading}
                 />
-                {uploading ? '上传中...' : '选择图片或PDF文件'}
+                {uploading ? '上传中...' : '选择图片、视频、PDF 或 EPUB'}
               </label>
               {filePath && (
                 <div className="info-form__upload-info">

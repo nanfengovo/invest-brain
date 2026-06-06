@@ -30,6 +30,38 @@ function sendMessage(type, payload = {}) {
   });
 }
 
+function normalizeList(value) {
+  if (Array.isArray(value)) {
+    return Array.from(
+      new Set(
+        value
+          .map((item) => String(item || '').trim())
+          .filter(Boolean)
+      )
+    );
+  }
+
+  if (value === null || value === undefined) return [];
+
+  return Array.from(
+    new Set(
+      String(value)
+        .split(/[,\n，、]/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+    )
+  );
+}
+
+function normalizeSymbols(value) {
+  return normalizeList(value).map((symbol) => symbol.toUpperCase());
+}
+
+function csvFromList(items) {
+  const list = normalizeList(items);
+  return list.length ? list.join(',') : null;
+}
+
 /**
  * Initialize the database
  */
@@ -197,7 +229,7 @@ export const db = {
   // ==========================================
   async getClosedLoopData(startTimestamp = 0, endTimestamp = Date.now()) {
     const sql = `
-      SELECT 
+      SELECT
         r.id as review_id,
         r.is_successful,
         r.result_pnl,
@@ -214,9 +246,9 @@ export const db = {
       FROM reviews r
       JOIN decisions d ON r.decision_id = d.id
       LEFT JOIN (
-        SELECT decision_id, MIN(asset_id) as asset_id 
-        FROM trades 
-        WHERE decision_id IS NOT NULL 
+        SELECT decision_id, MIN(asset_id) as asset_id
+        FROM trades
+        WHERE decision_id IS NOT NULL
         GROUP BY decision_id
       ) t ON t.decision_id = r.decision_id
       LEFT JOIN assets a ON t.asset_id = a.id
@@ -229,7 +261,7 @@ export const db = {
   // ==========================================
   // Asset operations
   // ==========================================
-  
+
   async getAssetById(id) {
     const results = await this.query('SELECT * FROM assets WHERE id = ?', [id]);
     return results[0] || null;
@@ -308,7 +340,7 @@ export const db = {
       sql += ` AND (t.broker IS NULL OR t.broker = '')`;
     }
     sql += ` ORDER BY t.trade_time DESC`;
-    
+
     return this.query(sql, params);
   },
 
@@ -317,34 +349,55 @@ export const db = {
   // ==========================================
 
   async getDecisions(status = null) {
-    if (status) {
-      return this.query(
-        `SELECT d.*, 
+    const selectSql = `SELECT d.*,
+                a.symbol as asset_symbol,
                 (SELECT COUNT(*) FROM trades WHERE decision_id = d.id) as trade_count,
+                (SELECT COUNT(*) FROM decision_info_links WHERE decision_id = d.id) as linked_info_count,
+                (SELECT GROUP_CONCAT(i.title, '、')
+                   FROM decision_info_links dil
+                   JOIN informations i ON i.id = dil.info_id
+                  WHERE dil.decision_id = d.id) as linked_info_titles,
                 r.id as review_id, r.is_successful, r.result_pnl, r.lessons, r.review_content
          FROM decisions d
-         LEFT JOIN reviews r ON r.decision_id = d.id
+         LEFT JOIN assets a ON d.asset_id = a.id
+         LEFT JOIN reviews r ON r.decision_id = d.id`;
+    const orderSql = `ORDER BY
+         CASE d.status
+           WHEN 'ACTIVE' THEN 0
+           WHEN 'WATCH' THEN 1
+           WHEN 'DRAFT' THEN 2
+           WHEN 'CLOSED' THEN 3
+           WHEN 'ENDED' THEN 3
+           WHEN 'ABANDONED' THEN 4
+           ELSE 5
+         END,
+         COALESCE(d.priority, 3) DESC,
+         d.created_at DESC`;
+
+    if (status) {
+      return this.query(
+        `${selectSql}
          WHERE d.status = ?
-         ORDER BY d.created_at DESC`,
+         ${orderSql}`,
         [status]
       );
     }
     return this.query(
-      `SELECT d.*, 
-              (SELECT COUNT(*) FROM trades WHERE decision_id = d.id) as trade_count,
-              r.id as review_id, r.is_successful, r.result_pnl, r.lessons, r.review_content
-       FROM decisions d
-       LEFT JOIN reviews r ON r.decision_id = d.id
-       ORDER BY d.created_at DESC`
+      `${selectSql}
+       ${orderSql}`
     );
   },
 
   async getDecisionById(id) {
     const results = await this.query(
-      `SELECT d.*, 
+      `SELECT d.*,
+              a.symbol as asset_symbol,
               (SELECT COUNT(*) FROM trades WHERE decision_id = d.id) as trade_count,
+              (SELECT GROUP_CONCAT(info_id) FROM decision_info_links WHERE decision_id = d.id) as info_ids,
+              (SELECT COUNT(*) FROM decision_info_links WHERE decision_id = d.id) as linked_info_count,
               r.id as review_id, r.is_successful, r.result_pnl, r.lessons, r.review_content
        FROM decisions d
+       LEFT JOIN assets a ON d.asset_id = a.id
        LEFT JOIN reviews r ON r.decision_id = d.id
        WHERE d.id = ?`,
       [id]
@@ -353,28 +406,74 @@ export const db = {
   },
 
   async addDecision(decision) {
-    const { id, title, content, confidence, sentiment, status, asset_id, sector } = decision;
-    return this.exec(
-      `INSERT INTO decisions (id, title, content, confidence, sentiment, status, asset_id, sector)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, title, content || '', confidence || 3, sentiment || 'NEUTRAL', status || 'ACTIVE', asset_id || null, sector || null]
+    const { id, title, content, confidence, sentiment, status, asset_id, sector, priority, info_ids } = decision;
+    await this.exec(
+      `INSERT INTO decisions (id, title, content, confidence, sentiment, status, asset_id, sector, priority)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, title, content || '', confidence || 3, sentiment || 'NEUTRAL', status || 'ACTIVE', asset_id || null, sector || null, priority || 3]
     );
+    if (Array.isArray(info_ids)) {
+      await this.setDecisionInfoLinks(id, info_ids);
+    }
+    return { id };
   },
 
   async updateDecision(id, updates) {
     const fields = [];
     const values = [];
-    for (const [key, value] of Object.entries(updates)) {
+    const { info_ids, ...columnUpdates } = updates;
+    for (const [key, value] of Object.entries(columnUpdates)) {
       if (key !== 'id') {
         fields.push(`${key} = ?`);
         values.push(value);
       }
     }
-    fields.push('updated_at = unixepoch()');
-    values.push(id);
-    return this.exec(
-      `UPDATE decisions SET ${fields.join(', ')} WHERE id = ?`,
-      values
+    if (fields.length) {
+      fields.push('updated_at = unixepoch()');
+      values.push(id);
+      await this.exec(
+        `UPDATE decisions SET ${fields.join(', ')} WHERE id = ?`,
+        values
+      );
+    }
+    if (Array.isArray(info_ids)) {
+      await this.setDecisionInfoLinks(id, info_ids);
+    }
+    return { id };
+  },
+
+  async setDecisionInfoLinks(decisionId, infoIds = []) {
+    const normalizedInfoIds = normalizeList(infoIds);
+    await this.exec('DELETE FROM decision_info_links WHERE decision_id = ?', [decisionId]);
+    for (const infoId of normalizedInfoIds) {
+      await this.exec(
+        'INSERT OR IGNORE INTO decision_info_links (decision_id, info_id) VALUES (?, ?)',
+        [decisionId, infoId]
+      );
+    }
+  },
+
+  async getDecisionsByInformation(infoId) {
+    return this.query(
+      `SELECT d.*, a.symbol as asset_symbol,
+              (SELECT COUNT(*) FROM trades WHERE decision_id = d.id) as trade_count
+       FROM decision_info_links dil
+       JOIN decisions d ON d.id = dil.decision_id
+       LEFT JOIN assets a ON d.asset_id = a.id
+       WHERE dil.info_id = ?
+       ORDER BY
+         CASE d.status
+           WHEN 'ACTIVE' THEN 0
+           WHEN 'WATCH' THEN 1
+           WHEN 'DRAFT' THEN 2
+           WHEN 'CLOSED' THEN 3
+           WHEN 'ENDED' THEN 3
+           WHEN 'ABANDONED' THEN 4
+           ELSE 5
+         END,
+         COALESCE(d.priority, 3) DESC,
+         d.created_at DESC`,
+      [infoId]
     );
   },
 
@@ -405,26 +504,26 @@ export const db = {
 
   async getHoldings() {
     return this.query(
-      `SELECT 
+      `SELECT
         a.id as asset_id,
         a.symbol,
         a.name,
         a.type,
         a.sector,
         t.broker,
-        SUM(CASE 
-          WHEN t.direction IN ('BUY', 'OPEN') THEN t.quantity 
-          WHEN t.direction IN ('SELL', 'CLOSE') THEN -t.quantity 
-          ELSE 0 
+        SUM(CASE
+          WHEN t.direction IN ('BUY', 'OPEN') THEN t.quantity
+          WHEN t.direction IN ('SELL', 'CLOSE') THEN -t.quantity
+          ELSE 0
         END) as total_quantity,
-        SUM(CASE 
+        SUM(CASE
           WHEN t.direction IN ('BUY', 'OPEN') THEN t.quantity * t.price
           WHEN t.direction IN ('SELL', 'CLOSE') THEN -t.quantity * t.price
-          ELSE 0 
-        END) / NULLIF(SUM(CASE 
-          WHEN t.direction IN ('BUY', 'OPEN') THEN t.quantity 
-          WHEN t.direction IN ('SELL', 'CLOSE') THEN -t.quantity 
-          ELSE 0 
+          ELSE 0
+        END) / NULLIF(SUM(CASE
+          WHEN t.direction IN ('BUY', 'OPEN') THEN t.quantity
+          WHEN t.direction IN ('SELL', 'CLOSE') THEN -t.quantity
+          ELSE 0
         END), 0) as avg_cost,
         SUM(t.fee) as total_fees,
         COUNT(t.id) as trade_count,
@@ -454,7 +553,7 @@ export const db = {
   async getRealizedPnL() {
     // Simplified P&L - tracks sell proceeds vs buy cost per asset
     return this.query(
-      `SELECT 
+      `SELECT
         a.symbol,
         a.name,
         SUM(CASE WHEN t.direction IN ('SELL', 'CLOSE') THEN t.quantity * t.price ELSE 0 END) -
@@ -474,10 +573,24 @@ export const db = {
 
   async getInformations(status = null) {
     let sql = `SELECT i.*, a.symbol as asset_symbol,
+        COALESCE(
+          (SELECT GROUP_CONCAT(asset_id) FROM (
+            SELECT asset_id FROM information_asset_links WHERE info_id = i.id ORDER BY position
+          )),
+          a.symbol,
+          i.asset_id
+        ) as asset_symbols,
+        COALESCE(
+          (SELECT GROUP_CONCAT(sector) FROM (
+            SELECT sector FROM information_sector_links WHERE info_id = i.id ORDER BY position
+          )),
+          i.sector
+        ) as sectors,
         (SELECT COUNT(*) FROM viewpoints WHERE info_id = i.id) as viewpoint_count
+        ,(SELECT COUNT(*) FROM decision_info_links WHERE info_id = i.id) as decision_count
        FROM informations i
        LEFT JOIN assets a ON i.asset_id = a.id`;
-    
+
     const params = [];
     if (status) {
       sql += ` WHERE i.status = ?`;
@@ -486,14 +599,27 @@ export const db = {
       // By default exclude ARCHIVED unless explicitly requested
       sql += ` WHERE i.status != 'ARCHIVED' OR i.status IS NULL`;
     }
-    
+
     sql += ` ORDER BY i.created_at DESC`;
     return this.query(sql, params);
   },
 
   async getInformationById(id) {
     const results = await this.query(
-      `SELECT i.*, a.symbol as asset_symbol
+      `SELECT i.*, a.symbol as asset_symbol,
+              COALESCE(
+                (SELECT GROUP_CONCAT(asset_id) FROM (
+                  SELECT asset_id FROM information_asset_links WHERE info_id = i.id ORDER BY position
+                )),
+                a.symbol,
+                i.asset_id
+              ) as asset_symbols,
+              COALESCE(
+                (SELECT GROUP_CONCAT(sector) FROM (
+                  SELECT sector FROM information_sector_links WHERE info_id = i.id ORDER BY position
+                )),
+                i.sector
+              ) as sectors
        FROM informations i
        LEFT JOIN assets a ON i.asset_id = a.id
        WHERE i.id = ?`,
@@ -504,25 +630,63 @@ export const db = {
 
   async addInformation(info) {
     const { id, title, type, source, url, content, file_path, asset_id, sector, status } = info;
+    const assetIds = normalizeSymbols(info.asset_ids || asset_id);
+    const sectors = normalizeList(info.sectors || sector);
     const finalId = id || crypto.randomUUID();
-    return this.exec(
+    await this.exec(
       `INSERT INTO informations (id, title, type, source, url, content, file_path, asset_id, sector, status)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [finalId, title, type || 'ARTICLE', source || null, url || null, content || null, file_path || null, asset_id || null, sector || null, status || 'UNPROCESSED']
+      [finalId, title, type || 'ARTICLE', source || null, url || null, content || null, file_path || null, assetIds[0] || asset_id || null, sectors[0] || sector || null, status || 'UNPROCESSED']
     );
+    await this.setInformationLinks(finalId, assetIds, sectors);
+    return { id: finalId };
   },
 
   async updateInformation(info) {
     const { id, title, type, source, url, content, file_path, asset_id, sector, status } = info;
-    return this.exec(
+    const assetIds = normalizeSymbols(info.asset_ids || info.asset_symbols || asset_id);
+    const sectors = normalizeList(info.sectors || sector);
+    await this.exec(
       `UPDATE informations SET title = ?, type = ?, source = ?, url = ?, content = ?, file_path = ?, asset_id = ?, sector = ?, status = ? WHERE id = ?`,
-      [title, type, source || null, url || null, content || null, file_path || null, asset_id || null, sector || null, status || 'UNPROCESSED', id]
+      [title, type, source || null, url || null, content || null, file_path || null, assetIds[0] || asset_id || null, sectors[0] || sector || null, status || 'UNPROCESSED', id]
     );
+    await this.setInformationLinks(id, assetIds, sectors);
+    return { id };
+  },
+
+  async setInformationLinks(infoId, assetIds = [], sectors = []) {
+    const normalizedAssetIds = normalizeSymbols(assetIds);
+    const normalizedSectors = normalizeList(sectors);
+
+    await this.exec('DELETE FROM information_asset_links WHERE info_id = ?', [infoId]);
+    await this.exec('DELETE FROM information_sector_links WHERE info_id = ?', [infoId]);
+
+    for (const [position, assetId] of normalizedAssetIds.entries()) {
+      await this.upsertAsset({
+        id: assetId,
+        symbol: assetId,
+        name: assetId,
+        type: 'STOCK',
+      });
+      await this.exec(
+        'INSERT OR IGNORE INTO information_asset_links (info_id, asset_id, position) VALUES (?, ?, ?)',
+        [infoId, assetId, position]
+      );
+    }
+
+    for (const [position, linkedSector] of normalizedSectors.entries()) {
+      await this.exec(
+        'INSERT OR IGNORE INTO information_sector_links (info_id, sector, position) VALUES (?, ?, ?)',
+        [infoId, linkedSector, position]
+      );
+    }
   },
 
   async deleteInformation(id) {
     await this.exec('DELETE FROM viewpoints WHERE info_id = ?', [id]);
     await this.exec('DELETE FROM decision_info_links WHERE info_id = ?', [id]);
+    await this.exec('DELETE FROM information_asset_links WHERE info_id = ?', [id]);
+    await this.exec('DELETE FROM information_sector_links WHERE info_id = ?', [id]);
     return this.exec('DELETE FROM informations WHERE id = ?', [id]);
   },
 
@@ -538,11 +702,11 @@ export const db = {
   },
 
   async addViewpoint(vp) {
-    const { id, info_id, content, tags, status } = vp;
+    const { id, info_id, content, tags, status, author, quote, target_type } = vp;
     const tagsJson = tags ? JSON.stringify(tags) : null;
     return this.exec(
-      'INSERT INTO viewpoints (id, info_id, content, tags, status, version, updated_at) VALUES (?, ?, ?, ?, ?, 1, unixepoch())',
-      [id, info_id, content, tagsJson, status || 'ACTIVE']
+      'INSERT INTO viewpoints (id, info_id, content, tags, status, author, quote, target_type, version, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, unixepoch())',
+      [id, info_id, content, tagsJson, status || 'ACTIVE', author || '我', quote || null, target_type || 'GENERAL']
     );
   },
 
@@ -611,8 +775,8 @@ export const db = {
   async hasAnyData() {
     const results = await this.query(
       `SELECT
-        (SELECT COUNT(*) FROM trades) + 
-        (SELECT COUNT(*) FROM informations) + 
+        (SELECT COUNT(*) FROM trades) +
+        (SELECT COUNT(*) FROM informations) +
         (SELECT COUNT(*) FROM decisions) as total`
     );
     return (results[0]?.total || 0) > 0;

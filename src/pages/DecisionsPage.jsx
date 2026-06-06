@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Tabs, Popup } from 'antd-mobile';
+import { useSearchParams } from 'react-router-dom';
+import { Tabs, Popup, Button } from 'antd-mobile';
 import { useTradeStore } from '../stores/useTradeStore';
+import { db } from '../db/database';
 import DecisionForm from '../components/Decision/DecisionForm';
 import DecisionCard from '../components/Decision/DecisionCard';
 import EmptyState from '../components/common/EmptyState';
@@ -16,8 +18,10 @@ const FILTER_TABS = [
 ];
 
 export default function DecisionsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [showForm, setShowForm] = useState(false);
   const [editingDecision, setEditingDecision] = useState(null);
+  const [sourceInformation, setSourceInformation] = useState(null);
   const [activeFilter, setActiveFilter] = useState('ALL');
 
   const { decisions, decisionsLoading, refreshDecisions } = useTradeStore();
@@ -26,20 +30,70 @@ export default function DecisionsPage() {
     refreshDecisions();
   }, [refreshDecisions]);
 
+  useEffect(() => {
+    const shouldOpen = searchParams.get('new') === '1';
+    const infoId = searchParams.get('info_id');
+    if (!shouldOpen) return;
+
+    let mounted = true;
+    async function openFromRoute() {
+      setEditingDecision(null);
+      if (infoId) {
+        try {
+          const info = await db.getInformationById(infoId);
+          if (mounted) setSourceInformation(info);
+        } catch (err) {
+          console.warn('Failed to load source information for decision:', err);
+          if (mounted) setSourceInformation(null);
+        }
+      } else {
+        setSourceInformation(null);
+      }
+      if (mounted) setShowForm(true);
+    }
+    openFromRoute();
+
+    return () => {
+      mounted = false;
+    };
+  }, [searchParams]);
+
   const filteredDecisions =
     activeFilter === 'ALL'
       ? decisions
       : decisions.filter((d) => d.status === activeFilter);
 
   const handleDecisionAdded = () => {
-    setShowForm(false);
-    setEditingDecision(null);
+    closeForm();
     refreshDecisions();
   };
 
-  const handleEdit = (decision) => {
-    setEditingDecision(decision);
+  const closeForm = () => {
+    setShowForm(false);
+    setEditingDecision(null);
+    setSourceInformation(null);
+    if (searchParams.toString()) {
+      setSearchParams({}, { replace: true });
+    }
+  };
+
+  const openCreateForm = () => {
+    setEditingDecision(null);
+    setSourceInformation(null);
     setShowForm(true);
+  };
+
+  const handleEdit = async (decision) => {
+    try {
+      const fullDecision = await db.getDecisionById(decision.id);
+      setEditingDecision(fullDecision || decision);
+      setSourceInformation(null);
+      setShowForm(true);
+    } catch {
+      setEditingDecision(decision);
+      setSourceInformation(null);
+      setShowForm(true);
+    }
   };
 
   const emptyMessages = {
@@ -55,7 +109,13 @@ export default function DecisionsPage() {
     <div className="decisions-page">
       {/* ── Header ── */}
       <div className="decisions-page__header">
-        <h1 className="decisions-page__title">投资决策</h1>
+        <div>
+          <h1 className="decisions-page__title">投资决策</h1>
+          <div className="decisions-page__subtitle">把观点转成可执行、可复盘的交易计划</div>
+        </div>
+        <Button size="small" color="primary" onClick={openCreateForm}>
+          新建决策
+        </Button>
       </div>
 
       {/* ── Filter Tabs ── */}
@@ -102,10 +162,7 @@ export default function DecisionsPage() {
       {/* ── FAB ── */}
       <button
         className="action-fab"
-        onClick={() => {
-          setEditingDecision(null);
-          setShowForm(true);
-        }}
+        onClick={openCreateForm}
       >
         <span>+</span>
       </button>
@@ -113,20 +170,15 @@ export default function DecisionsPage() {
       {/* ── Add/Edit Popup ── */}
       <Popup
         visible={showForm}
-        onMaskClick={() => {
-          setShowForm(false);
-          setEditingDecision(null);
-        }}
+        onMaskClick={closeForm}
         position="bottom"
         bodyStyle={{ height: '90vh' }}
       >
         <DecisionForm
-          onClose={() => {
-            setShowForm(false);
-            setEditingDecision(null);
-          }}
+          onClose={closeForm}
           onSuccess={handleDecisionAdded}
           initialData={editingDecision}
+          sourceInformation={sourceInformation}
         />
       </Popup>
     </div>

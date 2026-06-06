@@ -170,6 +170,37 @@ export const MIGRATIONS = [
       `ALTER TABLE decisions ADD COLUMN sector TEXT`,
       `CREATE INDEX IF NOT EXISTS idx_decisions_asset ON decisions(asset_id)`
     ]
+  },
+  {
+    version: 7,
+    description: 'Phase 7: Collaborative information links and decision evidence',
+    statements: [
+      `CREATE TABLE IF NOT EXISTS information_asset_links (
+        info_id TEXT NOT NULL,
+        asset_id TEXT NOT NULL,
+        position INTEGER DEFAULT 0,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        PRIMARY KEY (info_id, asset_id),
+        FOREIGN KEY(info_id) REFERENCES informations(id),
+        FOREIGN KEY(asset_id) REFERENCES assets(id)
+      )`,
+      `CREATE TABLE IF NOT EXISTS information_sector_links (
+        info_id TEXT NOT NULL,
+        sector TEXT NOT NULL,
+        position INTEGER DEFAULT 0,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        PRIMARY KEY (info_id, sector),
+        FOREIGN KEY(info_id) REFERENCES informations(id)
+      )`,
+      `ALTER TABLE viewpoints ADD COLUMN author TEXT DEFAULT '我'`,
+      `ALTER TABLE viewpoints ADD COLUMN quote TEXT`,
+      `ALTER TABLE viewpoints ADD COLUMN target_type TEXT DEFAULT 'GENERAL'`,
+      `ALTER TABLE decisions ADD COLUMN priority INTEGER DEFAULT 3`,
+      `CREATE INDEX IF NOT EXISTS idx_info_asset_links_asset ON information_asset_links(asset_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_info_sector_links_sector ON information_sector_links(sector)`,
+      `CREATE INDEX IF NOT EXISTS idx_decision_info_links_info ON decision_info_links(info_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_decisions_priority ON decisions(priority)`
+    ]
   }
 ];
 

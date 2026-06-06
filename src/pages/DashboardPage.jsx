@@ -22,6 +22,15 @@ const formatDate = () => {
   });
 };
 
+const DECISION_STATUS_LABELS = {
+  DRAFT: '观点草稿',
+  WATCH: '观望中',
+  ACTIVE: '执行中',
+  CLOSED: '已闭环',
+  ENDED: '已结束',
+  ABANDONED: '已放弃',
+};
+
 export default function DashboardPage() {
   const navigate = useNavigate();
   const { summary, stats, decisions, refreshHoldings, refreshDecisions } = useTradeStore();
@@ -32,7 +41,8 @@ export default function DashboardPage() {
     refreshDecisions();
   }, [refreshHoldings, refreshDecisions]);
 
-  const activeDecisions = decisions.filter(d => d.status !== 'CLOSED' && d.status !== 'ENDED');
+  const activeDecisionPool = decisions.filter(d => !['CLOSED', 'ENDED', 'ABANDONED'].includes(d.status));
+  const activeDecisions = activeDecisionPool.slice(0, 5);
 
   const totalInvested = Number(summary?.total_buys) || 0;
   const totalSells = Number(summary?.total_sells) || 0;
@@ -63,7 +73,7 @@ export default function DashboardPage() {
       ? `有 ${strayTradesCount} 笔交易未关联决策，优先补齐执行闭环。`
       : '当前没有未关联交易，执行闭环保持完整。';
   const funnelBadge = isWarning ? '待补齐' : tradeCount > 0 ? '已闭环' : '未开始';
-  const activeDecisionCount = activeDecisions.length;
+  const activeDecisionCount = activeDecisionPool.length;
   const actionItems = [
     {
       label: '补齐闭环',
@@ -211,7 +221,10 @@ export default function DashboardPage() {
 
       {/* Module 4: Active Decisions */}
       <div className="dashboard-active-section mt-2 mb-4">
-        <div className="dashboard-section-label text-xs font-medium mb-3 pl-1">活跃决策追踪</div>
+        <div className="dashboard-active-head">
+          <div className="dashboard-section-label text-xs font-medium">活跃决策追踪</div>
+          <button className="dashboard-inline-action" onClick={() => navigate('/decisions?new=1')}>新建决策</button>
+        </div>
         {activeDecisions.length > 0 ? (
           <div className="flex flex-col gap-3">
             {activeDecisions.map((d) => (
@@ -224,14 +237,18 @@ export default function DashboardPage() {
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center">
                     <span className="dashboard-decision-chip text-[10px] px-1.5 py-0.5 rounded tracking-wide">
-                      [👀 观望中]
+                      {DECISION_STATUS_LABELS[d.status] || '跟踪中'} · 重要度 {d.priority || 3}
                     </span>
                   </div>
                   <div className="dashboard-decision-title text-sm font-semibold tracking-wide truncate">
-                    {d.title || `${d.symbol} 建仓决策`}
+                    {d.title || `${d.asset_symbol || d.asset_id || ''} 建仓决策`}
                   </div>
                   <div className="dashboard-decision-meta text-[10px] mt-1 flex justify-between items-center">
-                    <span>关联交易: <span className="dashboard-inline-strong">{d.trade_ids?.length || 0}</span> · {new Date(d.created_at || Date.now()).toLocaleDateString()}</span>
+                    <span>
+                      交易 <span className="dashboard-inline-strong">{d.trade_count || 0}</span>
+                      {' '}· 证据 <span className="dashboard-inline-strong">{d.linked_info_count || 0}</span>
+                      {' '}· {d.asset_symbol || d.asset_id || '未绑定'}
+                    </span>
                     <span className="dashboard-decision-arrow">→</span>
                   </div>
                 </div>
@@ -245,7 +262,7 @@ export default function DashboardPage() {
                 <div className="dashboard-decision-title text-sm font-semibold">暂无活跃决策</div>
                 <div className="dashboard-decision-meta text-[10px] mt-1">新建决策后会在这里持续跟踪执行状态。</div>
               </div>
-              <button className="dashboard-inline-action" onClick={() => navigate('/decisions')}>新建</button>
+              <button className="dashboard-inline-action" onClick={() => navigate('/decisions?new=1')}>新建</button>
             </div>
           </Card>
         )}

@@ -7,7 +7,7 @@ export default function AssetSelector({ value, onChange, placeholder = "如: AAP
   const [inputValue, setInputValue] = useState(value || '');
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const { assets, getHoldings } = useTradeStore();
+  const { assets, getHoldings, refreshAssets } = useTradeStore();
   const [holdings, setHoldings] = useState([]);
   const containerRef = useRef(null);
 
@@ -18,6 +18,7 @@ export default function AssetSelector({ value, onChange, placeholder = "如: AAP
   useEffect(() => {
     // Load holdings to prioritize them
     const loadHoldings = async () => {
+      await refreshAssets?.();
       const res = await getHoldings();
       if (res.success && res.data) {
         setHoldings(res.data);
@@ -54,15 +55,19 @@ export default function AssetSelector({ value, onChange, placeholder = "如: AAP
       (a.name && a.name.toUpperCase().includes(upperVal))
     );
 
-    // Prioritize holdings
-    const holdingIds = new Set(holdings.map(h => h.asset_id));
+    // Prioritize larger holdings
+    const holdingWeight = new Map(
+      holdings.map((holding) => [
+        holding.asset_id,
+        Math.abs(Number(holding.total_quantity || 0) * Number(holding.avg_cost || 0)),
+      ])
+    );
     
     matches.sort((a, b) => {
-      const aIsHolding = holdingIds.has(a.id);
-      const bIsHolding = holdingIds.has(b.id);
+      const aWeight = holdingWeight.get(a.id) || 0;
+      const bWeight = holdingWeight.get(b.id) || 0;
       
-      if (aIsHolding && !bIsHolding) return -1;
-      if (!aIsHolding && bIsHolding) return 1;
+      if (aWeight !== bWeight) return bWeight - aWeight;
       
       // If both or neither are holdings, sort by symbol match index
       const aIndex = a.symbol.toUpperCase().indexOf(upperVal);
@@ -106,7 +111,7 @@ export default function AssetSelector({ value, onChange, placeholder = "如: AAP
             >
               <div className="asset-selector__suggestion-symbol">{asset.symbol}</div>
               {asset.name && <div className="asset-selector__suggestion-name">{asset.name}</div>}
-              {holdings.some(h => h.asset_id === asset.id) && (
+              {holdingWeight.has(asset.id) && (
                 <span className="asset-selector__suggestion-tag">持仓</span>
               )}
             </li>

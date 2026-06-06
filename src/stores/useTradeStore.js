@@ -8,12 +8,14 @@ export const useTradeStore = create((set, get) => ({
   holdings: [],
   summary: {},
   decisions: [],
+  assets: [],
   stats: {},
 
   // Loading states
   tradesLoading: false,
   holdingsLoading: false,
   decisionsLoading: false,
+  assetsLoading: false,
 
   // ==========================================
   // Trade actions
@@ -96,6 +98,30 @@ export const useTradeStore = create((set, get) => ({
     } catch (err) {
       console.error('Failed to load holdings:', err);
       set({ holdingsLoading: false });
+    }
+  },
+
+  refreshAssets: async () => {
+    set({ assetsLoading: true });
+    try {
+      const assets = await db.getAssets();
+      set({ assets, assetsLoading: false });
+      return { success: true, data: assets };
+    } catch (err) {
+      console.error('Failed to load assets:', err);
+      set({ assetsLoading: false });
+      return { success: false, error: err.message };
+    }
+  },
+
+  getHoldings: async () => {
+    try {
+      const holdings = await db.getHoldings();
+      set({ holdings });
+      return { success: true, data: holdings };
+    } catch (err) {
+      console.error('Failed to read holdings:', err);
+      return { success: false, error: err.message };
     }
   },
 
@@ -186,6 +212,7 @@ export const useTradeStore = create((set, get) => ({
     try {
       await db.addInformation(info);
       await get().refreshInformations();
+      await get().refreshAssets();
       triggerAutoBackup().catch((e) => console.error('[AutoBackup] Error:', e));
       return { success: true };
     } catch (err) {
@@ -198,6 +225,7 @@ export const useTradeStore = create((set, get) => ({
     try {
       await db.updateInformation(info);
       await get().refreshInformations();
+      await get().refreshAssets();
       triggerAutoBackup().catch((e) => console.error('[AutoBackup] Error:', e));
       return { success: true };
     } catch (err) {

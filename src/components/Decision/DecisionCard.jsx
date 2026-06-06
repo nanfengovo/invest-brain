@@ -61,6 +61,12 @@ export default function DecisionCard({ decision, index = 0, onClick, onEdit, onR
   const sentiment = SENTIMENT_MAP[decision.sentiment] || SENTIMENT_MAP.NEUTRAL;
   const status = STATUS_LABELS[decision.status] || STATUS_LABELS.ACTIVE;
   const animationDelay = `${index * 50}ms`;
+  const linkedInfoCount = Number(decision.linked_info_count) || 0;
+  const linkedInfoPreview = String(decision.linked_info_titles || '')
+    .split('、')
+    .filter(Boolean)
+    .slice(0, 2)
+    .join('、');
 
   const handleDelete = useCallback(async () => {
     Dialog.show({
@@ -243,6 +249,20 @@ export default function DecisionCard({ decision, index = 0, onClick, onEdit, onR
           {decision.content && (
             <div className="decision-card__content">{decision.content}</div>
           )}
+
+          <div className="decision-card__trace">
+            <span className="decision-card__trace-chip">
+              标的 {decision.asset_symbol || decision.asset_id || '未绑定'}
+            </span>
+            <span className="decision-card__trace-chip">
+              重要度 {decision.priority || 3}
+            </span>
+            {linkedInfoCount > 0 && (
+              <span className="decision-card__trace-chip decision-card__trace-chip--evidence">
+                证据 {linkedInfoCount}{linkedInfoPreview ? ` · ${linkedInfoPreview}` : ''}
+              </span>
+            )}
+          </div>
 
           {/* Footer: Confidence, Status, Trade Count */}
           <div className="decision-card__footer">

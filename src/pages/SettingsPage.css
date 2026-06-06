@@ -57,6 +57,19 @@
   text-align: center;
 }
 
+.settings-card__agent-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+}
+
+.settings-card__agent-icon svg {
+  width: 28px;
+  height: 28px;
+  overflow: visible;
+}
+
 .settings-card__content {
   flex: 1;
   min-width: 0;
@@ -97,8 +110,60 @@
 }
 
 .settings-about__logo {
-  font-size: 40px;
-  margin-bottom: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 58px;
+  height: 58px;
+  margin-bottom: 12px;
+  border: 1px solid rgba(113, 166, 255, 0.28);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 32% 24%, rgba(255, 255, 255, 0.2), transparent 28%),
+    linear-gradient(145deg, rgba(52, 86, 160, 0.42), rgba(17, 24, 40, 0.88));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 0 26px rgba(68, 136, 255, 0.22),
+    0 14px 34px rgba(0, 0, 0, 0.32);
+}
+
+.settings-about__logo svg {
+  width: 42px;
+  height: 42px;
+  overflow: visible;
+}
+
+.settings-about__logo-halo {
+  fill: rgba(49, 211, 184, 0.1);
+  stroke: rgba(91, 149, 255, 0.48);
+  stroke-width: 1.4;
+}
+
+.settings-about__logo-shell {
+  fill: rgba(11, 19, 33, 0.92);
+  stroke: rgba(141, 183, 255, 0.62);
+  stroke-width: 1.4;
+}
+
+.settings-about__logo-face {
+  fill: rgba(92, 124, 255, 0.18);
+  stroke: rgba(222, 238, 255, 0.78);
+  stroke-width: 1.3;
+}
+
+.settings-about__logo-line,
+.settings-about__logo-mouth {
+  fill: none;
+  stroke: #67f3d6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.settings-about__logo-eye,
+.settings-about__logo-node {
+  fill: #7df5dc;
+  filter: drop-shadow(0 0 5px rgba(103, 243, 214, 0.72));
 }
 
 .settings-about__name {
@@ -202,4 +267,3 @@
   --color: var(--color-text-primary);
   width: 100%;
 }
-

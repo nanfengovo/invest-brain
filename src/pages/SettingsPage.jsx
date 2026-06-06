@@ -7,6 +7,33 @@ import { parseTradesFile } from '../utils/importTrades';
 import { restoreAutoBackup } from '../utils/autoBackup';
 import './SettingsPage.css';
 
+function AgentLogo() {
+  return (
+    <svg viewBox="0 0 48 48" role="img" aria-label="智能体">
+      <path
+        className="settings-about__logo-halo"
+        d="M24 4 40.45 13.5v19L24 42 7.55 32.5v-19L24 4Z"
+      />
+      <path
+        className="settings-about__logo-shell"
+        d="M24 7.8 37.16 15.4v15.2L24 38.2 10.84 30.6V15.4L24 7.8Z"
+      />
+      <path
+        className="settings-about__logo-face"
+        d="M16 20.2c0-3.2 2.6-5.8 5.8-5.8h4.4c3.2 0 5.8 2.6 5.8 5.8v4.9c0 3.2-2.6 5.8-5.8 5.8h-4.4c-3.2 0-5.8-2.6-5.8-5.8v-4.9Z"
+      />
+      <path
+        className="settings-about__logo-line"
+        d="M24 10.8v4.2M17.6 33.3l3-3M30.4 33.3l-3-3"
+      />
+      <circle className="settings-about__logo-eye" cx="21" cy="22.7" r="1.7" />
+      <circle className="settings-about__logo-eye" cx="29" cy="22.7" r="1.7" />
+      <path className="settings-about__logo-mouth" d="M21.5 27c1.8 1.3 4.2 1.3 6 0" />
+      <circle className="settings-about__logo-node" cx="24" cy="10.8" r="2.2" />
+    </svg>
+  );
+}
+
 function SettingsPage() {
   const { 
     isDbPersistent, 
@@ -563,7 +590,9 @@ function SettingsPage() {
         <div className="section__title">AI 舆情分析引擎 (Streamlit)</div>
         <div className="settings-card glass-card">
           <div className="settings-card__row" style={{ cursor: 'default' }}>
-            <span className="settings-card__icon">🧠</span>
+            <span className="settings-card__icon settings-card__agent-icon">
+              <AgentLogo />
+            </span>
             <div className="settings-card__content">
               <div className="settings-card__label">Streamlit 部署地址</div>
               <div className="settings-card__desc">
@@ -760,7 +789,9 @@ function SettingsPage() {
 
       <div className="section">
         <div className="settings-about">
-          <div className="settings-about__logo">🧠</div>
+          <div className="settings-about__logo">
+            <AgentLogo />
+          </div>
           <div className="settings-about__name">InvestBrain</div>
           <div className="settings-about__version">v{typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.0.0'}</div>
           <div className="settings-about__build-time" style={{ fontSize: '11px', color: 'var(--color-text-muted)', marginTop: '4px' }}>

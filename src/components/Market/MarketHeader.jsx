@@ -2,6 +2,28 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SearchOutline, CloseOutline } from 'antd-mobile-icons';
 
+const SEARCHABLE_QUOTE_TYPES = new Set([
+  'EQUITY',
+  'ETF',
+  'INDEX',
+  'MUTUALFUND',
+  'OPTION',
+  'FUTURE',
+  'CURRENCY',
+  'CRYPTOCURRENCY',
+]);
+
+const normalizeSearchResults = (items = []) => {
+  return items
+    .filter((item) => {
+      if (!item?.symbol) return false;
+      if (item.isYahooFinance) return true;
+      if (!item.quoteType) return true;
+      return SEARCHABLE_QUOTE_TYPES.has(item.quoteType);
+    })
+    .slice(0, 12);
+};
+
 export default function MarketHeader() {
   const [isSearching, setIsSearching] = useState(false);
   const [query, setQuery] = useState('');
@@ -34,7 +56,7 @@ export default function MarketHeader() {
         const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
         const json = await res.json();
         if (json && json.success && json.data) {
-          setResults(json.data.filter(q => q.isYahooFinance));
+          setResults(normalizeSearchResults(json.data));
         }
       } catch (err) {
         console.error('Search failed:', err);

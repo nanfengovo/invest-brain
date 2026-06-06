@@ -15,6 +15,28 @@ const TABS = [
   { id: '1y', label: '年K', interval: '3mo', range: '10y' } // pseudo year K
 ];
 
+const SEARCHABLE_QUOTE_TYPES = new Set([
+  'EQUITY',
+  'ETF',
+  'INDEX',
+  'MUTUALFUND',
+  'OPTION',
+  'FUTURE',
+  'CURRENCY',
+  'CRYPTOCURRENCY',
+]);
+
+const normalizeSearchResults = (items = []) => {
+  return items
+    .filter((item) => {
+      if (!item?.symbol) return false;
+      if (item.isYahooFinance) return true;
+      if (!item.quoteType) return true;
+      return SEARCHABLE_QUOTE_TYPES.has(item.quoteType);
+    })
+    .slice(0, 12);
+};
+
 export default function StockDetailPage() {
   const { symbol } = useParams();
   const navigate = useNavigate();
@@ -55,7 +77,7 @@ export default function StockDetailPage() {
         const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
         const json = await res.json();
         if (json && json.success && json.data) {
-          setSearchResults(json.data.filter(q => q.isYahooFinance));
+          setSearchResults(normalizeSearchResults(json.data));
         }
       } catch (err) {
         console.error('Search failed:', err);

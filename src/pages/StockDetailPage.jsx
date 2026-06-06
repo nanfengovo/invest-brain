@@ -355,14 +355,17 @@ export default function StockDetailPage() {
       {/* AI Insights module */}
       <div className="stock-detail__ai-insights">
         <div className="ai-insights-header">
-          <h3>全网舆情 (Last 30 Days)</h3>
+          <h3>近 30 天全网舆情</h3>
           <button 
             className="ai-btn"
             onClick={() => {
               if (streamlitUrl) {
                 let url = streamlitUrl;
                 if (!url.endsWith('/')) url += '/';
-                window.open(`${url}?q=${encodeURIComponent(symbol)}`, '_blank');
+                const reportUrl = new URL(url);
+                reportUrl.searchParams.set('q', symbol);
+                reportUrl.searchParams.set('lang', 'zh');
+                window.open(reportUrl.toString(), '_blank');
               } else {
                 Toast.show({ content: '请先在设置页配置 AI 引擎地址' });
               }
@@ -372,7 +375,7 @@ export default function StockDetailPage() {
           </button>
         </div>
         <div className="ai-insights-content">
-          <p>点击上方按钮，即可在新窗口拉起您的 Streamlit 专属 AI 引擎，拉取 {symbol.toUpperCase()} 近 30 天的全网舆情报告。</p>
+          <p>点击上方按钮，即可在新窗口拉起您的 Streamlit 专属 AI 引擎，生成 {symbol.toUpperCase()} 的中文舆情研究简报。</p>
         </div>
       </div>
     </div>

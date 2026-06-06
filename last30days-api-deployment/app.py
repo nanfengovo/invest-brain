@@ -1,5 +1,6 @@
 import streamlit as st
 import json
+import re
 import subprocess
 import os
 import shutil
@@ -114,6 +115,19 @@ st.markdown("""
         line-height: 1.16;
         letter-spacing: 0;
     }
+    .ib-language-pill {
+        display: inline-flex;
+        align-items: center;
+        min-height: 30px;
+        margin: -18px 0 30px;
+        padding: 0 12px;
+        border: 1px solid rgba(103, 243, 214, 0.18);
+        border-radius: 999px;
+        background: rgba(103, 243, 214, 0.08);
+        color: #9df8e5;
+        font-size: 14px;
+        font-weight: 700;
+    }
     /* 隐藏 Streamlit 右上角的菜单和底部的 footer */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
@@ -194,6 +208,9 @@ st.markdown(
     f'<div class="ib-subtitle">正在深度解析: {display_symbol}</div>',
     unsafe_allow_html=True,
 )
+
+if use_chinese_report:
+    st.markdown('<div class="ib-language-pill">中文研究简报模式</div>', unsafe_allow_html=True)
 
 SKILL_REPO_URL = "https://github.com/mvanhorn/last30days-skill.git"
 DEFAULT_SKILL_ROOT = Path(os.environ.get("LAST30DAYS_SKILL_ROOT", "/tmp/last30days-skill"))
@@ -304,8 +321,7 @@ def call_gemini_for_chinese_report(raw_markdown, query):
         with urllib.request.urlopen(request, timeout=55) as response:
             response_data = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        return None, f"Gemini API 返回 {exc.code}: {detail[:300]}"
+        return None, f"Gemini API 返回 {exc.code}"
     except Exception as exc:
         return None, str(exc)
 
@@ -323,6 +339,50 @@ def call_gemini_for_chinese_report(raw_markdown, query):
     return text, None
 
 
+def extract_first_match(pattern, text, default="暂未识别"):
+    match = re.search(pattern, text, flags=re.IGNORECASE)
+    if not match:
+        return default
+    return match.group(1).strip()
+
+
+def build_basic_chinese_report(raw_markdown, query, reason):
+    safe_query = re.sub(r"\s+", " ", query.upper()).strip()[:80] or "当前标的"
+    date_range = extract_first_match(r"Date range:\s*([^\n]+)", raw_markdown)
+    sources = extract_first_match(r"Sources:\s*([^\n]+)", raw_markdown)
+    reason_text = reason or "中文增强服务暂不可用"
+
+    return f"""
+### 核心结论
+
+已完成 **{safe_query}** 最近 30 天的舆情检索。当前中文增强服务状态：**{reason_text}**。系统已切换为基础中文摘要模式，原始英文证据会折叠保留在下方，避免中文简报正文混入英文长文。
+
+### 最近 30 天情绪
+
+- 日期范围：{date_range}
+- 数据来源：{sources}
+- 由于中文增强服务暂不可用，本次不对原始英文材料做确定性情绪翻译，避免误读或编造。
+
+### 关键证据
+
+- 已完成 last30days 原始证据抓取。
+- 证据原文保留在下方折叠区，便于核对来源、时间与上下文。
+- 配置 `GEMINI_API_KEY` 后，系统会自动输出完整中文研报。
+
+### 风险与催化
+
+- 当前仅提供基础中文摘要，交易前需要继续复核原始证据。
+- 舆情材料可能存在来源偏差、讨论噪音和时间滞后。
+- 请结合实时行情、财报、公告和仓位纪律判断。
+
+### 跟踪清单
+
+- 优先复核下方折叠区中的高频讨论主题、来源集中度和时间新鲜度。
+- 如需完整中文翻译与结构化观点，请在 Streamlit Secrets 中配置 `GEMINI_API_KEY`。
+- 对交易决策仍需结合实时行情、财报、公告和仓位纪律。
+""".strip()
+
+
 @st.cache_data(ttl=3600)
 def localize_report(raw_markdown, query, language):
     if language not in ("zh", "zh-cn", "cn", "chinese"):
@@ -332,14 +392,7 @@ def localize_report(raw_markdown, query, language):
     if localized:
         return localized, None
 
-    fallback = (
-        "### 中文报告生成失败\n\n"
-        f"{error or '未能调用中文生成服务。'}\n\n"
-        "下面保留 last30days 原始研究结果，便于继续查看证据。\n\n"
-        "---\n\n"
-        f"{raw_markdown}"
-    )
-    return fallback, error
+    return build_basic_chinese_report(raw_markdown, query, error), error
 
 
 if not is_python_supported():
@@ -398,14 +451,20 @@ with st.spinner(f"正在全网拉取 {target_symbol.upper()} 近 30 天的 Reddi
     
     # 真正执行 Python 脚本
     markdown_result = run_last30days(target_symbol)
+    raw_markdown_result = markdown_result
     progress_bar.empty()
 
 # 渲染最终结果
+localization_error = None
 if use_chinese_report:
     with st.spinner("正在生成中文研究简报..."):
-        markdown_result, localization_error = localize_report(markdown_result, target_symbol, report_language)
+        markdown_result, localization_error = localize_report(raw_markdown_result, target_symbol, report_language)
     if localization_error:
-        st.warning("中文生成服务暂不可用，已保留原始研究结果。")
+        st.warning("中文增强服务暂不可用，已切换基础中文摘要。原始英文证据已折叠保留。")
 
 st.markdown("---")
 st.markdown(markdown_result)
+
+if use_chinese_report and localization_error:
+    with st.expander("查看 last30days 原始英文证据"):
+        st.markdown(raw_markdown_result)

@@ -86,31 +86,87 @@ export default function MarketHeader({ watchlist = [], onAddWatchItem }) {
   return (
     <>
       {isSearching ? (
-        <div className="market-search-bar">
-          <div className="market-search-bar__field">
-            <SearchOutline className="market-search-bar__icon" />
-            <input 
-              ref={inputRef}
-              type="text"
-              className="market-search-bar__input"
-              placeholder="搜索股票代码/拼音/名称"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-            {query && (
-              <CloseOutline 
-                className="market-search-bar__clear" 
-                onClick={() => setQuery('')} 
+        <div className="market-search-overlay">
+          <div className="market-search-bar">
+            <div className="market-search-bar__field">
+              <SearchOutline className="market-search-bar__icon" />
+              <input 
+                ref={inputRef}
+                type="text"
+                className="market-search-bar__input"
+                placeholder="搜索股票代码/拼音/名称"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
               />
+              {query && (
+                <CloseOutline 
+                  className="market-search-bar__clear" 
+                  onClick={() => setQuery('')} 
+                />
+              )}
+            </div>
+            <button 
+              type="button"
+              onClick={() => setIsSearching(false)} 
+              className="market-search-bar__cancel"
+            >
+              取消
+            </button>
+          </div>
+
+          <div className="market-search-panel">
+            {query.trim().length === 0 ? (
+              <div className="market-search-panel__empty-surface" />
+            ) : (
+              <div className="market-search-results">
+                {loading && (
+                  <div className="market-search-results__empty">搜索中...</div>
+                )}
+                
+                {!loading && results.length > 0 && (
+                  <div className="market-search-results__list">
+                    {results.map((item, idx) => {
+                      const isWatched = watchedSymbols.has(item.symbol);
+
+                      return (
+                        <div
+                          key={`${item.symbol}-${idx}`}
+                          className={`market-search-result ${isWatched ? 'market-search-result--watched' : ''}`}
+                          onClick={() => {
+                            setIsSearching(false);
+                            navigate(`/stock/${item.symbol}`);
+                          }}
+                        >
+                          <div className="market-search-result__main">
+                            <span className="market-search-result__symbol">{item.symbol}</span>
+                            <span className="market-search-result__name">{item.shortname || item.longname}</span>
+                          </div>
+                          <div className="market-search-result__side">
+                            <div className="market-search-result__exchange">
+                              {item.exchDisp || item.typeDisp || item.quoteType}
+                            </div>
+                            <button
+                              type="button"
+                              className="market-search-result__add"
+                              aria-label={`${isWatched ? '已关注' : '添加关注'} ${item.symbol}`}
+                              disabled={isWatched}
+                              onClick={(event) => handleAddWatchItem(event, item)}
+                            >
+                              {isWatched ? <CheckCircleOutline /> : <AddCircleOutline />}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                
+                {!loading && results.length === 0 && (
+                  <div className="market-search-results__empty">未找到匹配的股票</div>
+                )}
+              </div>
             )}
           </div>
-          <button 
-            type="button"
-            onClick={() => setIsSearching(false)} 
-            className="market-search-bar__cancel"
-          >
-            取消
-          </button>
         </div>
       ) : (
         <header className="market-header">
@@ -148,62 +204,6 @@ export default function MarketHeader({ watchlist = [], onAddWatchItem }) {
             </button>
           </div>
         </header>
-      )}
-
-      {isSearching && (
-        <div className="market-search-panel">
-          {query.trim().length === 0 ? (
-            <div className="market-search-panel__mask" />
-          ) : (
-            <div className="market-search-results">
-              {loading && (
-                <div className="market-search-results__empty">搜索中...</div>
-              )}
-              
-              {!loading && results.length > 0 && (
-                <div className="market-search-results__list">
-                  {results.map((item, idx) => {
-                    const isWatched = watchedSymbols.has(item.symbol);
-
-                    return (
-                      <div
-                        key={`${item.symbol}-${idx}`}
-                        className={`market-search-result ${isWatched ? 'market-search-result--watched' : ''}`}
-                        onClick={() => {
-                          setIsSearching(false);
-                          navigate(`/stock/${item.symbol}`);
-                        }}
-                      >
-                        <div className="market-search-result__main">
-                          <span className="market-search-result__symbol">{item.symbol}</span>
-                          <span className="market-search-result__name">{item.shortname || item.longname}</span>
-                        </div>
-                        <div className="market-search-result__side">
-                          <div className="market-search-result__exchange">
-                            {item.exchDisp || item.typeDisp || item.quoteType}
-                          </div>
-                          <button
-                            type="button"
-                            className="market-search-result__add"
-                            aria-label={`${isWatched ? '已关注' : '添加关注'} ${item.symbol}`}
-                            disabled={isWatched}
-                            onClick={(event) => handleAddWatchItem(event, item)}
-                          >
-                            {isWatched ? <CheckCircleOutline /> : <AddCircleOutline />}
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              
-              {!loading && results.length === 0 && (
-                <div className="market-search-results__empty">未找到匹配的股票</div>
-              )}
-            </div>
-          )}
-        </div>
       )}
     </>
   );

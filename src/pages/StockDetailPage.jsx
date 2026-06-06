@@ -39,6 +39,34 @@ const normalizeSearchResults = (items = []) => {
     .slice(0, 12);
 };
 
+const TREND_LABELS = {
+  UPTREND: '上升趋势',
+  DOWNTREND: '下降趋势',
+  RECOVERING: '修复中',
+  WEAKENING: '走弱中',
+  RANGE_BOUND: '区间震荡',
+  INSUFFICIENT_DATA: '数据不足',
+};
+
+const RISK_LABELS = {
+  LOW: '低波动',
+  MEDIUM: '中等波动',
+  HIGH: '高波动',
+};
+
+const formatMetric = (value, suffix = '') => {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return '--';
+  return `${Number(value).toFixed(2)}${suffix}`;
+};
+
+const formatCompact = (value) => {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return '--';
+  if (value >= 1e9) return `${(value / 1e9).toFixed(2)}B`;
+  if (value >= 1e6) return `${(value / 1e6).toFixed(2)}M`;
+  if (value >= 1e4) return `${(value / 1e4).toFixed(2)}万`;
+  return Number(value).toLocaleString();
+};
+
 const copyText = async (text) => {
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(text);
@@ -64,6 +92,8 @@ export default function StockDetailPage() {
   const [activeTab, setActiveTab] = useState('1d');
   const [chartData, setChartData] = useState([]);
   const [quote, setQuote] = useState(null);
+  const [snapshot, setSnapshot] = useState(null);
+  const [snapshotLoading, setSnapshotLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   
   // Inline search states
@@ -110,6 +140,37 @@ export default function StockDetailPage() {
   
   useEffect(() => {
     let mounted = true;
+    const fetchQuote = async () => {
+      try {
+        const normalizedSymbol = String(symbol || '').toUpperCase();
+        const res = await fetch(`/api/market?symbols=${encodeURIComponent(normalizedSymbol)}`);
+        const json = await res.json();
+        const item = json?.data?.[normalizedSymbol] || json?.data?.[symbol];
+
+        if (!mounted || !item) return;
+
+        setQuote({
+          regularMarketPrice: item.price,
+          chartPreviousClose: item.prevClose,
+          regularMarketDayHigh: item.regularMarketDayHigh,
+          regularMarketDayLow: item.regularMarketDayLow,
+          regularMarketOpen: item.regularMarketOpen,
+          regularMarketVolume: item.regularMarketVolume,
+          currency: item.currency || 'USD',
+          longName: item.name,
+        });
+      } catch (err) {
+        console.error('Failed to fetch quote:', err);
+      }
+    };
+
+    fetchQuote();
+
+    return () => { mounted = false; };
+  }, [symbol]);
+
+  useEffect(() => {
+    let mounted = true;
     const fetchChartData = async () => {
       setLoading(true);
       try {
@@ -119,9 +180,8 @@ export default function StockDetailPage() {
         
         if (json.success && mounted) {
           setChartData(json.data);
-          // Set quote info from the meta if we don't have real time quote yet
           if (json.meta) {
-            setQuote(json.meta);
+            setQuote((current) => current || json.meta);
           }
         }
       } catch (err) {
@@ -135,6 +195,27 @@ export default function StockDetailPage() {
     
     return () => { mounted = false; };
   }, [symbol, activeTab]);
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchSnapshot = async () => {
+      setSnapshotLoading(true);
+      try {
+        const res = await fetch(`/api/stock-snapshot?symbol=${encodeURIComponent(symbol)}`);
+        const json = await res.json();
+        if (mounted && json?.success) {
+          setSnapshot(json);
+        }
+      } catch (err) {
+        console.error('Failed to fetch stock snapshot:', err);
+      } finally {
+        if (mounted) setSnapshotLoading(false);
+      }
+    };
+
+    fetchSnapshot();
+    return () => { mounted = false; };
+  }, [symbol]);
 
   const handleShare = async () => {
     const normalizedSymbol = String(symbol || '').toUpperCase();
@@ -169,7 +250,10 @@ export default function StockDetailPage() {
     }
   };
 
-  const isUp = quote && quote.regularMarketPrice >= quote.chartPreviousClose;
+  const currentPrice = quote?.regularMarketPrice;
+  const previousClose = quote?.chartPreviousClose;
+  const hasDailyChange = Number.isFinite(currentPrice) && Number.isFinite(previousClose) && previousClose !== 0;
+  const isUp = hasDailyChange ? currentPrice >= previousClose : false;
   let colorClass = 'neutral';
   if (quote) {
     if (colorConvention === 'red-up-green-down') {
@@ -180,15 +264,26 @@ export default function StockDetailPage() {
   }
 
   const formatLargeNum = (num) => {
-    if (!num) return '-';
-    if (num >= 1e9) return (num / 1e9).toFixed(2) + 'B';
-    if (num >= 1e6) return (num / 1e6).toFixed(2) + 'M';
-    if (num >= 1e4) return (num / 1e4).toFixed(2) + '万';
-    return num.toLocaleString();
+    return formatCompact(num);
   };
 
-  const changeValue = quote ? (quote.regularMarketPrice - quote.chartPreviousClose).toFixed(2) : '0.00';
-  const changePct = quote ? ((quote.regularMarketPrice - quote.chartPreviousClose) / quote.chartPreviousClose * 100).toFixed(2) : '0.00';
+  const buildSnapshotMarkdown = () => {
+    if (!snapshot) return '';
+    const metrics = snapshot.metrics || {};
+    const quoteData = snapshot.quote || {};
+    return [
+      `### ${String(symbol).toUpperCase()} 数据证据快照`,
+      `- 来源：${snapshot.source?.provider || 'Yahoo Finance'}，${snapshot.source?.range || '1y'} ${snapshot.source?.interval || '1d'} 数据`,
+      `- 价格：${formatMetric(quoteData.price)} ${snapshot.meta?.currency || 'USD'}，日涨跌 ${formatMetric(quoteData.dayChangePct, '%')}`,
+      `- 趋势：${TREND_LABELS[metrics.trend] || metrics.trend || '--'}，风险：${RISK_LABELS[metrics.risk] || metrics.risk || '--'}`,
+      `- 区间收益：1M ${formatMetric(metrics.return1m, '%')}，3M ${formatMetric(metrics.return3m, '%')}，6M ${formatMetric(metrics.return6m, '%')}，1Y ${formatMetric(metrics.return1y, '%')}`,
+      `- 风险指标：年化波动 ${formatMetric(metrics.annualizedVolatility, '%')}，最大回撤 ${formatMetric(metrics.maxDrawdown, '%')}，52周位置 ${formatMetric(metrics.week52Position, '%')}`,
+      `- 量能：当日成交量 ${formatCompact(quoteData.dayVolume)}，20日均量倍数 ${formatMetric(metrics.volumeRatio20, 'x')}`,
+    ].join('\n');
+  };
+
+  const changeValue = hasDailyChange ? (currentPrice - previousClose).toFixed(2) : '0.00';
+  const changePct = hasDailyChange ? ((currentPrice - previousClose) / previousClose * 100).toFixed(2) : '0.00';
   const sign = isUp ? '+' : '';
 
   return (
@@ -295,7 +390,7 @@ export default function StockDetailPage() {
 
       <div className="stock-detail__header">
         <div className={`stock-detail__price ${colorClass} font-extrabold`}>
-          {quote ? quote.regularMarketPrice.toFixed(2) : '--.--'}
+          {Number.isFinite(currentPrice) ? currentPrice.toFixed(2) : '--.--'}
         </div>
         <div className={`stock-detail__changes ${colorClass} flex items-center gap-3`}>
           <span>{sign}{changeValue}</span>
@@ -349,6 +444,79 @@ export default function StockDetailPage() {
           <div className="chart-loading">正在加载专业图表...</div>
         ) : (
           <KlineChart data={chartData} interval={activeTab} />
+        )}
+      </div>
+
+      <div className="stock-detail__snapshot">
+        <div className="stock-detail__snapshot-header">
+          <div>
+            <h3>数据证据快照</h3>
+            <p>{snapshot?.meta?.name || symbol.toUpperCase()} · Yahoo Chart</p>
+          </div>
+          <button
+            type="button"
+            className="stock-detail__snapshot-copy"
+            disabled={!snapshot}
+            onClick={async () => {
+              try {
+                await copyText(buildSnapshotMarkdown());
+                Toast.show({ content: '证据快照已复制' });
+              } catch {
+                Toast.show({ content: '复制失败' });
+              }
+            }}
+          >
+            复制证据
+          </button>
+        </div>
+
+        {snapshotLoading && !snapshot ? (
+          <div className="stock-detail__snapshot-loading">正在生成数据证据...</div>
+        ) : snapshot ? (
+          <>
+            <div className="stock-detail__snapshot-tags">
+              <span>{TREND_LABELS[snapshot.metrics?.trend] || '趋势未知'}</span>
+              <span className={`risk-${String(snapshot.metrics?.risk || 'LOW').toLowerCase()}`}>
+                {RISK_LABELS[snapshot.metrics?.risk] || '风险未知'}
+              </span>
+            </div>
+            <div className="stock-detail__snapshot-grid">
+              <div>
+                <span>1M</span>
+                <strong>{formatMetric(snapshot.metrics?.return1m, '%')}</strong>
+              </div>
+              <div>
+                <span>3M</span>
+                <strong>{formatMetric(snapshot.metrics?.return3m, '%')}</strong>
+              </div>
+              <div>
+                <span>6M</span>
+                <strong>{formatMetric(snapshot.metrics?.return6m, '%')}</strong>
+              </div>
+              <div>
+                <span>年化波动</span>
+                <strong>{formatMetric(snapshot.metrics?.annualizedVolatility, '%')}</strong>
+              </div>
+              <div>
+                <span>最大回撤</span>
+                <strong>{formatMetric(snapshot.metrics?.maxDrawdown, '%')}</strong>
+              </div>
+              <div>
+                <span>52周位置</span>
+                <strong>{formatMetric(snapshot.metrics?.week52Position, '%')}</strong>
+              </div>
+              <div>
+                <span>20日量能</span>
+                <strong>{formatMetric(snapshot.metrics?.volumeRatio20, 'x')}</strong>
+              </div>
+              <div>
+                <span>样本数</span>
+                <strong>{snapshot.meta?.observations || '--'}</strong>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="stock-detail__snapshot-loading">暂时无法生成数据证据</div>
         )}
       </div>
 

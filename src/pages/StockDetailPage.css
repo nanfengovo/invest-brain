@@ -1,9 +1,9 @@
 .stock-detail-page {
   padding-top: calc(8px + var(--safe-area-top));
   padding-bottom: calc(var(--tabbar-height) + var(--safe-area-bottom) + 16px);
-  background: var(--bg-main);
+  background: var(--color-bg-primary);
   min-height: 100vh;
-  color: var(--color-text);
+  color: var(--color-text-primary);
   display: flex;
   flex-direction: column;
 }
@@ -62,7 +62,7 @@
 
 .stock-detail__action-button:active {
   background: var(--color-border);
-  color: var(--color-text);
+  color: var(--color-text-primary);
 }
 
 .stock-detail__action-button svg {
@@ -122,7 +122,7 @@
 }
 
 .metric-item .value {
-  color: var(--color-text);
+  color: var(--color-text-primary);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
@@ -145,7 +145,7 @@
 }
 
 .stock-detail__tab.active {
-  color: var(--color-text);
+  color: var(--color-text-primary);
   font-weight: 600;
 }
 
@@ -180,7 +180,8 @@
 .stock-detail__ai-insights {
   margin: auto 16px 16px;
   padding: 16px;
-  background: var(--bg-card);
+  background: var(--color-glass-card);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   box-shadow: 
     inset 0 1px 1px rgba(255, 255, 255, 0.05),
@@ -222,4 +223,133 @@
   font-size: 12px;
   color: var(--color-text-secondary);
   line-height: 1.5;
+}
+
+.stock-detail__snapshot {
+  margin: 0 16px 16px;
+  padding: 16px;
+  background: var(--color-glass-card);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+}
+
+.stock-detail__snapshot-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.stock-detail__snapshot-header h3 {
+  margin: 0 0 4px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.stock-detail__snapshot-header p {
+  margin: 0;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.stock-detail__snapshot-copy {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: var(--color-accent-bg);
+  color: var(--color-accent-light);
+  border: 1px solid rgba(99, 102, 241, 0.24);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.stock-detail__snapshot-copy:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.stock-detail__snapshot-tags {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.stock-detail__snapshot-tags span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--color-bg-elevated);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.stock-detail__snapshot-tags .risk-low {
+  color: #00b894;
+  background: rgba(0, 184, 148, 0.1);
+  border-color: rgba(0, 184, 148, 0.22);
+}
+
+.stock-detail__snapshot-tags .risk-medium {
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.26);
+}
+
+.stock-detail__snapshot-tags .risk-high {
+  color: #ff7675;
+  background: rgba(255, 118, 117, 0.12);
+  border-color: rgba(255, 118, 117, 0.26);
+}
+
+.stock-detail__snapshot-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.stock-detail__snapshot-grid > div {
+  min-width: 0;
+  padding: 10px 8px;
+  border-radius: 10px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+}
+
+.stock-detail__snapshot-grid span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--color-text-muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.stock-detail__snapshot-grid strong {
+  display: block;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.stock-detail__snapshot-loading {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+@media (max-width: 390px) {
+  .stock-detail__snapshot-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }

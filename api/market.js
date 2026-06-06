@@ -1,40 +1,11 @@
+import { fetchYahooChart } from './_lib/yahoo.js';
+
 const CACHE_TTL_MS = 5_000;
 const STALE_TTL_MS = 30_000;
 const YAHOO_TIMEOUT_MS = 2_600;
 
 const marketCache = globalThis.__INVEST_BRAIN_MARKET_CACHE__ || new Map();
 globalThis.__INVEST_BRAIN_MARKET_CACHE__ = marketCache;
-
-const YAHOO_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-  Accept: 'application/json,text/plain,*/*',
-};
-
-const mapSymbol = (sym) => {
-  let clean = sym.replace(/^(gb_|hf_|us|hk|sh|sz)/i, '').toUpperCase();
-  if (clean === 'IXIC') return '^IXIC';
-  if (clean === 'NDX') return '^NDX';
-  if (clean === 'INX') return '^GSPC';
-  if (clean === 'NQ') return 'NQ=F';
-  if (clean === 'ES') return 'ES=F';
-  if (clean === 'YM') return 'YM=F';
-  if (clean === 'CL') return 'CL=F';
-  return clean;
-};
-
-const fetchWithTimeout = async (url, options = {}, timeoutMs = YAHOO_TIMEOUT_MS) => {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    return await fetch(url, {
-      ...options,
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeoutId);
-  }
-};
 
 const getCachedQuote = (symbol, now, maxAge = CACHE_TTL_MS) => {
   const cached = marketCache.get(symbol);
@@ -43,16 +14,12 @@ const getCachedQuote = (symbol, now, maxAge = CACHE_TTL_MS) => {
 };
 
 const fetchQuote = async (originalSymbol) => {
-  const yfSymbol = mapSymbol(originalSymbol);
-  const apiUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yfSymbol)}?interval=1d&range=1d`;
-  const response = await fetchWithTimeout(apiUrl, { headers: YAHOO_HEADERS });
-
-  if (!response.ok) {
-    throw new Error(`Yahoo chart responded with ${response.status}`);
-  }
-
-  const data = await response.json();
-  const meta = data?.chart?.result?.[0]?.meta;
+  const { result, yahooSymbol } = await fetchYahooChart(originalSymbol, {
+    interval: '1d',
+    range: '1d',
+    timeoutMs: YAHOO_TIMEOUT_MS,
+  });
+  const meta = result?.meta;
 
   if (!meta) return null;
 
@@ -63,11 +30,21 @@ const fetchQuote = async (originalSymbol) => {
 
   return {
     symbol: originalSymbol,
-    name: meta.shortName || meta.longName || yfSymbol,
+    name: meta.shortName || meta.longName || yahooSymbol,
     price,
     pctChange,
     absChange,
     prevClose,
+    regularMarketDayHigh: meta.regularMarketDayHigh ?? null,
+    regularMarketDayLow: meta.regularMarketDayLow ?? null,
+    regularMarketOpen: meta.regularMarketOpen ?? null,
+    regularMarketVolume: meta.regularMarketVolume ?? null,
+    fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh ?? null,
+    fiftyTwoWeekLow: meta.fiftyTwoWeekLow ?? null,
+    currency: meta.currency || 'USD',
+    exchangeName: meta.exchangeName || null,
+    instrumentType: meta.instrumentType || null,
+    yahooSymbol,
     type: originalSymbol.startsWith('hf_') ? 'futures' : 'us',
   };
 };

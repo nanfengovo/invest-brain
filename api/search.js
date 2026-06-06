@@ -1,22 +1,10 @@
+import { fetchWithTimeout, YAHOO_HEADERS } from './_lib/yahoo.js';
+
 const SEARCH_CACHE_TTL_MS = 45_000;
 const YAHOO_TIMEOUT_MS = 3_000;
 
 const searchCache = globalThis.__INVEST_BRAIN_SEARCH_CACHE__ || new Map();
 globalThis.__INVEST_BRAIN_SEARCH_CACHE__ = searchCache;
-
-const fetchWithTimeout = async (url, options = {}, timeoutMs = YAHOO_TIMEOUT_MS) => {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    return await fetch(url, {
-      ...options,
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeoutId);
-  }
-};
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -44,11 +32,8 @@ export default async function handler(req, res) {
     
     // Add a basic User-Agent to avoid blocks
     const response = await fetchWithTimeout(apiUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-        Accept: 'application/json,text/plain,*/*',
-      }
-    });
+      headers: YAHOO_HEADERS,
+    }, YAHOO_TIMEOUT_MS);
 
     if (!response.ok) {
       throw new Error(`Yahoo Search API responded with status: ${response.status}`);

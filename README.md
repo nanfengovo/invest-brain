@@ -56,6 +56,7 @@ InvestBrain 的核心逻辑是 Investment Decision Closed-Loop：每一笔交易
 - **本地优先的数据安全策略**：使用 SQLite3 WASM + OPFS，交易、笔记、附件优先留在浏览器本地，降低中心化泄露风险。
 - **AI 情报提炼**：`/api/summarize` 会优先使用 Jina Reader 把 URL 转成 LLM 友好的 Markdown，再通过 Gemini 模型池生成中文标题和摘要。
 - **舆情研究入口**：`last30days-api-deployment` 封装 last30days-skill，用于按标的拉取最近 30 天 Reddit / Hacker News / Polymarket / Web 讨论，并生成中文研究简报。
+- **美股数据证据快照**：股票详情页会基于 Yahoo Chart 数据生成趋势、波动、回撤、52 周位置和量能指标，可一键复制为决策证据。
 - **闭环数据模型**：情报、观点、决策、交易、复盘都有独立表结构和关联字段，支持从结果反查原因。
 - **PWA 移动体验**：支持添加到手机桌面，保留移动端手势、暗色界面和离线优先体验。
 - **富媒体留存**：支持图片/视频附件上传，支持 YouTube、Bilibili、X/Twitter 等外部内容的辅助留存。

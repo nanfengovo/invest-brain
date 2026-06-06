@@ -1,7 +1,7 @@
 {
   "name": "invest-brain",
   "private": true,
-  "version": "1.0.82",
+  "version": "1.0.84",
   "type": "module",
   "scripts": {
     "dev": "vite",

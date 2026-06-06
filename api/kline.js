@@ -1,3 +1,5 @@
+import { fetchYahooChart } from './_lib/yahoo.js';
+
 const KLINE_TIMEOUT_MS = 4_500;
 const klineCache = globalThis.__INVEST_BRAIN_KLINE_CACHE__ || new Map();
 globalThis.__INVEST_BRAIN_KLINE_CACHE__ = klineCache;
@@ -6,20 +8,6 @@ const getCacheTtl = (interval) => {
   if (interval.includes('m')) return 10_000;
   if (interval.includes('h')) return 60_000;
   return 180_000;
-};
-
-const fetchWithTimeout = async (url, options = {}, timeoutMs = KLINE_TIMEOUT_MS) => {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    return await fetch(url, {
-      ...options,
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeoutId);
-  }
 };
 
 export default async function handler(req, res) {
@@ -48,36 +36,7 @@ export default async function handler(req, res) {
       return res.status(200).json(cached.payload);
     }
 
-    // Clean symbol (Sina prefix removal if present)
-    let cleanSymbol = symbol.replace(/^(gb_|hf_|us|hk|sh|sz)/i, '').toUpperCase();
-    
-    // Map indices
-    if (cleanSymbol === 'IXIC') cleanSymbol = '^IXIC';
-    if (cleanSymbol === 'INX') cleanSymbol = '^GSPC';
-    if (cleanSymbol === 'DJI') cleanSymbol = '^DJI';
-    if (cleanSymbol === 'NQ') cleanSymbol = 'NQ=F';
-    if (cleanSymbol === 'ES') cleanSymbol = 'ES=F';
-    if (cleanSymbol === 'YM') cleanSymbol = 'YM=F';
-    if (cleanSymbol === 'CL') cleanSymbol = 'CL=F';
-
-    const apiUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${cleanSymbol}?interval=${interval}&range=${range}`;
-    
-    const response = await fetchWithTimeout(apiUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-        Accept: 'application/json,text/plain,*/*',
-      },
-    });
-    if (!response.ok) {
-      throw new Error(`Yahoo API responded with status: ${response.status}`);
-    }
-
-    const data = await response.json();
-    const result = data.chart?.result?.[0];
-
-    if (!result) {
-      throw new Error('No chart data found');
-    }
+    const { result } = await fetchYahooChart(symbol, { interval, range, timeoutMs: KLINE_TIMEOUT_MS });
 
     const timestamps = result.timestamp || [];
     const quotes = result.indicators.quote[0];

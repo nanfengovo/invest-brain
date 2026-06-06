@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { db } from '../db/database';
 
 const MARKET_WATCHLIST_KEY = 'ib_market_watchlist';
+const SYNC_USER_ID_KEY = 'invest_sync_user_id';
+const SYNC_SECRET_KEY = 'invest_sync_secret';
 
 const normalizeMarketWatchItem = (item) => {
   const symbol = String(item?.symbol || '').trim().toUpperCase();
@@ -76,8 +78,8 @@ export const useAppStore = create((set, get) => ({
   setSyncSecret: (secret) => set({ syncSecret: secret }),
   loadSyncConfig: async () => {
     try {
-      const userId = await db.getSetting('sync_user_id');
-      const secret = await db.getSetting('sync_secret');
+      const userId = await db.getSetting('sync_user_id') || localStorage.getItem(SYNC_USER_ID_KEY);
+      const secret = await db.getSetting('sync_secret') || localStorage.getItem(SYNC_SECRET_KEY);
       set({ syncUserId: userId || '', syncSecret: secret || '' });
     } catch (e) {
       console.error('Failed to load sync config from DB', e);
@@ -85,9 +87,25 @@ export const useAppStore = create((set, get) => ({
   },
   saveSyncConfig: async (userId, secret) => {
     try {
-      await db.setSetting('sync_user_id', userId);
-      await db.setSetting('sync_secret', secret);
-      set({ syncUserId: userId, syncSecret: secret });
+      const normalizedUserId = String(userId || '').trim();
+      const normalizedSecret = String(secret || '').trim();
+
+      await db.setSetting('sync_user_id', normalizedUserId);
+      await db.setSetting('sync_secret', normalizedSecret);
+
+      if (normalizedUserId) {
+        localStorage.setItem(SYNC_USER_ID_KEY, normalizedUserId);
+      } else {
+        localStorage.removeItem(SYNC_USER_ID_KEY);
+      }
+
+      if (normalizedSecret) {
+        localStorage.setItem(SYNC_SECRET_KEY, normalizedSecret);
+      } else {
+        localStorage.removeItem(SYNC_SECRET_KEY);
+      }
+
+      set({ syncUserId: normalizedUserId, syncSecret: normalizedSecret });
     } catch (e) {
       console.error('Failed to save sync config to DB', e);
       throw e;

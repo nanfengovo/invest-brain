@@ -321,11 +321,56 @@ function SettingsPage() {
   }
 
   async function handleSaveSyncConfig() {
+    const normalizedUserId = syncUserIdInput.trim();
+    const normalizedSecret = syncSecretInput.trim();
+
+    if (!normalizedUserId || !normalizedSecret) {
+      Toast.show({ icon: 'fail', content: '请填写代号和同步暗号' });
+      return;
+    }
+
     try {
-      await saveSyncConfig(syncUserIdInput, syncSecretInput);
+      await saveSyncConfig(normalizedUserId, normalizedSecret);
       Toast.show({ icon: 'success', content: '云端配置已保存' });
     } catch (e) {
       Toast.show({ icon: 'fail', content: '保存失败' });
+    }
+  }
+
+  async function handleTestSyncConnection() {
+    const normalizedSecret = syncSecretInput.trim();
+
+    if (!normalizedSecret) {
+      Toast.show({ icon: 'fail', content: '请先填写同步暗号' });
+      return;
+    }
+
+    try {
+      Toast.show({ icon: 'loading', content: '正在测试云端连接...', duration: 0 });
+
+      const res = await fetch('/api/sync-download?userId=__ib_connection_test__', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${encodeURIComponent(normalizedSecret)}`
+        }
+      });
+
+      let responseData;
+      try {
+        responseData = await res.json();
+      } catch (e) {
+        throw new Error('服务器响应异常，请检查部署状态');
+      }
+
+      if (!res.ok) {
+        throw new Error(responseData?.error || '连接测试失败');
+      }
+
+      Toast.clear();
+      Toast.show({ icon: 'success', content: '云端连接正常' });
+    } catch (e) {
+      Toast.clear();
+      Toast.show({ icon: 'fail', content: e.message });
     }
   }
 
@@ -638,7 +683,7 @@ function SettingsPage() {
               </div>
             </div>
           </div>
-          <div className="settings-card__input-row" style={{ borderBottom: '1px solid var(--color-border)', paddingBottom: '12px' }}>
+          <div className="settings-card__input-row settings-card__input-row--stacked">
             <div className="settings-card__input-wrapper">
               <Input
                 placeholder="您的代号 (如: Feng)"
@@ -647,6 +692,35 @@ function SettingsPage() {
                 clearable
               />
             </div>
+            <div className="settings-card__input-wrapper">
+              <Input
+                placeholder="团队同步暗号"
+                type="password"
+                value={syncSecretInput}
+                onChange={setSyncSecretInput}
+                clearable
+              />
+            </div>
+          </div>
+          <div className="settings-card__actions-row">
+            <Button
+              color="primary"
+              size="small"
+              fill="solid"
+              onClick={handleSaveSyncConfig}
+              style={{ borderRadius: '6px' }}
+            >
+              保存凭证
+            </Button>
+            <Button
+              color="primary"
+              size="small"
+              fill="outline"
+              onClick={handleTestSyncConnection}
+              style={{ borderRadius: '6px' }}
+            >
+              测试连接
+            </Button>
           </div>
 
           <div className="settings-card__divider" />

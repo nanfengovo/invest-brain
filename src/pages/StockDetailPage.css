@@ -1,6 +1,6 @@
 .stock-detail-page {
   padding-top: calc(8px + var(--safe-area-top));
-  padding-bottom: var(--safe-area-bottom);
+  padding-bottom: calc(var(--tabbar-height) + var(--safe-area-bottom) + 16px);
   background: var(--bg-main);
   min-height: 100vh;
   color: var(--color-text);
@@ -140,6 +140,7 @@
 }
 
 .stock-detail__chart-container {
+  flex: 0 0 auto;
   height: 350px;
   width: 100%;
   position: relative;
@@ -155,7 +156,7 @@
 }
 
 .stock-detail__ai-insights {
-  margin: 16px;
+  margin: auto 16px 16px;
   padding: 16px;
   background: var(--bg-card);
   border-radius: 12px;

@@ -1,9 +1,12 @@
 import streamlit as st
+import json
 import subprocess
 import os
 import shutil
 import sys
 import time
+import urllib.error
+import urllib.request
 from html import escape
 from pathlib import Path
 
@@ -144,9 +147,32 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+def get_query_param(name, default=""):
+    value = st.query_params.get(name, default)
+    if isinstance(value, list):
+        return value[0] if value else default
+    return value or default
+
+
+def get_secret_value(*names):
+    for name in names:
+        value = os.environ.get(name)
+        if value:
+            return str(value)
+
+        try:
+            if hasattr(st, "secrets") and name in st.secrets:
+                return str(st.secrets[name])
+        except Exception:
+            continue
+
+    return ""
+
+
 # 获取 URL 参数 (Streamlit 1.30+ 用法)
-query_params = st.query_params
-target_symbol = query_params.get("q", "")
+target_symbol = get_query_param("q", "")
+report_language = get_query_param("lang", "zh").lower()
+use_chinese_report = report_language in ("zh", "zh-cn", "cn", "chinese")
 
 st.markdown(
     f"""
@@ -226,6 +252,96 @@ def build_last30days_command(query):
     ]
 
 
+def call_gemini_for_chinese_report(raw_markdown, query):
+    api_key = get_secret_value("GEMINI_API_KEY", "GOOGLE_API_KEY")
+    if not api_key:
+        return None, "未配置 GEMINI_API_KEY。"
+
+    model = get_secret_value("GEMINI_MODEL") or "gemini-2.0-flash"
+    endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    prompt = f"""
+你是 InvestBrain 的中文投资研究助手。请把下面的 last30days 原始研究结果整理成中文 Markdown 简报。
+
+要求：
+1. 全文使用简体中文，股票代码、公司名、平台名、专有名词可保留英文。
+2. 不要编造原始材料中没有的事实、数字、链接或来源。
+3. 保留重要来源链接、日期、平台名称和不确定性提示。
+4. 输出结构固定为：
+   - ### 核心结论
+   - ### 最近 30 天情绪
+   - ### 关键证据
+   - ### 风险与催化
+   - ### 跟踪清单
+5. 如果原始材料不足，明确写出“证据不足”，不要强行给确定结论。
+
+研究对象：{query}
+
+原始结果：
+{raw_markdown}
+""".strip()
+
+    payload = {
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{"text": prompt}],
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.2,
+            "maxOutputTokens": 4096,
+        },
+    }
+
+    request = urllib.request.Request(
+        endpoint,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=55) as response:
+            response_data = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        return None, f"Gemini API 返回 {exc.code}: {detail[:300]}"
+    except Exception as exc:
+        return None, str(exc)
+
+    parts = (
+        response_data
+        .get("candidates", [{}])[0]
+        .get("content", {})
+        .get("parts", [])
+    )
+    text = "\n".join(part.get("text", "") for part in parts).strip()
+
+    if not text:
+        return None, "Gemini 未返回可用中文内容。"
+
+    return text, None
+
+
+@st.cache_data(ttl=3600)
+def localize_report(raw_markdown, query, language):
+    if language not in ("zh", "zh-cn", "cn", "chinese"):
+        return raw_markdown, None
+
+    localized, error = call_gemini_for_chinese_report(raw_markdown, query)
+    if localized:
+        return localized, None
+
+    fallback = (
+        "### 中文报告生成失败\n\n"
+        f"{error or '未能调用中文生成服务。'}\n\n"
+        "下面保留 last30days 原始研究结果，便于继续查看证据。\n\n"
+        "---\n\n"
+        f"{raw_markdown}"
+    )
+    return fallback, error
+
+
 if not is_python_supported():
     st.error(
         "❌ Streamlit Python 版本过低。last30days-skill 需要 Python 3.12+；"
@@ -285,5 +401,11 @@ with st.spinner(f"正在全网拉取 {target_symbol.upper()} 近 30 天的 Reddi
     progress_bar.empty()
 
 # 渲染最终结果
+if use_chinese_report:
+    with st.spinner("正在生成中文研究简报..."):
+        markdown_result, localization_error = localize_report(markdown_result, target_symbol, report_language)
+    if localization_error:
+        st.warning("中文生成服务暂不可用，已保留原始研究结果。")
+
 st.markdown("---")
 st.markdown(markdown_result)

@@ -1,16 +1,13 @@
-import { Redis } from '@upstash/redis';
+import Redis from 'ioredis';
+import { Redis as UpstashRedis } from '@upstash/redis';
 
-export const config = {
-  runtime: 'edge',
-};
-
-export default async function handler(req) {
+export default async function handler(req, res) {
   if (req.method !== 'POST') {
-    return new Response('Method Not Allowed', { status: 405 });
+    return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
   try {
-    const authHeader = req.headers.get('authorization') || '';
+    const authHeader = req.headers['authorization'] || '';
     const expectedSecret = process.env.SYNC_SECRET?.replace(/^["']|["']$/g, '').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
     
     let providedSecret = authHeader.replace(/^Bearer\s+/i, '').replace(/^["']|["']$/g, '').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
@@ -18,52 +15,41 @@ export default async function handler(req) {
     
     // Only enforce secret if it is configured on the server
     if (expectedSecret && providedSecret !== expectedSecret) {
-      return new Response(JSON.stringify({ error: `Unauthorized: Invalid Sync Secret (Length: ${providedSecret.length}, Expected: ${expectedSecret.length})` }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return res.status(401).json({ error: `Unauthorized: Invalid Sync Secret` });
     }
 
-    const body = await req.json();
-    const { userId, data } = body;
+    const { userId, data } = req.body || {};
 
     if (!userId || !data) {
-      return new Response(JSON.stringify({ error: 'Missing userId or data' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return res.status(400).json({ error: 'Missing userId or data' });
     }
 
-    let kvUrl = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
-    let kvToken = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
+    const key = `sync_data:${userId}`;
+    const timeKey = `sync_time:${userId}`;
+    const stringifiedData = JSON.stringify(data);
+
+    // Try standard REDIS_URL first (via ioredis)
+    if (process.env.REDIS_URL) {
+      const client = new Redis(process.env.REDIS_URL);
+      await client.set(key, stringifiedData);
+      await client.set(timeKey, Date.now().toString());
+      await client.quit();
+      return res.status(200).json({ success: true, message: 'Data synced to cloud successfully' });
+    }
+
+    // Fallback to Upstash / Vercel KV REST API
+    const kvUrl = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
+    const kvToken = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
 
     if (!kvUrl || !kvToken) {
-      return new Response(JSON.stringify({ 
-        error: `云端数据库未正确配置。请在 Vercel 的 Storage 中创建一个 "KV" 数据库并关联到本项目。` 
-      }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return res.status(500).json({ error: `云端数据库未正确配置。支持 REDIS_URL 或 KV_REST_API_URL。` });
     }
 
-    const redis = new Redis({
-      url: kvUrl,
-      token: kvToken,
-    });
-    
-    // Save to Redis (overwrite existing for this user)
-    const key = `sync_data:${userId}`;
-    
-    // We compress to a string. Upstash handles objects automatically via JSON serialization.
-    await redis.set(key, JSON.stringify(data));
-    
-    // Also update a "last_sync_time" key
-    await redis.set(`sync_time:${userId}`, Date.now());
+    const upstashRedis = new UpstashRedis({ url: kvUrl, token: kvToken });
+    await upstashRedis.set(key, stringifiedData);
+    await upstashRedis.set(timeKey, Date.now());
 
-    return new Response(JSON.stringify({ success: true, message: 'Data synced to cloud successfully' }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return res.status(200).json({ success: true, message: 'Data synced to cloud successfully' });
 
   } catch (error) {
     console.error('Sync Upload Error:', error);
@@ -71,9 +57,6 @@ export default async function handler(req) {
     if (errorMessage.includes('Invalid URL') || errorMessage.includes('pattern')) {
       errorMessage = '连接云端数据库失败，请检查数据库链接格式是否正确。';
     }
-    return new Response(JSON.stringify({ error: errorMessage }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return res.status(500).json({ error: errorMessage });
   }
 }

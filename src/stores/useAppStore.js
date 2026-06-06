@@ -1,7 +1,44 @@
 import { create } from 'zustand';
 import { db } from '../db/database';
 
-export const useAppStore = create((set) => ({
+const MARKET_WATCHLIST_KEY = 'ib_market_watchlist';
+
+const normalizeMarketWatchItem = (item) => {
+  const symbol = String(item?.symbol || '').trim().toUpperCase();
+  if (!symbol) return null;
+
+  return {
+    symbol,
+    name: item.shortname || item.longname || item.name || symbol,
+    exchange: item.exchDisp || item.exchange || '',
+    quoteType: item.quoteType || '',
+    typeDisp: item.typeDisp || item.quoteType || '',
+    addedAt: item.addedAt || Date.now(),
+  };
+};
+
+const loadMarketWatchlist = () => {
+  try {
+    const raw = localStorage.getItem(MARKET_WATCHLIST_KEY);
+    if (!raw) return [];
+
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .map(normalizeMarketWatchItem)
+      .filter(Boolean);
+  } catch (error) {
+    console.error('Failed to load market watchlist', error);
+    return [];
+  }
+};
+
+const saveMarketWatchlist = (items) => {
+  localStorage.setItem(MARKET_WATCHLIST_KEY, JSON.stringify(items));
+};
+
+export const useAppStore = create((set, get) => ({
   // Database state
   isDbReady: false,
   isDbPersistent: false,
@@ -61,6 +98,33 @@ export const useAppStore = create((set) => ({
   activeTab: '/',
 
   setActiveTab: (tab) => set({ activeTab: tab }),
+
+  // Market watchlist
+  marketWatchlist: loadMarketWatchlist(),
+
+  addMarketWatchItem: (item) => {
+    const normalized = normalizeMarketWatchItem(item);
+    if (!normalized) return false;
+
+    const current = get().marketWatchlist;
+    if (current.some((watchItem) => watchItem.symbol === normalized.symbol)) {
+      return false;
+    }
+
+    const next = [normalized, ...current].slice(0, 80);
+    saveMarketWatchlist(next);
+    set({ marketWatchlist: next });
+    return true;
+  },
+
+  removeMarketWatchItem: (symbol) => {
+    const normalizedSymbol = String(symbol || '').trim().toUpperCase();
+    if (!normalizedSymbol) return;
+
+    const next = get().marketWatchlist.filter((item) => item.symbol !== normalizedSymbol);
+    saveMarketWatchlist(next);
+    set({ marketWatchlist: next });
+  },
 
   // Streamlit AI URL
   streamlitUrl: localStorage.getItem('ib_streamlit_url') || 'https://invest-brain-dataanaly.streamlit.app/',

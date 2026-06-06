@@ -1,6 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { SearchOutline, CloseOutline } from 'antd-mobile-icons';
+import { Toast } from 'antd-mobile';
+import {
+  AddCircleOutline,
+  CheckCircleOutline,
+  SearchOutline,
+  CloseOutline,
+} from 'antd-mobile-icons';
 
 const SEARCHABLE_QUOTE_TYPES = new Set([
   'EQUITY',
@@ -24,13 +30,14 @@ const normalizeSearchResults = (items = []) => {
     .slice(0, 12);
 };
 
-export default function MarketHeader() {
+export default function MarketHeader({ watchlist = [], onAddWatchItem }) {
   const [isSearching, setIsSearching] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const inputRef = useRef(null);
+  const watchedSymbols = new Set(watchlist.map((item) => String(item.symbol || '').toUpperCase()));
 
   useEffect(() => {
     if (!isSearching) {
@@ -68,6 +75,14 @@ export default function MarketHeader() {
     return () => clearTimeout(searchTimer);
   }, [query]);
 
+  const handleAddWatchItem = (event, item) => {
+    event.stopPropagation();
+    if (!onAddWatchItem) return;
+
+    const added = onAddWatchItem(item);
+    Toast.show({ content: added ? '已添加到我的关注' : '已在我的关注中' });
+  };
+
   return (
     <>
       {isSearching ? (
@@ -90,6 +105,7 @@ export default function MarketHeader() {
             )}
           </div>
           <button 
+            type="button"
             onClick={() => setIsSearching(false)} 
             className="market-search-bar__cancel"
           >
@@ -123,6 +139,7 @@ export default function MarketHeader() {
               <span className="market-region-switch__item">🇭🇰</span>
             </div>
             <button 
+              type="button"
               onClick={() => setIsSearching(true)}
               className="market-search-button"
               aria-label="搜索股票"
@@ -145,24 +162,39 @@ export default function MarketHeader() {
               
               {!loading && results.length > 0 && (
                 <div className="market-search-results__list">
-                  {results.map((item, idx) => (
-                    <div 
-                      key={idx} 
-                      className="market-search-result"
-                      onClick={() => {
-                        setIsSearching(false);
-                        navigate(`/stock/${item.symbol}`);
-                      }}
-                    >
-                      <div className="market-search-result__main">
-                        <span className="market-search-result__symbol">{item.symbol}</span>
-                        <span className="market-search-result__name">{item.shortname || item.longname}</span>
+                  {results.map((item, idx) => {
+                    const isWatched = watchedSymbols.has(item.symbol);
+
+                    return (
+                      <div
+                        key={`${item.symbol}-${idx}`}
+                        className={`market-search-result ${isWatched ? 'market-search-result--watched' : ''}`}
+                        onClick={() => {
+                          setIsSearching(false);
+                          navigate(`/stock/${item.symbol}`);
+                        }}
+                      >
+                        <div className="market-search-result__main">
+                          <span className="market-search-result__symbol">{item.symbol}</span>
+                          <span className="market-search-result__name">{item.shortname || item.longname}</span>
+                        </div>
+                        <div className="market-search-result__side">
+                          <div className="market-search-result__exchange">
+                            {item.exchDisp || item.typeDisp || item.quoteType}
+                          </div>
+                          <button
+                            type="button"
+                            className="market-search-result__add"
+                            aria-label={`${isWatched ? '已关注' : '添加关注'} ${item.symbol}`}
+                            disabled={isWatched}
+                            onClick={(event) => handleAddWatchItem(event, item)}
+                          >
+                            {isWatched ? <CheckCircleOutline /> : <AddCircleOutline />}
+                          </button>
+                        </div>
                       </div>
-                      <div className="market-search-result__exchange">
-                        {item.exchDisp}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
               

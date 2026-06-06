@@ -4,6 +4,7 @@ import { useAppStore } from '../stores/useAppStore';
 import MarketHeader from '../components/Market/MarketHeader';
 import IndexCardScroller from '../components/Market/IndexCardScroller';
 import SectorGrid from '../components/Market/SectorGrid';
+import WatchlistBoard from '../components/Market/WatchlistBoard';
 import './MarketPage.css';
 
 const SHARE_BASE_URL = 'https://invest-brain.vercel.app';
@@ -67,7 +68,12 @@ const copyText = async (text) => {
 };
 
 export default function MarketPage() {
-  const { colorConvention } = useAppStore();
+  const {
+    colorConvention,
+    marketWatchlist,
+    addMarketWatchItem,
+    removeMarketWatchItem,
+  } = useAppStore();
   const [marketData, setMarketData] = useState({});
   const [loading, setLoading] = useState(true);
 
@@ -79,10 +85,13 @@ export default function MarketPage() {
         const allSymbols = [
           ...INDICES.map(i => i.symbol),
           ...FUTURES.map(f => f.symbol),
-          ...SECTORS.map(s => s.symbol)
-        ].join(',');
+          ...SECTORS.map(s => s.symbol),
+          ...marketWatchlist.map(item => item.symbol)
+        ];
 
-        const res = await fetch(`/api/market?symbols=${allSymbols}`);
+        const symbolParam = Array.from(new Set(allSymbols.filter(Boolean))).join(',');
+
+        const res = await fetch(`/api/market?symbols=${encodeURIComponent(symbolParam)}`);
         if (!res.ok) throw new Error('Network response was not ok');
         
         const json = await res.json();
@@ -105,7 +114,7 @@ export default function MarketPage() {
       mounted = false;
       clearInterval(intervalId);
     };
-  }, []);
+  }, [marketWatchlist]);
 
   // Map symbols to full data objects
   const mapData = (configList) => {
@@ -123,6 +132,18 @@ export default function MarketPage() {
   const indexItems = mapData(INDICES);
   const futureItems = mapData(FUTURES);
   const sectorItems = mapData(SECTORS);
+  const watchlistItems = marketWatchlist.map((item) => {
+    const data = marketData[item.symbol] || {};
+    return {
+      ...item,
+      name: data.name || item.name,
+      price: parseMarketNumber(data.price),
+      pctChange: parseMarketNumber(data.pctChange),
+      absChange: parseMarketNumber(data.absChange),
+    };
+  });
+
+  const handleAddWatchItem = (item) => addMarketWatchItem(item);
 
   const handleShareMarket = async () => {
     const shareUrl = new URL('/market', SHARE_BASE_URL).toString();
@@ -158,7 +179,10 @@ export default function MarketPage() {
 
   return (
     <div className="market-page">
-      <MarketHeader />
+      <MarketHeader
+        watchlist={marketWatchlist}
+        onAddWatchItem={handleAddWatchItem}
+      />
       
       <div className="market-page__content">
         <section aria-label="全球主要指数">
@@ -201,6 +225,21 @@ export default function MarketPage() {
             </button>
           </div>
           <SectorGrid items={sectorItems} colorConvention={colorConvention} />
+        </section>
+
+        <section>
+          <div className="market-section-row">
+            <div className="market-section-title market-section-title--cyan">
+              <span className="market-section-title__bar" />
+              <h2>我的关注</h2>
+              <span className="market-section-title__count">{marketWatchlist.length}</span>
+            </div>
+          </div>
+          <WatchlistBoard
+            items={watchlistItems}
+            colorConvention={colorConvention}
+            onRemove={removeMarketWatchItem}
+          />
         </section>
       </div>
     </div>

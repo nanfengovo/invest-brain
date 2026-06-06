@@ -1,5 +1,13 @@
-import React from 'react';
 import { useNavigate } from 'react-router-dom';
+
+const getToneClass = (value, colorConvention) => {
+  if (value === null || value === undefined || value === 0) return 'market-tone--flat';
+  const redUp = colorConvention === 'red-up';
+  const isUp = value > 0;
+  return isUp
+    ? (redUp ? 'market-tone--red' : 'market-tone--green')
+    : (redUp ? 'market-tone--green' : 'market-tone--red');
+};
 
 export default function SectorGrid({ items, colorConvention }) {
   const navigate = useNavigate();
@@ -7,38 +15,33 @@ export default function SectorGrid({ items, colorConvention }) {
   if (!items || items.length === 0) return null;
 
   return (
-    <div className="grid grid-cols-2 gap-2.5 pb-6">
+    <div className="market-sector-board">
       {items.map((item, index) => {
-        const isUpRaw = item.pctChange > 0;
-        const isNeutral = item.pctChange === 0;
-        
-        let colorClass = 'text-gray-400';
-        if (!isNeutral) {
-          if (colorConvention === 'red-up-green-down') {
-            colorClass = isUpRaw ? 'text-rose-500' : 'text-emerald-400';
-          } else {
-            colorClass = isUpRaw ? 'text-emerald-400' : 'text-rose-500';
-          }
-        }
-        
+        const hasData = item.pctChange !== null && item.pctChange !== undefined;
+        const isUpRaw = (item.pctChange || 0) > 0;
+        const isNeutral = !hasData || item.pctChange === 0;
+        const toneClass = getToneClass(item.pctChange, colorConvention);
         const sign = isUpRaw ? '+' : '';
-        const pctFormatted = `${sign}${item.pctChange.toFixed(2)}%`;
+        const pctFormatted = hasData ? `${sign}${item.pctChange.toFixed(2)}%` : '--';
 
         return (
-          <div 
-            className="flex justify-between items-center bg-white/[0.02] border border-white/[0.05] rounded-xl p-3 active:scale-[0.98] transition-all cursor-pointer" 
-            key={item.symbol || index}
+          <button
+            type="button"
+            className="market-sector-row"
+            key={`${item.symbol || 'sector'}-${index}`}
             onClick={() => item.symbol && navigate(`/stock/${item.symbol}`)}
           >
-            <div className="flex items-center gap-2 overflow-hidden">
-              <span className="text-base flex-shrink-0 drop-shadow-sm">{item.icon || '📊'}</span>
-              <span className="text-sm text-gray-300 font-medium truncate">{item.name}</span>
+            <div className="market-sector-row__left">
+              <span className={`market-sector-row__icon ${item.icon === 'AI' ? 'market-sector-row__icon--text' : ''}`}>
+                {item.icon || '·'}
+              </span>
+              <span className="market-sector-row__name">{item.name}</span>
             </div>
-            <div className={`flex items-center text-xs sm:text-sm font-mono flex-shrink-0 ${colorClass}`}>
-              <span className="text-[10px] mr-0.5">{isUpRaw ? '▲' : (isNeutral ? '' : '▼')}</span>
+            <div className={`market-sector-row__change ${toneClass}`}>
+              <span>{isUpRaw ? '▲' : (isNeutral ? '' : '▼')}</span>
               <span>{pctFormatted}</span>
             </div>
-          </div>
+          </button>
         );
       })}
     </div>

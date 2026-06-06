@@ -7,9 +7,9 @@
     <!-- PWA & iOS -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="InvestBrain" />
+    <meta name="apple-mobile-web-app-title" content="交易记录" />
     <meta name="theme-color" content="#0a0e17" />
-    <meta name="description" content="InvestBrain - 本地优先的投资决策闭环系统。记录交易、追踪决策、复盘收益。" />
+    <meta name="description" content="本地优先的投资决策闭环系统。记录交易、追踪决策、复盘收益。" />
     
     <!-- Icons -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -20,71 +20,24 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
     
-    <title>InvestBrain - 投资大脑</title>
+    <title>交易记录</title>
 
     <style>
-      /* Splash screen while app loads */
+      /* Minimal splash screen while app loads */
       #splash-screen {
         position: fixed;
         inset: 0;
         z-index: 9999;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
         background: #0a0e17;
-        transition: opacity 0.4s ease;
       }
       #splash-screen.fade-out {
         opacity: 0;
         pointer-events: none;
       }
-      #splash-screen .logo {
-        font-size: 48px;
-        margin-bottom: 16px;
-        animation: pulse 2s ease-in-out infinite;
-      }
-      #splash-screen .title {
-        font-family: 'Inter', sans-serif;
-        font-size: 20px;
-        font-weight: 700;
-        color: #e8ecf1;
-        letter-spacing: 0.5px;
-      }
-      #splash-screen .dots {
-        margin-top: 24px;
-        display: flex;
-        gap: 6px;
-      }
-      #splash-screen .dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: #6366f1;
-        animation: bounce 1.4s ease-in-out infinite;
-      }
-      #splash-screen .dot:nth-child(2) { animation-delay: 0.2s; }
-      #splash-screen .dot:nth-child(3) { animation-delay: 0.4s; }
-      @keyframes pulse {
-        0%, 100% { transform: scale(1); }
-        50% { transform: scale(1.1); }
-      }
-      @keyframes bounce {
-        0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
-        40% { transform: translateY(-8px); opacity: 1; }
-      }
     </style>
   </head>
   <body>
-    <div id="splash-screen">
-      <div class="logo">🧠</div>
-      <div class="title">InvestBrain</div>
-      <div class="dots">
-        <div class="dot"></div>
-        <div class="dot"></div>
-        <div class="dot"></div>
-      </div>
-    </div>
+    <div id="splash-screen"></div>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

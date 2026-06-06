@@ -15,9 +15,10 @@ export default function AppShell({ children }) {
 
   // Hide tab bar on detail pages and insights page
   const hideTabBar = location.pathname.match(/^\/(information)\/.+/) || location.pathname === '/insights';
+  const routeClass = location.pathname === '/market' ? ' app-shell--market' : '';
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${routeClass}`}>
       <main className="app-shell__content">
         {children}
       </main>

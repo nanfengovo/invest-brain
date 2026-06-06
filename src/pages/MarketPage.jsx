@@ -3,6 +3,7 @@ import { useAppStore } from '../stores/useAppStore';
 import MarketHeader from '../components/Market/MarketHeader';
 import IndexCardScroller from '../components/Market/IndexCardScroller';
 import SectorGrid from '../components/Market/SectorGrid';
+import './MarketPage.css';
 
 const INDICES = [
   { symbol: 'gb_ixic', name: '纳斯达克' },
@@ -25,7 +26,7 @@ const SECTORS = [
   { symbol: 'gb_uso', name: '原油', icon: '🛢' },
   { symbol: 'gb_ita', name: '商业航天', icon: '🚀' },
   { symbol: 'gb_soxx', name: '芯片', icon: '💽' },
-  { symbol: 'gb_botz', name: 'AIGC', icon: '🧠' },
+  { symbol: 'gb_botz', name: 'AIGC', icon: 'AI' },
   { symbol: 'gb_robo', name: '机器人', icon: '🤖' },
   { symbol: 'gb_xme', name: '有色', icon: '🧱' },
   { symbol: 'gb_icln', name: '新能源', icon: '🍃' },
@@ -38,6 +39,12 @@ const SECTORS = [
   { symbol: 'gb_xlc', name: 'CPO', icon: '💡' },
   { symbol: 'gb_ufos', name: '卫星', icon: '🛰' }
 ];
+
+const parseMarketNumber = (value) => {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(String(value).replace(/,/g, ''));
+  return Number.isFinite(parsed) ? parsed : null;
+};
 
 export default function MarketPage() {
   const { colorConvention } = useAppStore();
@@ -83,12 +90,12 @@ export default function MarketPage() {
   // Map symbols to full data objects
   const mapData = (configList) => {
     return configList.map(config => {
-      const data = marketData[config.symbol] || { price: 0, pctChange: 0, absChange: 0 };
+      const data = marketData[config.symbol] || {};
       return {
         ...config,
-        price: data.price,
-        pctChange: data.pctChange,
-        absChange: data.absChange
+        price: parseMarketNumber(data.price),
+        pctChange: parseMarketNumber(data.pctChange),
+        absChange: parseMarketNumber(data.absChange),
       };
     });
   };
@@ -98,36 +105,46 @@ export default function MarketPage() {
   const sectorItems = mapData(SECTORS);
 
   return (
-    <div className="bg-[#0B0E14] min-h-screen text-white overflow-y-auto pb-24">
+    <div className="market-page">
       <MarketHeader />
       
-      <div className="px-4 flex flex-col gap-6">
-        <div>
-          <IndexCardScroller items={indexItems} colorConvention={colorConvention} />
-        </div>
+      <div className="market-page__content">
+        <section aria-label="全球主要指数">
+          <IndexCardScroller
+            items={indexItems}
+            colorConvention={colorConvention}
+            loading={loading}
+          />
+        </section>
 
-        <div>
-          <div className="flex items-center mb-3">
-            <div className="w-1 h-3.5 bg-indigo-500 rounded-full mr-2"></div>
-            <h2 className="text-sm font-semibold text-gray-200 tracking-wide">指数期货</h2>
+        <section>
+          <div className="market-section-title market-section-title--orange">
+            <span className="market-section-title__bar" />
+            <h2>指数期货</h2>
           </div>
-          <IndexCardScroller items={futureItems} colorConvention={colorConvention} />
-        </div>
+          <IndexCardScroller
+            items={futureItems}
+            colorConvention={colorConvention}
+            loading={loading}
+            variant="futures"
+          />
+        </section>
 
-        <div>
-          <div className="flex justify-between items-center mb-3">
-            <div className="flex items-center">
-              <div className="w-1 h-3.5 bg-indigo-500 rounded-full mr-2"></div>
-              <h2 className="text-sm font-semibold text-gray-200 tracking-wide">美股夜盘</h2>
+        <section>
+          <div className="market-section-row">
+            <div className="market-section-title market-section-title--blue">
+              <span className="market-section-title__bar" />
+              <h2>美股夜盘</h2>
+              <span className="market-section-title__hint">?</span>
             </div>
-            <button className="text-gray-400 p-1 active:scale-95 transition-transform">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-                <path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92c0-1.61-1.31-2.92-2.92-2.92z"/>
+            <button type="button" className="market-share-button" aria-label="分享行情">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+                <path d="M18 16.1c-.8 0-1.5.3-2 .8L8.9 12.7c.1-.2.1-.5.1-.7s0-.5-.1-.7L16 7.2c.5.5 1.2.8 2 .8 1.7 0 3-1.3 3-3s-1.3-3-3-3-3 1.3-3 3c0 .2 0 .5.1.7L8 9.8C7.5 9.3 6.8 9 6 9c-1.7 0-3 1.3-3 3s1.3 3 3 3c.8 0 1.5-.3 2-.8l7.1 4.2c-.1.2-.1.4-.1.6 0 1.6 1.3 2.9 3 2.9s3-1.3 3-2.9-1.3-2.9-3-2.9z" />
               </svg>
             </button>
           </div>
           <SectorGrid items={sectorItems} colorConvention={colorConvention} />
-        </div>
+        </section>
       </div>
     </div>
   );

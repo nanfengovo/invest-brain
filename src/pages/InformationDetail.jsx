@@ -565,14 +565,29 @@ export default function InformationDetail() {
 
           <div className="info-detail__primary-actions">
             {validUrl && (
-              <Button size="small" color="primary" onClick={openSource}>
-                {isVideoInfo ? <PlayOutline /> : <EyeOutline />}
-                {isVideoInfo ? '打开播放' : '打开阅读'}
+              <Button
+                size="small"
+                color="primary"
+                className="info-detail__primary-action"
+                onClick={openSource}
+              >
+                <span className="info-detail__primary-action-inner">
+                  {isVideoInfo ? <PlayOutline /> : <EyeOutline />}
+                  <span>{isVideoInfo ? '打开播放' : '打开阅读'}</span>
+                </span>
               </Button>
             )}
-            <Button size="small" fill="outline" color="danger" onClick={() => handleAction({ key: 'delete' })}>
-              <DeleteOutline />
-              删除
+            <Button
+              size="small"
+              fill="outline"
+              color="danger"
+              className="info-detail__primary-action"
+              onClick={() => handleAction({ key: 'delete' })}
+            >
+              <span className="info-detail__primary-action-inner">
+                <DeleteOutline />
+                <span>删除</span>
+              </span>
             </Button>
           </div>
         </div>

@@ -115,15 +115,35 @@
 .info-detail__primary-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: 12px;
   margin-top: 14px;
 }
 
-.info-detail__primary-actions .adm-button-content {
-  display: inline-flex;
+.info-detail__primary-action {
+  --border-radius: 8px;
+  min-width: 0;
+  height: 44px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.info-detail__primary-action .adm-button-content {
+  width: 100%;
+}
+
+.info-detail__primary-action-inner {
+  display: flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: 7px;
+  width: 100%;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.info-detail__primary-action-inner .antd-mobile-icon {
+  flex: 0 0 auto;
+  font-size: 17px;
 }
 
 /* ── Link Preview Card ── */

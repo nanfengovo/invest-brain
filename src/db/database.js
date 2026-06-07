@@ -291,6 +291,10 @@ export const db = {
   async getTrades(limit = 1000, offset = 0) {
     return this.query(
       `SELECT t.*, a.symbol, a.name as asset_name, a.type as asset_type, a.sector as asset_sector,
+              COALESCE(t.underlying_symbol, a.underlying_symbol) as underlying_symbol,
+              COALESCE(t.strike_price, a.strike_price) as strike_price,
+              COALESCE(t.expiry_date, a.expiry_date) as expiry_date,
+              COALESCE(t.option_type, a.option_type) as option_type,
               d.title as decision_title, t.broker
        FROM trades t
        LEFT JOIN assets a ON t.asset_id = a.id
@@ -304,6 +308,10 @@ export const db = {
   async getTradeById(id) {
     const results = await this.query(
       `SELECT t.*, a.symbol, a.name as asset_name, a.type as asset_type,
+              COALESCE(t.underlying_symbol, a.underlying_symbol) as underlying_symbol,
+              COALESCE(t.strike_price, a.strike_price) as strike_price,
+              COALESCE(t.expiry_date, a.expiry_date) as expiry_date,
+              COALESCE(t.option_type, a.option_type) as option_type,
               d.title as decision_title
        FROM trades t
        LEFT JOIN assets a ON t.asset_id = a.id

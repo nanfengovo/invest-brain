@@ -381,7 +381,9 @@
 }
 
 .stock-detail__module-header button,
-.stock-detail__alert-form button {
+.stock-detail__alert-form button,
+.stock-detail__alert-interval button,
+.stock-detail__alert-actions button {
   flex: 0 0 auto;
   min-height: 30px;
   padding: 0 10px;
@@ -391,6 +393,13 @@
   color: var(--color-accent-light);
   font-size: 12px;
   font-weight: 750;
+}
+
+.stock-detail__alert-cancel,
+.stock-detail__alert-actions button:last-child {
+  border-color: rgba(148, 163, 184, 0.18);
+  background: rgba(148, 163, 184, 0.1);
+  color: var(--color-text-secondary);
 }
 
 .stock-detail__module-loading {
@@ -406,12 +415,23 @@
   margin-bottom: 12px;
 }
 
+.stock-detail__alert-interval {
+  display: grid;
+  grid-template-columns: auto minmax(56px, 0.7fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
 .stock-detail__options-controls {
   grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
 }
 
 .stock-detail__alert-form select,
 .stock-detail__alert-form input,
+.stock-detail__alert-interval input,
 .stock-detail__options-controls select {
   min-width: 0;
   min-height: 34px;
@@ -430,15 +450,20 @@
 }
 
 .stock-detail__alert-item {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
   padding: 9px 10px;
   border: 1px solid var(--color-border);
   border-radius: 8px;
   background: var(--color-bg-elevated);
   font-size: 12px;
+}
+
+.stock-detail__alert-actions {
+  display: inline-flex;
+  gap: 6px;
 }
 
 .stock-detail__alert-item span {
@@ -523,5 +548,13 @@
 
   .stock-detail__alert-form {
     grid-template-columns: 1fr;
+  }
+
+  .stock-detail__alert-item {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .stock-detail__alert-actions {
+    grid-column: 1 / -1;
   }
 }

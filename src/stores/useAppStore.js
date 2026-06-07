@@ -12,6 +12,7 @@ const DEFAULT_NOTIFICATION_CONFIG = {
   feishuEnabled: false,
   feishuWebhook: '',
   browserEnabled: true,
+  alertCheckIntervalMinutes: 1,
 };
 const DEFAULT_MARKET_DATA_CONFIG = {
   optionProvider: 'auto',

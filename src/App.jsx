@@ -93,12 +93,14 @@ function App({ onReady }) {
 
   useEffect(() => {
     if (!isDbReady) return undefined;
+    const intervalMinutes = Number(notificationConfig.alertCheckIntervalMinutes) || 1;
+    const intervalMs = Math.max(1, intervalMinutes) * 60_000;
     const run = () => {
       checkPriceAlerts(notificationConfig, marketDataConfig).catch((error) => {
         console.warn('Price alert check failed:', error);
       });
     };
-    const timer = window.setInterval(run, 60_000);
+    const timer = window.setInterval(run, intervalMs);
     return () => window.clearInterval(timer);
   }, [isDbReady, notificationConfig, marketDataConfig]);
 

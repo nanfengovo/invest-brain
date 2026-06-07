@@ -89,7 +89,7 @@ const copyText = async (text) => {
 export default function StockDetailPage() {
   const { symbol } = useParams();
   const navigate = useNavigate();
-  const { colorConvention, streamlitUrl, notificationConfig, marketDataConfig } = useAppStore();
+  const { colorConvention, streamlitUrl, notificationConfig, marketDataConfig, saveNotificationConfig } = useAppStore();
   
   const [activeTab, setActiveTab] = useState('1d');
   const [chartData, setChartData] = useState([]);
@@ -100,6 +100,10 @@ export default function StockDetailPage() {
   const [priceAlerts, setPriceAlerts] = useState([]);
   const [alertCondition, setAlertCondition] = useState('ABOVE');
   const [alertTarget, setAlertTarget] = useState('');
+  const [editingAlertId, setEditingAlertId] = useState(null);
+  const [alertIntervalInput, setAlertIntervalInput] = useState(
+    String(notificationConfig.alertCheckIntervalMinutes || 1)
+  );
   const [optionChain, setOptionChain] = useState(null);
   const [optionLoading, setOptionLoading] = useState(false);
   const [optionExpiration, setOptionExpiration] = useState('');
@@ -177,6 +181,10 @@ export default function StockDetailPage() {
 
     return () => { mounted = false; };
   }, [symbol]);
+
+  useEffect(() => {
+    setAlertIntervalInput(String(notificationConfig.alertCheckIntervalMinutes || 1));
+  }, [notificationConfig.alertCheckIntervalMinutes]);
 
   useEffect(() => {
     let mounted = true;
@@ -352,26 +360,76 @@ export default function StockDetailPage() {
     setPriceAlerts(rows || []);
   };
 
-  const handleAddStockAlert = async () => {
+  const resetAlertForm = () => {
+    setAlertCondition('ABOVE');
+    setAlertTarget('');
+    setEditingAlertId(null);
+  };
+
+  const handleSaveStockAlert = async () => {
     const target = Number(alertTarget);
     if (!Number.isFinite(target) || target <= 0) {
       Toast.show({ content: '请输入有效价格' });
       return;
     }
-    await db.addPriceAlert({
-      id: crypto.randomUUID(),
-      symbol: normalizedSymbol,
-      asset_id: normalizedSymbol,
-      asset_type: 'STOCK',
-      condition: alertCondition,
-      target_price: target,
-      last_price: currentPrice || null,
-      channels: null,
-      note: `${normalizedSymbol} 股票提醒`,
-    });
-    setAlertTarget('');
+
+    if (editingAlertId) {
+      await db.updatePriceAlert(editingAlertId, {
+        condition: alertCondition,
+        target_price: target,
+        status: 'ACTIVE',
+        triggered_at: null,
+      });
+      Toast.show({ icon: 'success', content: '提醒已更新' });
+    } else {
+      await db.addPriceAlert({
+        id: crypto.randomUUID(),
+        symbol: normalizedSymbol,
+        asset_id: normalizedSymbol,
+        asset_type: 'STOCK',
+        condition: alertCondition,
+        target_price: target,
+        last_price: currentPrice || null,
+        channels: null,
+        note: `${normalizedSymbol} 股票提醒`,
+      });
+      Toast.show({ icon: 'success', content: '提醒已添加' });
+    }
+
+    resetAlertForm();
     await reloadAlerts();
-    Toast.show({ icon: 'success', content: '提醒已添加' });
+  };
+
+  const handleEditAlert = (alert) => {
+    setEditingAlertId(alert.id);
+    setAlertCondition(alert.condition || 'ABOVE');
+    setAlertTarget(String(alert.target_price || ''));
+  };
+
+  const handleDeleteAlert = async (alert) => {
+    const confirmed = window.confirm(`删除 ${alert.asset_id || alert.symbol} 的价格提醒？`);
+    if (!confirmed) return;
+    await db.deletePriceAlert(alert.id);
+    if (editingAlertId === alert.id) {
+      resetAlertForm();
+    }
+    await reloadAlerts();
+    Toast.show({ icon: 'success', content: '提醒已删除' });
+  };
+
+  const handleSaveAlertInterval = async () => {
+    const minutes = Number(alertIntervalInput);
+    if (!Number.isFinite(minutes) || minutes < 1) {
+      Toast.show({ content: '间隔至少为 1 分钟' });
+      return;
+    }
+    const normalizedMinutes = Math.min(720, Math.round(minutes));
+    await saveNotificationConfig({
+      ...notificationConfig,
+      alertCheckIntervalMinutes: normalizedMinutes,
+    });
+    setAlertIntervalInput(String(normalizedMinutes));
+    Toast.show({ icon: 'success', content: `自动检查间隔已设为 ${normalizedMinutes} 分钟` });
   };
 
   const handleAddOptionAlert = async (option) => {
@@ -654,6 +712,19 @@ export default function StockDetailPage() {
           </div>
           <button type="button" onClick={handleCheckAlertsNow}>检查</button>
         </div>
+        <div className="stock-detail__alert-interval">
+          <span>自动检查间隔</span>
+          <input
+            type="number"
+            inputMode="numeric"
+            min="1"
+            max="720"
+            value={alertIntervalInput}
+            onChange={(event) => setAlertIntervalInput(event.target.value)}
+          />
+          <span>分钟</span>
+          <button type="button" onClick={handleSaveAlertInterval}>保存</button>
+        </div>
         <div className="stock-detail__alert-form">
           <select value={alertCondition} onChange={(e) => setAlertCondition(e.target.value)}>
             <option value="ABOVE">高于等于</option>
@@ -666,14 +737,25 @@ export default function StockDetailPage() {
             value={alertTarget}
             onChange={(e) => setAlertTarget(e.target.value)}
           />
-          <button type="button" onClick={handleAddStockAlert}>添加</button>
+          <button type="button" onClick={handleSaveStockAlert}>
+            {editingAlertId ? '更新' : '添加'}
+          </button>
+          {editingAlertId && (
+            <button type="button" className="stock-detail__alert-cancel" onClick={resetAlertForm}>
+              取消
+            </button>
+          )}
         </div>
         {activeAlerts.length > 0 ? (
           <div className="stock-detail__alert-list">
-            {activeAlerts.slice(0, 4).map((alert) => (
+            {activeAlerts.map((alert) => (
               <div key={alert.id} className="stock-detail__alert-item">
                 <span>{alert.asset_id || alert.symbol}</span>
                 <strong>{alert.condition === 'ABOVE' ? '≥' : '≤'} {Number(alert.target_price).toFixed(2)}</strong>
+                <div className="stock-detail__alert-actions">
+                  <button type="button" onClick={() => handleEditAlert(alert)}>修改</button>
+                  <button type="button" onClick={() => handleDeleteAlert(alert)}>删除</button>
+                </div>
               </div>
             ))}
           </div>

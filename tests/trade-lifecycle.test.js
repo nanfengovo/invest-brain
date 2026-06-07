@@ -4,6 +4,7 @@ import {
   annotateTradesWithLifecycle,
   getOrphanSellLifecycleItems,
   getTradeAssetDisplay,
+  getTradeQuantityUnit,
 } from '../src/utils/tradeLifecycle.js';
 
 test('formats option labels from broker contract text', () => {
@@ -33,6 +34,8 @@ test('marks buy-only trades as open', () => {
 
   assert.equal(trade.lifecycle.status, 'OPEN_ONLY');
   assert.equal(trade.lifecycle.openQty, 2);
+  assert.equal(trade.lifecycle.unit, '张');
+  assert.equal(getTradeQuantityUnit(trade), '张');
 });
 
 test('calculates realized pnl for closed buy and sell pairs', () => {
@@ -112,6 +115,24 @@ test('keeps stock pnl on a one-share multiplier', () => {
 
   assert.equal(buy.lifecycle.status, 'CLOSED');
   assert.equal(buy.lifecycle.realizedPnl, 15);
+  assert.equal(buy.lifecycle.unit, '股');
+  assert.equal(getTradeQuantityUnit(buy), '股');
+});
+
+test('keeps named stock trades separate from option contracts', () => {
+  const [trade] = annotateTradesWithLifecycle([{
+    id: 'b1',
+    symbol: 'NOK',
+    asset_name: '诺基亚',
+    asset_type: 'STOCK',
+    direction: 'BUY',
+    quantity: 4,
+    price: 14.92,
+  }]);
+
+  assert.equal(getTradeAssetDisplay(trade), '诺基亚');
+  assert.equal(trade.lifecycle.unit, '股');
+  assert.equal(getTradeQuantityUnit(trade), '股');
 });
 
 test('flags sell trades without matching buys', () => {

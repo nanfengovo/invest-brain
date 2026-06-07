@@ -5,6 +5,7 @@ import { parseDateTime } from '../../utils/time';
 import {
   formatLifecyclePnl,
   getTradeAssetDisplay,
+  getTradeQuantityUnit,
   getTradeSymbolDisplay,
 } from '../../utils/tradeLifecycle';
 import './TradeCard.css';
@@ -52,8 +53,13 @@ function formatQuantity(num) {
   return String(number).replace(/\.0+$/, '');
 }
 
+function formatQuantityWithUnit(num, unit) {
+  return `${formatQuantity(num)} ${unit || ''}`.trim();
+}
+
 function getLifecycleBadge(lifecycle, directionType) {
   if (!lifecycle || lifecycle.status === 'UNTRACKED') return null;
+  const unit = lifecycle.unit || '';
   if (lifecycle.status === 'ORPHAN_SELL') {
     return directionType === 'sell'
       ? { label: '缺少买入', type: 'warning' }
@@ -62,7 +68,7 @@ function getLifecycleBadge(lifecycle, directionType) {
   if (lifecycle.status === 'OPEN_ONLY') {
     return directionType === 'buy'
       ? {
-          label: `未卖出 ${formatQuantity(lifecycle.openQty)}`,
+          label: `未卖出 ${formatQuantityWithUnit(lifecycle.openQty, unit)}`,
           type: 'open',
         }
       : null;
@@ -70,7 +76,7 @@ function getLifecycleBadge(lifecycle, directionType) {
   if (lifecycle.status === 'PARTIAL') {
     return directionType === 'buy'
       ? {
-          label: `部分未卖 ${formatQuantity(lifecycle.openQty)}`,
+          label: `部分未卖 ${formatQuantityWithUnit(lifecycle.openQty, unit)}`,
           type: 'partial',
         }
       : {
@@ -102,6 +108,7 @@ export default function TradeCard({ trade, index = 0, onEdit, compactMode = fals
   const isBuy = dir.type === 'buy';
   const displaySymbol = getTradeSymbolDisplay(trade);
   const assetDisplay = getTradeAssetDisplay(trade);
+  const quantityUnit = getTradeQuantityUnit(trade);
   const lifecycleBadge = getLifecycleBadge(trade.lifecycle, dir.type);
 
   const total = useMemo(() => {
@@ -193,7 +200,7 @@ export default function TradeCard({ trade, index = 0, onEdit, compactMode = fals
           {/* Right: Price × Qty, Total, Time */}
           <div className="trade-card__right">
             <div className="trade-card__price-qty">
-              {formatNumber(trade.price)} × {trade.quantity}
+              {formatNumber(trade.price)} × {formatQuantityWithUnit(trade.quantity, quantityUnit)}
             </div>
             <div className="trade-card__total">
               $ {formatNumber(total)}

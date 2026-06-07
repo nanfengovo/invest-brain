@@ -135,9 +135,9 @@ export function getTradeSymbolDisplay(trade = {}) {
   return (trade.underlying_symbol || parsed.symbol || trade.symbol || '').toUpperCase();
 }
 
-export function getTradeAssetDisplay(trade = {}) {
+function isOptionTrade(trade = {}) {
   const parsed = getParsedOption(trade);
-  const isOption = String(trade.asset_type || '').toUpperCase() === 'OPTION'
+  return String(trade.asset_type || '').toUpperCase() === 'OPTION'
     || trade.expiry_date
     || trade.strike_price
     || trade.option_type
@@ -145,6 +145,11 @@ export function getTradeAssetDisplay(trade = {}) {
     || parsed.expiry
     || parsed.strike
     || parsed.optionType;
+}
+
+export function getTradeAssetDisplay(trade = {}) {
+  const parsed = getParsedOption(trade);
+  const isOption = isOptionTrade(trade);
 
   if (!isOption) return trade.asset_name || '';
 
@@ -159,7 +164,7 @@ export function getTradeAssetDisplay(trade = {}) {
 export function getTradeLifecycleKey(trade = {}) {
   const symbol = getTradeSymbolDisplay(trade);
   const assetDisplay = getTradeAssetDisplay(trade);
-  const type = assetDisplay ? 'OPTION' : String(trade.asset_type || 'STOCK').toUpperCase();
+  const type = getTradeLifecycleType(trade);
   const broker = String(trade.broker || '').trim().toUpperCase();
   const account = String(trade.account || '').trim().toUpperCase();
   const identity = type === 'OPTION'
@@ -170,7 +175,14 @@ export function getTradeLifecycleKey(trade = {}) {
 }
 
 function getTradeLifecycleType(trade = {}) {
-  return getTradeAssetDisplay(trade) ? 'OPTION' : String(trade.asset_type || 'STOCK').toUpperCase();
+  return isOptionTrade(trade) ? 'OPTION' : String(trade.asset_type || 'STOCK').toUpperCase();
+}
+
+export function getTradeQuantityUnit(trade = {}) {
+  const type = getTradeLifecycleType(trade);
+  if (type === 'OPTION') return '张';
+  if (type === 'ETF') return '份';
+  return '股';
 }
 
 function getTradeMultiplier(trade = {}) {
@@ -206,6 +218,8 @@ export function buildTradeLifecycleMap(trades = []) {
     if (!map.has(key)) {
       map.set(key, {
         key,
+        type: getTradeLifecycleType(trade),
+        unit: getTradeQuantityUnit(trade),
         multiplier: getTradeMultiplier(trade),
         buyQty: 0,
         sellQty: 0,
@@ -221,6 +235,8 @@ export function buildTradeLifecycleMap(trades = []) {
     }
 
     const stats = map.get(key);
+    stats.type = stats.type || getTradeLifecycleType(trade);
+    stats.unit = stats.unit || getTradeQuantityUnit(trade);
     stats.multiplier = Math.max(stats.multiplier, getTradeMultiplier(trade));
     if (directionKind === 'BUY') {
       stats.buyQty += qty;

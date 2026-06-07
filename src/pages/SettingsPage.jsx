@@ -6,7 +6,6 @@ import { useTradeStore } from '../stores/useTradeStore';
 import { parseTradesFile } from '../utils/importTrades';
 import { attachDecisionRecommendations } from '../utils/decisionMatcher';
 import { restoreAutoBackup } from '../utils/autoBackup';
-import { syncServerPriceAlerts } from '../utils/serverPriceAlerts';
 import './SettingsPage.css';
 
 function AgentLogo() {
@@ -438,34 +437,6 @@ function SettingsPage() {
     }
   }
 
-  async function handleSyncServerAlerts() {
-    const userId = (syncUserIdInput || syncUserId || '').trim();
-    const secret = (syncSecretInput || syncSecret || '').trim();
-
-    if (!userId || !secret) {
-      Toast.show({ icon: 'fail', content: '请先填写并保存团队同步凭证' });
-      return;
-    }
-
-    try {
-      Toast.show({ icon: 'loading', content: '正在同步后台提醒...', duration: 0 });
-      const result = await syncServerPriceAlerts({
-        syncUserId: userId,
-        syncSecret: secret,
-        notificationConfig: notificationInput,
-        marketDataConfig: marketDataInput,
-      });
-      Toast.clear();
-      Toast.show({
-        icon: 'success',
-        content: `已同步 ${result.activeAlerts || 0} 条活动提醒`,
-      });
-    } catch (error) {
-      Toast.clear();
-      Toast.show({ icon: 'fail', content: error.message || '同步失败' });
-    }
-  }
-
   async function handleTestSyncConnection() {
     const normalizedSecret = syncSecretInput.trim();
 
@@ -857,7 +828,7 @@ function SettingsPage() {
             <div className="settings-card__content">
               <div className="settings-card__label">价格提醒通道</div>
               <div className="settings-card__desc">
-                浏览器提醒在 App 打开时触发；同步后台提醒后，邮件和飞书可由服务端定时任务发送。
+                浏览器提醒在 App 打开时触发；邮件和飞书由 Vercel API 发送。
               </div>
             </div>
           </div>
@@ -924,9 +895,6 @@ function SettingsPage() {
             </Button>
             <Button color="primary" size="small" fill="outline" onClick={handleTestNotification} style={{ borderRadius: '6px' }}>
               测试通道
-            </Button>
-            <Button color="primary" size="small" fill="outline" onClick={handleSyncServerAlerts} style={{ borderRadius: '6px' }}>
-              同步后台提醒
             </Button>
           </div>
         </div>

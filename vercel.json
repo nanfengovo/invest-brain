@@ -1,10 +1,4 @@
 {
-  "crons": [
-    {
-      "path": "/api/price-alert-cron",
-      "schedule": "0 14 * * *"
-    }
-  ],
   "rewrites": [
     {
       "source": "/((?!api/).*)",

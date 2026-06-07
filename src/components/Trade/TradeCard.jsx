@@ -68,17 +68,19 @@ function getLifecycleBadge(lifecycle, directionType) {
   if (lifecycle.status === 'OPEN_ONLY') {
     return directionType === 'buy'
       ? {
-          label: `未卖出 ${formatQuantityWithUnit(lifecycle.openQty, unit)}`,
+          label: `未卖出 ${formatQuantityWithUnit(lifecycle.ownOpenQty ?? lifecycle.openQty, unit)}`,
           type: 'open',
         }
       : null;
   }
   if (lifecycle.status === 'PARTIAL') {
     return directionType === 'buy'
-      ? {
-          label: `部分未卖 ${formatQuantityWithUnit(lifecycle.openQty, unit)}`,
-          type: 'partial',
-        }
+      ? lifecycle.ownOpenQty > 0
+        ? {
+            label: `部分未卖 ${formatQuantityWithUnit(lifecycle.ownOpenQty, unit)}`,
+            type: 'partial',
+          }
+        : null
       : {
           label: `已实现 ${formatLifecyclePnl(lifecycle.realizedPnl)}`,
           type: lifecycle.realizedPnl >= 0 ? 'closed-profit' : 'closed-loss',

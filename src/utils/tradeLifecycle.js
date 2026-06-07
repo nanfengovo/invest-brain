@@ -263,10 +263,57 @@ export function buildTradeLifecycleMap(trades = []) {
 
 export function annotateTradesWithLifecycle(trades = []) {
   const lifecycleMap = buildTradeLifecycleMap(trades);
-  return trades.map((trade) => ({
-    ...trade,
-    lifecycle: lifecycleMap.get(getTradeLifecycleKey(trade)) || null,
-  }));
+  const remainingById = new Map();
+
+  const groupedTrades = new Map();
+  trades.forEach((trade) => {
+    const key = getTradeLifecycleKey(trade);
+    if (!groupedTrades.has(key)) groupedTrades.set(key, []);
+    groupedTrades.get(key).push(trade);
+  });
+
+  groupedTrades.forEach((group) => {
+    const buyLots = group
+      .filter((trade) => getDirectionKind(trade.direction) === 'BUY')
+      .map((trade) => ({
+        id: trade.id,
+        remainingQty: Math.max(Number(trade.quantity) || 0, 0),
+      }));
+
+    group
+      .filter((trade) => getDirectionKind(trade.direction) === 'SELL')
+      .forEach((trade) => {
+        let sellQty = Math.max(Number(trade.quantity) || 0, 0);
+        for (const lot of buyLots) {
+          if (sellQty <= 0) break;
+          const matchedQty = Math.min(lot.remainingQty, sellQty);
+          lot.remainingQty -= matchedQty;
+          sellQty -= matchedQty;
+        }
+      });
+
+    buyLots.forEach((lot) => {
+      remainingById.set(lot.id, lot.remainingQty);
+    });
+  });
+
+  return trades.map((trade) => {
+    const lifecycle = lifecycleMap.get(getTradeLifecycleKey(trade)) || null;
+    const directionKind = getDirectionKind(trade.direction);
+    const ownOpenQty = directionKind === 'BUY'
+      ? (remainingById.get(trade.id) ?? Math.max(Number(trade.quantity) || 0, 0))
+      : 0;
+
+    return {
+      ...trade,
+      lifecycle: lifecycle
+        ? {
+            ...lifecycle,
+            ownOpenQty,
+          }
+        : null,
+    };
+  });
 }
 
 export function formatLifecyclePnl(value) {

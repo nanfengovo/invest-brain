@@ -22,18 +22,31 @@ test('formats option labels from broker contract text', () => {
 });
 
 test('marks buy-only trades as open', () => {
-  const [trade] = annotateTradesWithLifecycle([{
-    id: 'b1',
-    symbol: 'NOK',
-    asset_type: 'OPTION',
-    contract_symbol: 'NOK 260918 25 C',
-    direction: 'BUY',
-    quantity: 2,
-    price: 1.5,
-  }]);
+  const [trade, secondTrade] = annotateTradesWithLifecycle([
+    {
+      id: 'b1',
+      symbol: 'NOK',
+      asset_type: 'OPTION',
+      contract_symbol: 'NOK 260918 25 C',
+      direction: 'BUY',
+      quantity: 2,
+      price: 1.5,
+    },
+    {
+      id: 'b2',
+      symbol: 'NOK',
+      asset_type: 'OPTION',
+      contract_symbol: 'NOK 260918 25 C',
+      direction: 'BUY',
+      quantity: 3,
+      price: 1.6,
+    },
+  ]);
 
   assert.equal(trade.lifecycle.status, 'OPEN_ONLY');
-  assert.equal(trade.lifecycle.openQty, 2);
+  assert.equal(trade.lifecycle.openQty, 5);
+  assert.equal(trade.lifecycle.ownOpenQty, 2);
+  assert.equal(secondTrade.lifecycle.ownOpenQty, 3);
   assert.equal(trade.lifecycle.unit, '张');
   assert.equal(getTradeQuantityUnit(trade), '张');
 });
@@ -89,8 +102,45 @@ test('tracks partial closes by remaining quantity', () => {
 
   assert.equal(buy.lifecycle.status, 'PARTIAL');
   assert.equal(buy.lifecycle.openQty, 2);
+  assert.equal(buy.lifecycle.ownOpenQty, 2);
   assert.equal(buy.lifecycle.closedQty, 1);
   assert.equal(buy.lifecycle.realizedPnl, 300);
+});
+
+test('allocates partial sells across buy lots in order', () => {
+  const trades = annotateTradesWithLifecycle([
+    {
+      id: 'b1',
+      symbol: 'NOK',
+      asset_type: 'OPTION',
+      contract_symbol: 'NOK 260918 25 C',
+      direction: 'BUY',
+      quantity: 5,
+      price: 0.89,
+    },
+    {
+      id: 'b2',
+      symbol: 'NOK',
+      asset_type: 'OPTION',
+      contract_symbol: 'NOK 260918 25 C',
+      direction: 'BUY',
+      quantity: 9,
+      price: 0.94,
+    },
+    {
+      id: 's1',
+      symbol: 'NOK',
+      asset_type: 'OPTION',
+      contract_symbol: 'NOK 260918 25 C',
+      direction: 'SELL',
+      quantity: 6,
+      price: 1.2,
+    },
+  ]);
+
+  assert.equal(trades[0].lifecycle.ownOpenQty, 0);
+  assert.equal(trades[1].lifecycle.ownOpenQty, 8);
+  assert.equal(trades[1].lifecycle.openQty, 8);
 });
 
 test('keeps stock pnl on a one-share multiplier', () => {

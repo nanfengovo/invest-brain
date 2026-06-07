@@ -674,47 +674,31 @@ export default function InformationDetail() {
           </div>
         )}
 
-        {/* ── Link Preview Card & Web Preview ── */}
+        {/* ── Link Source Card ── */}
         {validUrl && !youtubeId && !bilibiliId && !isDirectVideo && (
-          <>
-            <div className="info-detail__link-card">
-              <div className="info-detail__link-card-icon">
-                <img
-                  src={`https://www.google.com/s2/favicons?domain=${extractDomain(validUrl)}&sz=32`}
-                  alt=""
-                  width="20"
-                  height="20"
-                  onError={(e) => { e.target.style.display = 'none'; }}
-                />
-              </div>
-              <div className="info-detail__link-card-body">
-                <div className="info-detail__link-card-domain">{extractDomain(validUrl)}</div>
-                <div className="info-detail__link-card-url">{validUrl}</div>
-              </div>
-              <a
-                href={validUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="info-detail__link-card-btn"
-              >
-                {isVideoInfo ? '播放' : (isArticleInfo ? '阅读' : (isTwitter ? '打开 𝕏' : '打开链接'))}
-              </a>
-            </div>
-
-            <div className="info-detail__web-preview">
-              <div className="info-detail__web-preview-bar">
-                {isVideoInfo ? '视频页面' : '阅读页面'}
-                <button type="button" onClick={openSource}>新窗口打开</button>
-              </div>
-              <iframe
-                src={validUrl}
-                title="Web Preview"
-                className="info-detail__iframe"
-                sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
-                loading="lazy"
+          <div className="info-detail__link-card">
+            <div className="info-detail__link-card-icon">
+              <img
+                src={`https://www.google.com/s2/favicons?domain=${extractDomain(validUrl)}&sz=32`}
+                alt=""
+                width="20"
+                height="20"
+                onError={(e) => { e.target.style.display = 'none'; }}
               />
             </div>
-          </>
+            <div className="info-detail__link-card-body">
+              <div className="info-detail__link-card-domain">{extractDomain(validUrl)}</div>
+              <div className="info-detail__link-card-url">{validUrl}</div>
+            </div>
+            <a
+              href={validUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="info-detail__link-card-btn"
+            >
+              {isVideoInfo ? '播放' : (isArticleInfo ? '阅读' : (isTwitter ? '打开 𝕏' : '打开链接'))}
+            </a>
+          </div>
         )}
 
         {/* ── Uploaded Media (OPFS file) ── */}

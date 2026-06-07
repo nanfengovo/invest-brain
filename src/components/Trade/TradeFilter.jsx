@@ -8,7 +8,7 @@ export default function TradeFilter({
   onClose,
   availableSectors = []
 }) {
-  const { symbol, sector, direction, groupBy, compactMode } = filters;
+  const { symbol, sector, direction, lifecycle = 'ALL', groupBy, compactMode } = filters;
 
   return (
     <div className="trade-filter">
@@ -59,6 +59,22 @@ export default function TradeFilter({
             />
           </div>
         )}
+
+        {/* Lifecycle */}
+        <div className="filter-section">
+          <div className="filter-section__title">闭环状态</div>
+          <Selector
+            options={[
+              { label: '全部', value: 'ALL' },
+              { label: '未卖出', value: 'OPEN_ONLY' },
+              { label: '部分卖出', value: 'PARTIAL' },
+              { label: '已闭环', value: 'CLOSED' },
+            ]}
+            value={[lifecycle]}
+            onChange={(v) => { if (v.length) onChange({ lifecycle: v[0] }); }}
+            style={{ '--padding': '6px 12px' }}
+          />
+        </div>
 
         {/* Grouping */}
         <div className="filter-section">

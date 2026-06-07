@@ -2,6 +2,11 @@ import { useState, useMemo, useCallback } from 'react';
 import { SwipeAction, Dialog, Toast, ActionSheet } from 'antd-mobile';
 import { useTradeStore } from '../../stores/useTradeStore';
 import { parseDateTime } from '../../utils/time';
+import {
+  formatLifecyclePnl,
+  getTradeAssetDisplay,
+  getTradeSymbolDisplay,
+} from '../../utils/tradeLifecycle';
 import './TradeCard.css';
 
 const DIRECTION_MAP = {
@@ -10,160 +15,6 @@ const DIRECTION_MAP = {
   OPEN: { label: '开仓', type: 'buy' },
   CLOSE: { label: '平仓', type: 'sell' },
 };
-
-function normalizeOptionType(value) {
-  const text = String(value || '').trim().toUpperCase();
-  if (text === 'C' || text.includes('CALL') || text.includes('认购')) return 'CALL';
-  if (text === 'P' || text.includes('PUT') || text.includes('认沽')) return 'PUT';
-  return '';
-}
-
-function formatExpiryDate(value) {
-  const text = String(value || '').trim();
-  if (!text) return '';
-  const compactMatch = text.match(/^(\d{2})(\d{2})(\d{2})$/);
-  if (compactMatch) return text;
-
-  const fullCompactMatch = text.match(/^(\d{4})(\d{2})(\d{2})$/);
-  if (fullCompactMatch) {
-    return `${fullCompactMatch[1].slice(2)}${fullCompactMatch[2]}${fullCompactMatch[3]}`;
-  }
-
-  const dateMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (dateMatch) {
-    return `${dateMatch[1].slice(2)}${dateMatch[2]}${dateMatch[3]}`;
-  }
-
-  return text;
-}
-
-function formatStrikePrice(value) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return String(value || '').trim();
-  return String(number).replace(/\.0+$/, '');
-}
-
-function parseOptionLabel(value) {
-  const text = String(value || '').trim().toUpperCase();
-  if (!text) return {};
-  const monthMap = {
-    JAN: '01',
-    FEB: '02',
-    MAR: '03',
-    APR: '04',
-    MAY: '05',
-    JUN: '06',
-    JUL: '07',
-    AUG: '08',
-    SEP: '09',
-    OCT: '10',
-    NOV: '11',
-    DEC: '12',
-  };
-
-  const idMatch = text.match(/^([A-Z.]+)_(\d{6}|\d{4}-\d{2}-\d{2})_([\d.]+)_(CALL|PUT|C|P)$/);
-  if (idMatch) {
-    return {
-      symbol: idMatch[1],
-      expiry: formatExpiryDate(idMatch[2]),
-      strike: formatStrikePrice(idMatch[3]),
-      optionType: normalizeOptionType(idMatch[4]),
-    };
-  }
-
-  const yahooMatch = text.match(/^([A-Z.]+)(\d{6})([CP])(\d{8})$/);
-  if (yahooMatch) {
-    return {
-      symbol: yahooMatch[1],
-      expiry: yahooMatch[2],
-      optionType: normalizeOptionType(yahooMatch[3]),
-      strike: formatStrikePrice(Number(yahooMatch[4]) / 1000),
-    };
-  }
-
-  const looseMatch = text.match(
-    /^([A-Z.]+)\s+(\d{6}|\d{8}|\d{4}-\d{2}-\d{2})\s+(?:(CALL|PUT|C|P)\s+)?([\d.]+)(?:\s+(CALL|PUT|C|P))?$/
-  );
-  if (looseMatch) {
-    return {
-      symbol: looseMatch[1],
-      expiry: formatExpiryDate(looseMatch[2]),
-      optionType: normalizeOptionType(looseMatch[3] || looseMatch[5]),
-      strike: formatStrikePrice(looseMatch[4]),
-    };
-  }
-
-  const typeFirstMatch = text.match(
-    /^([A-Z.]+)\s+(CALL|PUT|C|P)\s+(\d{6}|\d{8}|\d{4}-\d{2}-\d{2})\s+([\d.]+)$/
-  );
-  if (typeFirstMatch) {
-    return {
-      symbol: typeFirstMatch[1],
-      optionType: normalizeOptionType(typeFirstMatch[2]),
-      expiry: formatExpiryDate(typeFirstMatch[3]),
-      strike: formatStrikePrice(typeFirstMatch[4]),
-    };
-  }
-
-  const monthMatch = text.match(
-    /^([A-Z.]+)\s+([A-Z]{3})\s+(\d{1,2})\s+'?(\d{2})\s+([\d.]+)(?:\s+(CALL|PUT|C|P))?/
-  );
-  if (monthMatch && monthMap[monthMatch[2]]) {
-    return {
-      symbol: monthMatch[1],
-      expiry: `${monthMatch[4]}${monthMap[monthMatch[2]]}${monthMatch[3].padStart(2, '0')}`,
-      strike: formatStrikePrice(monthMatch[5]),
-      optionType: normalizeOptionType(monthMatch[6]),
-    };
-  }
-
-  return {};
-}
-
-function getParsedOption(trade) {
-  const candidates = [
-    trade.contract_symbol,
-    trade.asset_id,
-    trade.asset_name,
-    trade.note,
-    trade.symbol,
-  ];
-
-  for (const candidate of candidates) {
-    const parsed = parseOptionLabel(candidate);
-    if (parsed.symbol || parsed.expiry || parsed.strike || parsed.optionType) {
-      return parsed;
-    }
-  }
-
-  return {};
-}
-
-function getTradeSymbolDisplay(trade) {
-  const parsed = getParsedOption(trade);
-  return (trade.underlying_symbol || parsed.symbol || trade.symbol || '').toUpperCase();
-}
-
-function getTradeAssetDisplay(trade) {
-  const parsed = getParsedOption(trade);
-  const isOption = String(trade.asset_type || '').toUpperCase() === 'OPTION'
-    || trade.expiry_date
-    || trade.strike_price
-    || trade.option_type
-    || trade.contract_symbol
-    || parsed.expiry
-    || parsed.strike
-    || parsed.optionType;
-
-  if (!isOption) return trade.asset_name || '';
-
-  const expiry = formatExpiryDate(parsed.expiry || trade.expiry_date);
-  const strike = formatStrikePrice(parsed.strike || trade.strike_price);
-  const optionType = normalizeOptionType(parsed.optionType || trade.option_type)
-    || (expiry && strike ? 'CALL' : '');
-
-  return [expiry, strike, optionType].filter(Boolean).join(' ');
-}
 
 /**
  * Format a trade timestamp into a relative time string or date.
@@ -196,6 +47,31 @@ function formatNumber(num) {
   });
 }
 
+function formatQuantity(num) {
+  const number = Number(num) || 0;
+  return String(number).replace(/\.0+$/, '');
+}
+
+function getLifecycleBadge(lifecycle) {
+  if (!lifecycle || lifecycle.status === 'UNTRACKED') return null;
+  if (lifecycle.status === 'OPEN_ONLY') {
+    return {
+      label: `未卖出 ${formatQuantity(lifecycle.openQty)}`,
+      type: 'open',
+    };
+  }
+  if (lifecycle.status === 'PARTIAL') {
+    return {
+      label: `部分 ${formatQuantity(lifecycle.openQty)}`,
+      type: 'partial',
+    };
+  }
+  return {
+    label: `已闭环 ${formatLifecyclePnl(lifecycle.realizedPnl)}`,
+    type: lifecycle.realizedPnl >= 0 ? 'closed-profit' : 'closed-loss',
+  };
+}
+
 /**
  * TradeCard — displays a single trade record as a glass card.
  *
@@ -212,6 +88,7 @@ export default function TradeCard({ trade, index = 0, onEdit, compactMode = fals
   const isBuy = dir.type === 'buy';
   const displaySymbol = getTradeSymbolDisplay(trade);
   const assetDisplay = getTradeAssetDisplay(trade);
+  const lifecycleBadge = getLifecycleBadge(trade.lifecycle);
 
   const total = useMemo(() => {
     const qty = parseFloat(trade.quantity) || 0;
@@ -290,6 +167,11 @@ export default function TradeCard({ trade, index = 0, onEdit, compactMode = fals
               <div className="trade-card__symbol">{displaySymbol}</div>
               {assetDisplay && (
                 <div className="trade-card__asset-name">{assetDisplay}</div>
+              )}
+              {lifecycleBadge && (
+                <span className={`trade-card__lifecycle trade-card__lifecycle--${lifecycleBadge.type}`}>
+                  {lifecycleBadge.label}
+                </span>
               )}
             </div>
           </div>

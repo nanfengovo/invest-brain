@@ -83,6 +83,7 @@
   display: flex;
   align-items: baseline;
   gap: 7px;
+  flex-wrap: wrap;
 }
 
 .trade-card__symbol {
@@ -101,10 +102,47 @@
   font-size: 12px;
   color: var(--color-text-muted);
   min-width: 0;
-  flex: 1;
+  flex: 0 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.trade-card__lifecycle {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 2px 6px;
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.trade-card__lifecycle--open {
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.28);
+}
+
+.trade-card__lifecycle--partial {
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.28);
+}
+
+.trade-card__lifecycle--closed-profit {
+  color: var(--color-profit);
+  background: var(--color-profit-bg);
+  border: 1px solid rgba(0, 212, 170, 0.24);
+}
+
+.trade-card__lifecycle--closed-loss {
+  color: var(--color-loss);
+  background: var(--color-loss-bg);
+  border: 1px solid rgba(255, 77, 106, 0.24);
 }
 
 /* ── Right Side: Price, Total, Time ── */
@@ -274,10 +312,16 @@
 .trade-card--compact .trade-card__asset-name {
   font-size: 10px;
   margin-top: 0;
-  max-width: 96px;
+  max-width: 118px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.trade-card--compact .trade-card__lifecycle {
+  min-height: 16px;
+  padding: 2px 5px;
+  font-size: 9px;
 }
 
 .trade-card--compact .trade-card__right {

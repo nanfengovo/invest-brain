@@ -6,6 +6,7 @@ import TradeCard from '../components/Trade/TradeCard';
 import TradeFilter from '../components/Trade/TradeFilter';
 import EmptyState from '../components/common/EmptyState';
 import { toDateGroupKey } from '../utils/time';
+import { annotateTradesWithLifecycle } from '../utils/tradeLifecycle';
 import './TradesPage.css';
 
 export default function TradesPage() {
@@ -17,6 +18,7 @@ export default function TradesPage() {
     symbol: '',
     sector: 'ALL',
     direction: 'ALL',
+    lifecycle: 'ALL',
     groupBy: 'DAY',
     compactMode: true,
   });
@@ -52,10 +54,12 @@ export default function TradesPage() {
 
   // Apply filters
   const filteredTrades = useMemo(() => {
-    return trades.filter(t => {
+    const annotatedTrades = annotateTradesWithLifecycle(trades);
+    return annotatedTrades.filter(t => {
       if (filters.symbol && !t.symbol.toLowerCase().includes(filters.symbol.toLowerCase())) return false;
       if (filters.sector !== 'ALL' && t.asset_sector !== filters.sector) return false;
       if (filters.direction !== 'ALL' && t.direction !== filters.direction) return false;
+      if (filters.lifecycle !== 'ALL' && t.lifecycle?.status !== filters.lifecycle) return false;
       return true;
     });
   }, [trades, filters]);
@@ -174,7 +178,7 @@ export default function TradesPage() {
           filters={filters}
           onChange={(updates) => setFilters(prev => ({ ...prev, ...updates }))}
           onReset={() => setFilters({
-            symbol: '', sector: 'ALL', direction: 'ALL', groupBy: 'DAY', compactMode: true
+            symbol: '', sector: 'ALL', direction: 'ALL', lifecycle: 'ALL', groupBy: 'DAY', compactMode: true
           })}
           onClose={() => setShowFilter(false)}
           availableSectors={availableSectors}

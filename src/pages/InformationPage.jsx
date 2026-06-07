@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Tabs, FloatingBubble, Popup, Card, Tag } from 'antd-mobile';
-import { AddOutline, LinkOutline, PictureOutline, VideoOutline, FileOutline } from 'antd-mobile-icons';
+import { Tabs, FloatingBubble, Popup, Modal, Toast } from 'antd-mobile';
+import { AddOutline, LinkOutline, PictureOutline, VideoOutline, FileOutline, DeleteOutline, EyeOutline } from 'antd-mobile-icons';
 import { useNavigate } from 'react-router-dom';
 import { useTradeStore } from '../stores/useTradeStore';
 import InformationForm from '../components/Information/InformationForm';
@@ -56,6 +56,29 @@ export default function InformationPage() {
 
   const informations = useTradeStore((s) => s.informations);
   const refreshInformations = useTradeStore((s) => s.refreshInformations);
+  const deleteInformation = useTradeStore((s) => s.deleteInformation);
+
+  const handleDeleteInformation = (event, info) => {
+    event.stopPropagation();
+    Modal.confirm({
+      content: `确定删除「${info.title}」？关联观点会一起删除。`,
+      confirmText: '删除',
+      cancelText: '取消',
+      onConfirm: async () => {
+        const res = await deleteInformation(info.id);
+        if (res.success) {
+          Toast.show({ icon: 'success', content: '已删除' });
+        } else {
+          Toast.show({ icon: 'fail', content: res.error || '删除失败' });
+        }
+      },
+    });
+  };
+
+  const openInformation = (event, info) => {
+    event.stopPropagation();
+    navigate(`/information/${info.id}`);
+  };
 
   const stats = useMemo(() => {
     const total = informations.length;
@@ -219,6 +242,16 @@ export default function InformationPage() {
                   <div className="info-card-premium__date">
                     {new Date(info.created_at * 1000).toLocaleDateString()}
                   </div>
+                </div>
+                <div className="info-card-premium__actions" onClick={(event) => event.stopPropagation()}>
+                  <button type="button" className="info-card-premium__action" onClick={(event) => openInformation(event, info)}>
+                    <EyeOutline />
+                    {info.type === 'VIDEO' ? '播放' : '阅读'}
+                  </button>
+                  <button type="button" className="info-card-premium__action info-card-premium__action--danger" onClick={(event) => handleDeleteInformation(event, info)}>
+                    <DeleteOutline />
+                    删除
+                  </button>
                 </div>
               </div>
             );

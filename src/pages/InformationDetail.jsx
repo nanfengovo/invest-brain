@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { NavBar, Button, Toast, Tag, TextArea, Divider, List, ActionSheet, SwipeAction, Modal, Popup, Selector, Input } from 'antd-mobile';
-import { LinkOutline, AppstoreOutline, MoreOutline, EditSOutline, AddOutline } from 'antd-mobile-icons';
+import { LinkOutline, AppstoreOutline, MoreOutline, EditSOutline, AddOutline, PlayOutline, EyeOutline, DeleteOutline } from 'antd-mobile-icons';
 import { db } from '../db/database';
 import { useTradeStore } from '../stores/useTradeStore';
 import { useAppStore } from '../stores/useAppStore';
@@ -106,6 +106,10 @@ function isTwitterUrl(url) {
     const host = new URL(url).hostname;
     return host === 'x.com' || host === 'twitter.com' || host.endsWith('.x.com');
   } catch { return false; }
+}
+
+function isDirectVideoUrl(url = '') {
+  return /\.(mp4|webm|ogg|mov)(\?|#|$)/i.test(url);
 }
 
 /**
@@ -341,7 +345,10 @@ export default function InformationDetail() {
   const youtubeId = useMemo(() => validUrl ? getYouTubeId(validUrl) : null, [validUrl]);
   const bilibiliId = useMemo(() => validUrl ? getBilibiliId(validUrl) : null, [validUrl]);
   const isTwitter = useMemo(() => isTwitterUrl(validUrl), [validUrl]);
+  const isDirectVideo = useMemo(() => validUrl ? isDirectVideoUrl(validUrl) : false, [validUrl]);
   const isPdf = useMemo(() => info?.file_path?.toLowerCase().endsWith('.pdf'), [info?.file_path]);
+  const isVideoInfo = info?.type === 'VIDEO';
+  const isArticleInfo = info?.type === 'ARTICLE';
 
   // Content: show full by default, no collapse
   const displayContent = useMemo(() => {
@@ -383,6 +390,14 @@ export default function InformationDetail() {
         },
       });
     }
+  };
+
+  const openSource = () => {
+    if (!validUrl) {
+      Toast.show({ content: '没有可打开的来源链接' });
+      return;
+    }
+    window.open(validUrl, '_blank', 'noopener,noreferrer');
   };
 
   const actionSheetActions = [
@@ -547,6 +562,19 @@ export default function InformationDetail() {
           <div className="info-detail__date">
             创建于 {formatTimestamp(info.created_at)}
           </div>
+
+          <div className="info-detail__primary-actions">
+            {validUrl && (
+              <Button size="small" color="primary" onClick={openSource}>
+                {isVideoInfo ? <PlayOutline /> : <EyeOutline />}
+                {isVideoInfo ? '打开播放' : '打开阅读'}
+              </Button>
+            )}
+            <Button size="small" fill="outline" color="danger" onClick={() => handleAction({ key: 'delete' })}>
+              <DeleteOutline />
+              删除
+            </Button>
+          </div>
         </div>
 
         {/* ── Type Editing Popup ── */}
@@ -613,7 +641,7 @@ export default function InformationDetail() {
           </div>
         </Popup>
 
-        {/* ── Video Embed (YouTube / Bilibili) ── */}
+        {/* ── Video Embed (YouTube / Bilibili / direct file URL) ── */}
         {youtubeId && (
           <div className="info-detail__embed">
             <div className="info-detail__embed-player">
@@ -640,8 +668,14 @@ export default function InformationDetail() {
           </div>
         )}
 
+        {isVideoInfo && isDirectVideo && !youtubeId && !bilibiliId && (
+          <div className="info-detail__embed">
+            <video src={validUrl} controls className="info-detail__video" />
+          </div>
+        )}
+
         {/* ── Link Preview Card & Web Preview ── */}
-        {validUrl && !youtubeId && !bilibiliId && (
+        {validUrl && !youtubeId && !bilibiliId && !isDirectVideo && (
           <>
             <div className="info-detail__link-card">
               <div className="info-detail__link-card-icon">
@@ -663,11 +697,15 @@ export default function InformationDetail() {
                 rel="noreferrer"
                 className="info-detail__link-card-btn"
               >
-                {isTwitter ? '打开 𝕏' : '打开链接'}
+                {isVideoInfo ? '播放' : (isArticleInfo ? '阅读' : (isTwitter ? '打开 𝕏' : '打开链接'))}
               </a>
             </div>
 
             <div className="info-detail__web-preview">
+              <div className="info-detail__web-preview-bar">
+                {isVideoInfo ? '视频页面' : '阅读页面'}
+                <button type="button" onClick={openSource}>新窗口打开</button>
+              </div>
               <iframe
                 src={validUrl}
                 title="Web Preview"

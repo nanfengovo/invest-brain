@@ -281,6 +281,33 @@
   color: var(--color-text-muted);
 }
 
+.info-card-premium__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.info-card-premium__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 34px;
+  border: 1px solid rgba(96, 165, 250, 0.28);
+  border-radius: 8px;
+  background: rgba(96, 165, 250, 0.1);
+  color: #93c5fd;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.info-card-premium__action--danger {
+  border-color: rgba(248, 113, 113, 0.28);
+  background: rgba(248, 113, 113, 0.1);
+  color: #fca5a5;
+}
+
 .info-card {
   background: var(--color-glass-card) !important;
   border: 1px solid var(--color-border) !important;

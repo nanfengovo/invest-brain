@@ -819,8 +819,7 @@ export const db = {
   async markPriceAlertTriggered(id, lastPrice) {
     return this.exec(
       `UPDATE price_alerts
-          SET status = 'TRIGGERED',
-              last_price = ?,
+          SET last_price = ?,
               triggered_at = unixepoch(),
               updated_at = unixepoch()
         WHERE id = ?`,

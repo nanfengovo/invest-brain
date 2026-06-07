@@ -74,6 +74,10 @@ test('discipline and lifecycle checks have indexed status fields', () => {
   assert.match(allSql, /CREATE INDEX IF NOT EXISTS idx_trades_underlying ON trades\(underlying_symbol\)/i);
 });
 
+test('price alerts remain active after trigger timestamps are recorded', () => {
+  assert.doesNotMatch(allSql, /SET status = 'TRIGGERED'/i);
+});
+
 test('migrations are ordered and discoverable for replay', () => {
   const versions = MIGRATIONS.map((migration) => migration.version);
   const sortedVersions = [...versions].sort((a, b) => a - b);

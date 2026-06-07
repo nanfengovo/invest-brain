@@ -3,7 +3,7 @@ import { useTradeStore } from '../stores/useTradeStore';
 import { db } from '../db/database';
 import EmptyState from '../components/common/EmptyState';
 import { parseDateTime } from '../utils/time';
-import { getTradeQuantityUnit } from '../utils/tradeLifecycle';
+import { getTradeMultiplier, getTradeQuantityUnit } from '../utils/tradeLifecycle';
 import './HoldingsPage.css';
 
 const formatCurrency = (num) => {
@@ -113,7 +113,7 @@ export default function HoldingsPage() {
 
   const totalBuys = Number(summary?.total_buys) || 0;
   const totalSells = Number(summary?.total_sells) || 0;
-  const realizedPnl = totalSells - totalBuys;
+  const realizedPnl = Number(summary?.realized_pnl) || 0;
   const pnlClass =
     realizedPnl > 0 ? 'profit' : realizedPnl < 0 ? 'loss' : 'neutral';
   const pnlPrefix = realizedPnl > 0 ? '+' : '';
@@ -257,7 +257,8 @@ export default function HoldingsPage() {
               const holdingKey = `${holding.asset_id}-${holding.broker || ''}-${holding.author || '未标记'}`;
               const positionValue =
                 (Number(holding.total_quantity) || 0) *
-                (Number(holding.avg_cost) || 0);
+                (Number(holding.avg_cost) || 0) *
+                getTradeMultiplier({ asset_type: holding.type });
               const isExpanded = expandedId === holdingKey;
               const quantityUnit = getTradeQuantityUnit({
                 asset_type: holding.type,

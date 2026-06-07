@@ -4,6 +4,7 @@
  */
 
 import { getMigrationSQL } from './migrations';
+import { buildTradePortfolioSummary } from '../utils/tradeLifecycle';
 
 let worker = null;
 let messageId = 0;
@@ -592,20 +593,23 @@ export const db = {
 
   async getPortfolioSummary(author = null) {
     let sql = `SELECT
-        COUNT(DISTINCT t.asset_id) as total_assets,
-        COUNT(t.id) as total_trades,
-        SUM(t.fee) as total_fees,
-        SUM(CASE WHEN t.direction IN ('SELL', 'CLOSE') THEN t.quantity * t.price ELSE 0 END) as total_sells,
-        SUM(CASE WHEN t.direction IN ('BUY', 'OPEN') THEN t.quantity * t.price ELSE 0 END) as total_buys
+        t.*,
+        a.symbol,
+        a.type as asset_type,
+        COALESCE(t.underlying_symbol, a.underlying_symbol) as underlying_symbol,
+        COALESCE(t.strike_price, a.strike_price) as strike_price,
+        COALESCE(t.expiry_date, a.expiry_date) as expiry_date,
+        COALESCE(t.option_type, a.option_type) as option_type
        FROM trades t
+       LEFT JOIN assets a ON t.asset_id = a.id
        WHERE 1 = 1`;
     const params = [];
     sql = appendAuthorFilter(sql, params, author);
-    const results = await this.query(
+    const trades = await this.query(
       sql,
       params
     );
-    return results[0] || {};
+    return buildTradePortfolioSummary(trades);
   },
 
   async getRealizedPnL() {

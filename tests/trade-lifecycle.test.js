@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   annotateTradesWithLifecycle,
+  buildTradePortfolioSummary,
   getOrphanSellLifecycleItems,
   getTradeAssetDisplay,
   getTradeQuantityUnit,
@@ -76,6 +77,35 @@ test('calculates realized pnl for closed buy and sell pairs', () => {
   assert.equal(trades[0].lifecycle.status, 'CLOSED');
   assert.equal(trades[1].lifecycle.status, 'CLOSED');
   assert.equal(trades[0].lifecycle.realizedPnl, 370);
+});
+
+test('summarizes closed option trades with contract multiplier', () => {
+  const summary = buildTradePortfolioSummary([
+    {
+      id: 'b1',
+      asset_id: 'STM_2026-06-18_72_CALL',
+      symbol: 'STM',
+      asset_type: 'OPTION',
+      contract_symbol: 'STM 260618 72 C',
+      direction: 'BUY',
+      quantity: 1,
+      price: 4.3,
+    },
+    {
+      id: 's1',
+      asset_id: 'STM_2026-06-18_72_CALL',
+      symbol: 'STM',
+      asset_type: 'OPTION',
+      contract_symbol: 'STM 260618 72 C',
+      direction: 'SELL',
+      quantity: 1,
+      price: 8,
+    },
+  ]);
+
+  assert.equal(summary.total_buys, 430);
+  assert.equal(summary.total_sells, 800);
+  assert.equal(summary.realized_pnl, 370);
 });
 
 test('tracks partial closes by remaining quantity', () => {

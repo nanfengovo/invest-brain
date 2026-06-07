@@ -186,15 +186,21 @@ export function getTradeQuantityUnit(trade = {}) {
   return '股';
 }
 
-function getTradeMultiplier(trade = {}) {
+export function getTradeMultiplier(trade = {}) {
   return getTradeLifecycleType(trade) === 'OPTION' ? OPTION_CONTRACT_MULTIPLIER : 1;
 }
 
-function getDirectionKind(direction) {
+export function getTradeDirectionKind(direction) {
   const value = String(direction || '').trim().toUpperCase();
   if (BUY_DIRECTIONS.has(value)) return 'BUY';
   if (SELL_DIRECTIONS.has(value)) return 'SELL';
   return 'OTHER';
+}
+
+export function getTradeNotional(trade = {}) {
+  const qty = Math.max(Number(trade.quantity) || 0, 0);
+  const price = Number(trade.price) || 0;
+  return qty * price * getTradeMultiplier(trade);
 }
 
 function getLifecycleStatus(stats) {
@@ -211,7 +217,7 @@ export function buildTradeLifecycleMap(trades = []) {
 
   trades.forEach((trade) => {
     const key = getTradeLifecycleKey(trade);
-    const directionKind = getDirectionKind(trade.direction);
+    const directionKind = getTradeDirectionKind(trade.direction);
     const qty = Math.max(Number(trade.quantity) || 0, 0);
     const price = Number(trade.price) || 0;
     const fee = Math.max(Number(trade.fee) || 0, 0);
@@ -275,14 +281,14 @@ export function annotateTradesWithLifecycle(trades = []) {
 
   groupedTrades.forEach((group) => {
     const buyLots = group
-      .filter((trade) => getDirectionKind(trade.direction) === 'BUY')
+      .filter((trade) => getTradeDirectionKind(trade.direction) === 'BUY')
       .map((trade) => ({
         id: trade.id,
         remainingQty: Math.max(Number(trade.quantity) || 0, 0),
       }));
 
     group
-      .filter((trade) => getDirectionKind(trade.direction) === 'SELL')
+      .filter((trade) => getTradeDirectionKind(trade.direction) === 'SELL')
       .forEach((trade) => {
         let sellQty = Math.max(Number(trade.quantity) || 0, 0);
         for (const lot of buyLots) {
@@ -300,7 +306,7 @@ export function annotateTradesWithLifecycle(trades = []) {
 
   return trades.map((trade) => {
     const lifecycle = lifecycleMap.get(getTradeLifecycleKey(trade)) || null;
-    const directionKind = getDirectionKind(trade.direction);
+    const directionKind = getTradeDirectionKind(trade.direction);
     const ownOpenQty = directionKind === 'BUY'
       ? (remainingById.get(trade.id) ?? Math.max(Number(trade.quantity) || 0, 0))
       : 0;
@@ -326,4 +332,32 @@ export function formatLifecyclePnl(value) {
 export function getOrphanSellLifecycleItems(trades = []) {
   const lifecycleMap = buildTradeLifecycleMap(trades);
   return Array.from(lifecycleMap.values()).filter((item) => item.status === 'ORPHAN_SELL');
+}
+
+export function buildTradePortfolioSummary(trades = []) {
+  const lifecycleItems = Array.from(buildTradeLifecycleMap(trades).values());
+  const summary = trades.reduce((current, trade) => {
+    const directionKind = getTradeDirectionKind(trade.direction);
+    const notional = getTradeNotional(trade);
+    const fee = Math.max(Number(trade.fee) || 0, 0);
+
+    if (directionKind === 'BUY') current.total_buys += notional;
+    if (directionKind === 'SELL') current.total_sells += notional;
+    current.total_fees += fee;
+    current.total_trades += 1;
+    if (trade.asset_id) current.assetIds.add(trade.asset_id);
+    return current;
+  }, {
+    total_assets: 0,
+    total_trades: 0,
+    total_fees: 0,
+    total_sells: 0,
+    total_buys: 0,
+    realized_pnl: lifecycleItems.reduce((total, item) => total + (Number(item.realizedPnl) || 0), 0),
+    assetIds: new Set(),
+  });
+
+  summary.total_assets = summary.assetIds.size;
+  delete summary.assetIds;
+  return summary;
 }

@@ -46,7 +46,7 @@ export default function DashboardPage() {
 
   const totalInvested = Number(summary?.total_buys) || 0;
   const totalSells = Number(summary?.total_sells) || 0;
-  const totalPnl = totalSells - totalInvested;
+  const totalPnl = Number(summary?.realized_pnl) || 0;
   
   const infoCount = stats?.info_count ?? 0;
   const viewpointCount = stats?.viewpoint_count ?? 0;

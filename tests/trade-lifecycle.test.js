@@ -58,7 +58,7 @@ test('calculates realized pnl for closed buy and sell pairs', () => {
 
   assert.equal(trades[0].lifecycle.status, 'CLOSED');
   assert.equal(trades[1].lifecycle.status, 'CLOSED');
-  assert.equal(trades[0].lifecycle.realizedPnl, 3.7);
+  assert.equal(trades[0].lifecycle.realizedPnl, 370);
 });
 
 test('tracks partial closes by remaining quantity', () => {
@@ -86,5 +86,29 @@ test('tracks partial closes by remaining quantity', () => {
   assert.equal(buy.lifecycle.status, 'PARTIAL');
   assert.equal(buy.lifecycle.openQty, 2);
   assert.equal(buy.lifecycle.closedQty, 1);
-  assert.equal(buy.lifecycle.realizedPnl, 3);
+  assert.equal(buy.lifecycle.realizedPnl, 300);
+});
+
+test('keeps stock pnl on a one-share multiplier', () => {
+  const [buy] = annotateTradesWithLifecycle([
+    {
+      id: 'b1',
+      symbol: 'NOK',
+      asset_type: 'STOCK',
+      direction: 'BUY',
+      quantity: 10,
+      price: 14,
+    },
+    {
+      id: 's1',
+      symbol: 'NOK',
+      asset_type: 'STOCK',
+      direction: 'SELL',
+      quantity: 10,
+      price: 15.5,
+    },
+  ]);
+
+  assert.equal(buy.lifecycle.status, 'CLOSED');
+  assert.equal(buy.lifecycle.realizedPnl, 15);
 });

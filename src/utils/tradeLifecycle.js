@@ -1,5 +1,6 @@
 const BUY_DIRECTIONS = new Set(['BUY', 'OPEN', 'BTO', '买入', '买', '开仓']);
 const SELL_DIRECTIONS = new Set(['SELL', 'CLOSE', 'STC', '卖出', '卖', '平仓']);
+const OPTION_CONTRACT_MULTIPLIER = 100;
 
 function normalizeOptionType(value) {
   const text = String(value || '').trim().toUpperCase();
@@ -168,6 +169,14 @@ export function getTradeLifecycleKey(trade = {}) {
   return [broker, account, type, identity].join('::');
 }
 
+function getTradeLifecycleType(trade = {}) {
+  return getTradeAssetDisplay(trade) ? 'OPTION' : String(trade.asset_type || 'STOCK').toUpperCase();
+}
+
+function getTradeMultiplier(trade = {}) {
+  return getTradeLifecycleType(trade) === 'OPTION' ? OPTION_CONTRACT_MULTIPLIER : 1;
+}
+
 function getDirectionKind(direction) {
   const value = String(direction || '').trim().toUpperCase();
   if (BUY_DIRECTIONS.has(value)) return 'BUY';
@@ -195,6 +204,7 @@ export function buildTradeLifecycleMap(trades = []) {
     if (!map.has(key)) {
       map.set(key, {
         key,
+        multiplier: getTradeMultiplier(trade),
         buyQty: 0,
         sellQty: 0,
         buyValue: 0,
@@ -209,13 +219,14 @@ export function buildTradeLifecycleMap(trades = []) {
     }
 
     const stats = map.get(key);
+    stats.multiplier = Math.max(stats.multiplier, getTradeMultiplier(trade));
     if (directionKind === 'BUY') {
       stats.buyQty += qty;
-      stats.buyValue += price * qty;
+      stats.buyValue += price * qty * stats.multiplier;
       stats.buyFees += fee;
     } else if (directionKind === 'SELL') {
       stats.sellQty += qty;
-      stats.sellValue += price * qty;
+      stats.sellValue += price * qty * stats.multiplier;
       stats.sellFees += fee;
     }
   });

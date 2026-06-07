@@ -14,15 +14,15 @@ const MARKET_POLL_INTERVAL_MS = 8_000;
 const MARKET_FLASH_MS = 1_100;
 
 const INDICES = [
-  { symbol: 'gb_ixic', name: '纳斯达克' },
-  { symbol: 'gb_ndx', name: '纳斯达克100' },
-  { symbol: 'gb_inx', name: '标普500' }
+  { symbol: 'gb_ixic', name: '纳斯达克综合', quoteLabel: '指数 · ^IXIC' },
+  { symbol: 'gb_ndx', name: '纳斯达克100', quoteLabel: '指数 · ^NDX' },
+  { symbol: 'gb_inx', name: '标普500', quoteLabel: '指数 · ^GSPC' }
 ];
 
 const FUTURES = [
-  { symbol: 'hf_NQ', name: '纳指期货' },
-  { symbol: 'hf_ES', name: '标普期货' },
-  { symbol: 'hf_YM', name: '道琼斯期货' }
+  { symbol: 'hf_NQ', name: '纳指期货', quoteLabel: '期货 · NQ=F' },
+  { symbol: 'hf_ES', name: '标普期货', quoteLabel: '期货 · ES=F' },
+  { symbol: 'hf_YM', name: '道琼斯期货', quoteLabel: '期货 · YM=F' }
 ];
 
 const SECTORS = [
@@ -279,6 +279,7 @@ export default function MarketPage() {
       return {
         ...config,
         name: config.name || data.name,
+        quoteLabel: config.quoteLabel || data.yahooSymbol || data.instrumentType || '',
         price: parseMarketNumber(data.price),
         pctChange: parseMarketNumber(data.pctChange),
         absChange: parseMarketNumber(data.absChange),

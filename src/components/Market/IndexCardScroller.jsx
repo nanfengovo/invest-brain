@@ -87,7 +87,12 @@ export default function IndexCardScroller({ items, colorConvention, variant = 'i
             onClick={() => item.symbol && navigate(`/stock/${item.symbol}`)}
           >
             <div className="market-index-card__top">
-              <span className="market-index-card__name">{item.name}</span>
+              <span className="market-index-card__heading">
+                <span className="market-index-card__name">{item.name}</span>
+                {item.quoteLabel && (
+                  <span className="market-index-card__label">{item.quoteLabel}</span>
+                )}
+              </span>
               <Sparkline isUp={isUpRaw} toneClass={toneClass} id={safeId} />
             </div>
             

@@ -466,7 +466,7 @@
 .market-index-card {
   display: grid;
   flex: 0 0 150px;
-  min-height: 112px;
+  min-height: 122px;
   gap: 7px;
   padding: 13px 10px 12px;
   border: 1px solid rgba(91, 126, 204, 0.18);
@@ -484,7 +484,7 @@
 
 .market-index-strip--futures .market-index-card {
   flex-basis: auto;
-  min-height: 96px;
+  min-height: 106px;
 }
 
 .market-index-card__top {
@@ -495,15 +495,32 @@
   min-width: 0;
 }
 
-.market-index-card__name {
+.market-index-card__heading {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.market-index-card__name,
+.market-index-card__label {
   min-width: 0;
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.market-index-card__name {
   color: rgba(239, 245, 255, 0.92);
   font-size: 14px;
   font-weight: 850;
   line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.market-index-card__label {
+  color: rgba(160, 178, 210, 0.68);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
 }
 
 .market-sparkline {

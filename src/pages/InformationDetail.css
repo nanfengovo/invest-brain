@@ -221,6 +221,121 @@
   transform: scale(0.95);
 }
 
+/* ── Official X Embed ── */
+.info-detail__tweet-embed {
+  margin-bottom: 16px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg, 12px);
+  background: var(--color-glass-card);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.info-detail__tweet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.info-detail__tweet-header a {
+  color: var(--color-accent-light);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.info-detail__tweet-body {
+  min-height: 168px;
+  padding: 12px 10px;
+}
+
+.info-detail__tweet-target {
+  min-height: 1px;
+}
+
+.info-detail__tweet-target--hidden {
+  display: none;
+}
+
+.info-detail__tweet-target iframe {
+  max-width: 100% !important;
+  margin: 0 auto !important;
+}
+
+.info-detail__tweet-target .twitter-tweet {
+  box-sizing: border-box;
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 auto !important;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.72);
+  color: var(--color-text-primary);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.info-detail__tweet-target .twitter-tweet p {
+  margin: 0 0 12px;
+  white-space: pre-wrap;
+}
+
+.info-detail__tweet-target .twitter-tweet a {
+  color: var(--color-accent-light);
+  text-decoration: none;
+}
+
+.info-detail__tweet-fallback {
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.72);
+  color: var(--color-text-primary);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.info-detail__tweet-fallback p {
+  margin: 0;
+}
+
+.info-detail__tweet-fallback p + p {
+  margin-top: 8px;
+}
+
+.info-detail__tweet-loading,
+.info-detail__tweet-error,
+.info-detail__tweet-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 136px;
+  padding: 18px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.info-detail__tweet-error {
+  color: var(--color-text-muted);
+}
+
+.info-detail__tweet-note {
+  min-height: auto;
+  padding: 10px 6px 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
 /* ── Video Embed ── */
 .info-detail__embed {
   margin-bottom: 16px;

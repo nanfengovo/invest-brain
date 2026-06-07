@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { NavBar, Button, Toast, Tag, TextArea, Divider, List, ActionSheet, SwipeAction, Modal, Popup, Selector, Input } from 'antd-mobile';
 import { LinkOutline, AppstoreOutline, MoreOutline, EditSOutline, AddOutline, PlayOutline, EyeOutline, DeleteOutline } from 'antd-mobile-icons';
@@ -108,8 +108,163 @@ function isTwitterUrl(url) {
   } catch { return false; }
 }
 
+function getTwitterPostId(url) {
+  if (!isTwitterUrl(url)) return null;
+  try {
+    const u = new URL(url);
+    const match = u.pathname.match(/\/status(?:es)?\/(\d+)/);
+    return match ? match[1] : null;
+  } catch { return null; }
+}
+
 function isDirectVideoUrl(url = '') {
   return /\.(mp4|webm|ogg|mov)(\?|#|$)/i.test(url);
+}
+
+function getTwitterFallbackText(content = '', title = '') {
+  const text = String(content || '');
+  const titleMatch = text.match(/Title:\s*[^"]*"([^"]+)"/i);
+  if (titleMatch?.[1]) {
+    return titleMatch[1].trim();
+  }
+
+  const markerMatch = text.match(/Markdown Content:\s*([\s\S]*)/i);
+  const source = markerMatch ? markerMatch[1] : text;
+  const lines = source
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !/^(Post|Conversation|Markdown Content:|查看 X 原文)$/i.test(line))
+    .filter((line) => !/^#+\s*/.test(line))
+    .filter((line) => !/^\[[^\]]*\]\([^)]+\)$/.test(line));
+
+  return lines.slice(0, 4).join('\n') || String(title || '').trim();
+}
+
+let twitterWidgetsPromise = null;
+
+function loadTwitterWidgets() {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return Promise.reject(new Error('Twitter widgets need a browser environment'));
+  }
+
+  if (window.twttr?.widgets?.createTweet) {
+    return Promise.resolve(window.twttr);
+  }
+
+  if (twitterWidgetsPromise) {
+    return twitterWidgetsPromise;
+  }
+
+  twitterWidgetsPromise = new Promise((resolve, reject) => {
+    const existingScript = document.getElementById('twitter-wjs');
+    const resolveWhenReady = () => {
+      if (window.twttr?.ready) {
+        window.twttr.ready(() => resolve(window.twttr));
+      } else if (window.twttr?.widgets?.createTweet) {
+        resolve(window.twttr);
+      } else {
+        reject(new Error('Twitter widgets unavailable'));
+      }
+    };
+
+    if (existingScript) {
+      existingScript.addEventListener('load', resolveWhenReady, { once: true });
+      existingScript.addEventListener('error', () => reject(new Error('Twitter widgets failed to load')), { once: true });
+      resolveWhenReady();
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.id = 'twitter-wjs';
+    script.async = true;
+    script.defer = true;
+    script.charset = 'utf-8';
+    script.src = 'https://platform.x.com/widgets.js';
+    script.onload = resolveWhenReady;
+    script.onerror = () => reject(new Error('Twitter widgets failed to load'));
+    document.body.appendChild(script);
+  });
+
+  return twitterWidgetsPromise;
+}
+
+function TwitterPostEmbed({ url, fallbackText }) {
+  const targetRef = useRef(null);
+  const [status, setStatus] = useState('enhancing');
+
+  useEffect(() => {
+    let cancelled = false;
+    const target = targetRef.current;
+    if (!target || !url) return undefined;
+
+    setStatus('enhancing');
+
+    loadTwitterWidgets()
+      .then((twttr) => twttr.widgets.load(target))
+      .then(() => {
+        if (cancelled) return;
+        setStatus(target.querySelector('iframe') ? 'ready' : 'fallback');
+      })
+      .catch(() => {
+        if (!cancelled) setStatus('fallback');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [url]);
+
+  return (
+    <div className="info-detail__tweet-embed">
+      <div className="info-detail__tweet-header">
+        <span>官方 X 嵌入</span>
+        <a href={url} target="_blank" rel="noreferrer">打开 X</a>
+      </div>
+      <div className="info-detail__tweet-body">
+        {status === 'enhancing' && (
+          <div className="info-detail__tweet-loading">正在加载官方 X 组件...</div>
+        )}
+        <div
+          ref={targetRef}
+          className={`info-detail__tweet-target ${status === 'fallback' ? 'info-detail__tweet-target--hidden' : ''}`}
+        >
+          <blockquote
+            className="twitter-tweet"
+            data-theme="dark"
+            data-dnt="true"
+            data-align="center"
+          >
+            {fallbackText && (
+              <p>
+                {fallbackText.split('\n').map((line) => (
+                  <span key={line}>
+                    {line}
+                    <br />
+                  </span>
+                ))}
+              </p>
+            )}
+            <a href={url}>查看 X 原文</a>
+          </blockquote>
+        </div>
+        {status === 'fallback' && (
+          <>
+            {fallbackText && (
+              <div className="info-detail__tweet-fallback">
+                {fallbackText.split('\n').map((line) => (
+                  <p key={line}>{line}</p>
+                ))}
+              </div>
+            )}
+            <div className="info-detail__tweet-note">
+              官方组件未完全渲染，已显示本地保存的内容摘录。
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -179,6 +334,7 @@ export default function InformationDetail() {
   const [editSectorVisible, setEditSectorVisible] = useState(false);
   const [editAssetValue, setEditAssetValue] = useState('');
   const [editSectorValue, setEditSectorValue] = useState('');
+  const inlineSourceRef = useRef(null);
 
   const addViewpoint = useTradeStore(s => s.addViewpoint);
 
@@ -345,10 +501,12 @@ export default function InformationDetail() {
   const youtubeId = useMemo(() => validUrl ? getYouTubeId(validUrl) : null, [validUrl]);
   const bilibiliId = useMemo(() => validUrl ? getBilibiliId(validUrl) : null, [validUrl]);
   const isTwitter = useMemo(() => isTwitterUrl(validUrl), [validUrl]);
+  const twitterPostId = useMemo(() => validUrl ? getTwitterPostId(validUrl) : null, [validUrl]);
   const isDirectVideo = useMemo(() => validUrl ? isDirectVideoUrl(validUrl) : false, [validUrl]);
   const isPdf = useMemo(() => info?.file_path?.toLowerCase().endsWith('.pdf'), [info?.file_path]);
   const isVideoInfo = info?.type === 'VIDEO';
   const isArticleInfo = info?.type === 'ARTICLE';
+  const hasInlineSource = Boolean(youtubeId || bilibiliId || isDirectVideo || twitterPostId);
 
   // Content: show full by default, no collapse
   const displayContent = useMemo(() => {
@@ -363,6 +521,7 @@ export default function InformationDetail() {
     }
     return text.trim();
   }, [info?.content, info?.url, validUrl]);
+  const twitterFallbackText = useMemo(() => getTwitterFallbackText(displayContent, info?.title), [displayContent, info?.title]);
 
   const [actionSheetVisible, setActionSheetVisible] = useState(false);
   const deleteInformation = useTradeStore(s => s.deleteInformation);
@@ -395,6 +554,10 @@ export default function InformationDetail() {
   const openSource = () => {
     if (!validUrl) {
       Toast.show({ content: '没有可打开的来源链接' });
+      return;
+    }
+    if (hasInlineSource && inlineSourceRef.current) {
+      inlineSourceRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
       return;
     }
     window.open(validUrl, '_blank', 'noopener,noreferrer');
@@ -656,7 +819,11 @@ export default function InformationDetail() {
           </div>
         </Popup>
 
-        {/* ── Video Embed (YouTube / Bilibili / direct file URL) ── */}
+        {/* ── Inline Source Embed ── */}
+        {(youtubeId || bilibiliId || isDirectVideo || twitterPostId) && (
+          <div ref={inlineSourceRef} />
+        )}
+
         {youtubeId && (
           <div className="info-detail__embed">
             <div className="info-detail__embed-player">
@@ -689,8 +856,12 @@ export default function InformationDetail() {
           </div>
         )}
 
+        {twitterPostId && !youtubeId && !bilibiliId && !isDirectVideo && (
+          <TwitterPostEmbed url={validUrl} fallbackText={twitterFallbackText} />
+        )}
+
         {/* ── Link Source Card ── */}
-        {validUrl && !youtubeId && !bilibiliId && !isDirectVideo && (
+        {validUrl && !youtubeId && !bilibiliId && !isDirectVideo && !twitterPostId && (
           <div className="info-detail__link-card">
             <div className="info-detail__link-card-icon">
               <img

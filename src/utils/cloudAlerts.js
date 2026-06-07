@@ -61,7 +61,7 @@ export async function syncCloudAlerts(overrides = {}) {
       DEFAULT_MARKET_DATA_CONFIG
     );
 
-    const response = await fetch('/api/alerts-sync', {
+    const response = await fetch('/api/sync-upload?action=alerts', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -1,6 +1,6 @@
 # Cloud Price Alerts
 
-The app syncs active price alerts to Redis through `/api/alerts-sync`.
+The app syncs active price alerts to Redis through `/api/sync-upload?action=alerts`.
 `/api/alerts-cron` checks those cloud rules and sends Feishu or email notifications while the browser is closed.
 
 ## Scheduler

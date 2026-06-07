@@ -176,7 +176,12 @@ function importDatabase(jsonData, merge = false) {
     // Insert data
     for (const [tableName, rows] of Object.entries(dump.tables)) {
       if (!Array.isArray(rows) || rows.length === 0) continue;
-      const columns = Object.keys(rows[0]);
+      const columns = Array.from(
+        rows.reduce((set, row) => {
+          Object.keys(row || {}).forEach((column) => set.add(column));
+          return set;
+        }, new Set())
+      );
       const placeholders = columns.map(() => '?').join(',');
       
       const insertCmd = merge ? 'INSERT OR REPLACE' : 'INSERT';

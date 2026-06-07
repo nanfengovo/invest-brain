@@ -233,6 +233,14 @@ export const MIGRATIONS = [
       `CREATE INDEX IF NOT EXISTS idx_trades_underlying ON trades(underlying_symbol)`,
       `CREATE INDEX IF NOT EXISTS idx_assets_underlying ON assets(underlying_symbol)`
     ]
+  },
+  {
+    version: 9,
+    description: 'Phase 9: Trade submitter identity',
+    statements: [
+      `ALTER TABLE trades ADD COLUMN author TEXT`,
+      `CREATE INDEX IF NOT EXISTS idx_trades_author ON trades(author)`
+    ]
   }
 ];
 

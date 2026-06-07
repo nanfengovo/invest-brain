@@ -167,11 +167,12 @@ export function getTradeLifecycleKey(trade = {}) {
   const type = getTradeLifecycleType(trade);
   const broker = String(trade.broker || '').trim().toUpperCase();
   const account = String(trade.account || '').trim().toUpperCase();
+  const author = String(trade.author || '未标记').trim().toUpperCase();
   const identity = type === 'OPTION'
     ? `${symbol}|${assetDisplay}`
     : `${symbol || trade.asset_id || ''}`;
 
-  return [broker, account, type, identity].join('::');
+  return [author, broker, account, type, identity].join('::');
 }
 
 function getTradeLifecycleType(trade = {}) {

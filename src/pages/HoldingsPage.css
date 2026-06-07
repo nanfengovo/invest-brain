@@ -27,6 +27,7 @@
 .holdings-page__section:nth-child(1) { animation-delay: 0ms; }
 .holdings-page__section:nth-child(2) { animation-delay: 80ms; }
 .holdings-page__section:nth-child(3) { animation-delay: 160ms; }
+.holdings-page__section:nth-child(4) { animation-delay: 220ms; }
 
 /* ── Header ── */
 .holdings-page__header {
@@ -140,6 +141,73 @@
   letter-spacing: 0.02em;
 }
 
+/* ── Author Filter ── */
+.holdings-page__author-filter {
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
+.holdings-page__author-filter-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 10px;
+}
+
+.holdings-page__author-clear {
+  border: 1px solid var(--color-border-light);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--color-accent-light);
+  font-size: 11px;
+  padding: 4px 8px;
+}
+
+.holdings-page__author-search {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.2);
+  color: var(--color-text-primary);
+  font-size: 13px;
+  padding: 0 12px;
+  outline: none;
+}
+
+.holdings-page__author-search::placeholder {
+  color: var(--color-text-muted);
+}
+
+.holdings-page__author-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.holdings-page__author-pill {
+  min-height: 30px;
+  max-width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  padding: 5px 10px;
+  overflow-wrap: anywhere;
+}
+
+.holdings-page__author-pill--active {
+  border-color: rgba(99, 102, 241, 0.55);
+  background: var(--color-accent-bg);
+  color: var(--color-accent-light);
+}
+
 /* ── Holdings List ── */
 .holdings-page__list {
   display: flex;
@@ -238,6 +306,19 @@
   background: rgba(6, 182, 212, 0.1);
   color: #22d3ee;
   border: 1px solid rgba(6, 182, 212, 0.2);
+  white-space: nowrap;
+}
+
+.holdings-page__author-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 500;
+  background: rgba(245, 158, 11, 0.1);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.2);
   white-space: nowrap;
 }
 

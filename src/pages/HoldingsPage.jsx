@@ -3,6 +3,7 @@ import { useTradeStore } from '../stores/useTradeStore';
 import { db } from '../db/database';
 import EmptyState from '../components/common/EmptyState';
 import { parseDateTime } from '../utils/time';
+import { getTradeQuantityUnit } from '../utils/tradeLifecycle';
 import './HoldingsPage.css';
 
 const formatCurrency = (num) => {
@@ -39,14 +40,41 @@ export default function HoldingsPage() {
   const [expandedId, setExpandedId] = useState(null);
   const [expandedTrades, setExpandedTrades] = useState([]);
   const [tradesLoading, setTradesLoading] = useState(false);
+  const [authors, setAuthors] = useState([]);
+  const [authorSearch, setAuthorSearch] = useState('');
+  const [selectedAuthor, setSelectedAuthor] = useState('');
+
+  const activeAuthor = selectedAuthor || null;
+  const filteredAuthors = authors.filter((author) =>
+    author.toLowerCase().includes(authorSearch.trim().toLowerCase())
+  );
 
   useEffect(() => {
-    refreshHoldings();
-  }, [refreshHoldings]);
+    refreshHoldings(activeAuthor);
+  }, [activeAuthor, refreshHoldings]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadAuthors() {
+      try {
+        const rows = await db.getTradeAuthors();
+        if (!cancelled) {
+          setAuthors(rows.map((row) => row.author).filter(Boolean));
+        }
+      } catch (err) {
+        console.error('Failed to load trade authors:', err);
+      }
+    }
+    loadAuthors();
+    return () => {
+      cancelled = true;
+    };
+  }, [holdings.length]);
 
   const handleToggle = useCallback(
-    async (assetId, broker) => {
-      const key = `${assetId}-${broker || ''}`;
+    async (assetId, broker, groupAuthor) => {
+      const queryAuthor = activeAuthor || groupAuthor || null;
+      const key = `${assetId}-${broker || ''}-${queryAuthor || 'ALL'}`;
       if (expandedId === key) {
         setExpandedId(null);
         setExpandedTrades([]);
@@ -55,7 +83,7 @@ export default function HoldingsPage() {
       setExpandedId(key);
       setTradesLoading(true);
       try {
-        const trades = await db.getTradesByAssetAndBroker(assetId, broker);
+        const trades = await db.getTradesByAssetAndBroker(assetId, broker, queryAuthor);
         setExpandedTrades(trades);
       } catch (err) {
         console.error('Failed to load trades for asset:', err);
@@ -64,7 +92,7 @@ export default function HoldingsPage() {
         setTradesLoading(false);
       }
     },
-    [expandedId]
+    [activeAuthor, expandedId]
   );
 
   const totalBuys = Number(summary?.total_buys) || 0;
@@ -89,7 +117,9 @@ export default function HoldingsPage() {
       {/* ── Portfolio Summary ── */}
       <div className="holdings-page__section">
         <div className="holdings-page__summary glass-card">
-          <div className="holdings-page__summary-label">投资组合</div>
+          <div className="holdings-page__summary-label">
+            {selectedAuthor ? `${selectedAuthor} 的持仓` : '团队投资组合'}
+          </div>
 
           <div className="holdings-page__summary-grid">
             <div className="holdings-page__summary-item">
@@ -122,6 +152,57 @@ export default function HoldingsPage() {
         </div>
       </div>
 
+      <div className="holdings-page__section">
+        <div className="holdings-page__author-filter glass-card">
+          <div className="holdings-page__author-filter-header">
+            <span>按提交人查看</span>
+            {selectedAuthor && (
+              <button
+                className="holdings-page__author-clear"
+                onClick={() => {
+                  setSelectedAuthor('');
+                  setExpandedId(null);
+                  setExpandedTrades([]);
+                }}
+              >
+                查看全部
+              </button>
+            )}
+          </div>
+          <input
+            className="holdings-page__author-search"
+            value={authorSearch}
+            onChange={(event) => setAuthorSearch(event.target.value)}
+            placeholder="搜索花名"
+          />
+          <div className="holdings-page__author-pills">
+            <button
+              className={`holdings-page__author-pill ${!selectedAuthor ? 'holdings-page__author-pill--active' : ''}`}
+              onClick={() => {
+                setSelectedAuthor('');
+                setExpandedId(null);
+                setExpandedTrades([]);
+              }}
+            >
+              全部
+            </button>
+            {filteredAuthors.map((author) => (
+              <button
+                key={author}
+                className={`holdings-page__author-pill ${selectedAuthor === author ? 'holdings-page__author-pill--active' : ''}`}
+                onClick={() => {
+                  setSelectedAuthor(author);
+                  setExpandedId(null);
+                  setExpandedTrades([]);
+                }}
+              >
+                {author}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* ── Holdings List ── */}
       <div className="holdings-page__section">
         {holdingsLoading && holdings.length === 0 ? (
@@ -133,11 +214,14 @@ export default function HoldingsPage() {
         ) : holdings.length > 0 ? (
           <div className="holdings-page__list">
             {holdings.map((holding, idx) => {
-              const holdingKey = `${holding.asset_id}-${holding.broker || ''}`;
+              const holdingKey = `${holding.asset_id}-${holding.broker || ''}-${holding.author || '未标记'}`;
               const positionValue =
                 (Number(holding.total_quantity) || 0) *
                 (Number(holding.avg_cost) || 0);
               const isExpanded = expandedId === holdingKey;
+              const quantityUnit = getTradeQuantityUnit({
+                asset_type: holding.type,
+              });
 
               return (
                 <div
@@ -150,7 +234,7 @@ export default function HoldingsPage() {
                   {/* Card Main Content */}
                   <div
                     className="holdings-page__card-main"
-                    onClick={() => handleToggle(holding.asset_id, holding.broker)}
+                    onClick={() => handleToggle(holding.asset_id, holding.broker, holding.author)}
                   >
                     <div className="holdings-page__card-left">
                       <div className="holdings-page__symbol-row">
@@ -174,6 +258,11 @@ export default function HoldingsPage() {
                             🏦 {holding.broker}
                           </span>
                         )}
+                        {holding.author && !selectedAuthor && (
+                          <span className="holdings-page__author-badge">
+                            {holding.author}
+                          </span>
+                        )}
                       </div>
                       {holding.sector && (
                         <div className="holdings-page__sector">
@@ -187,7 +276,7 @@ export default function HoldingsPage() {
                         ${formatCurrency(positionValue)}
                       </div>
                       <div className="holdings-page__quantity text-mono">
-                        {Number(holding.total_quantity).toLocaleString()} 股
+                        {Number(holding.total_quantity).toLocaleString()} {quantityUnit}
                       </div>
                       <div className="holdings-page__avg-cost text-mono">
                         均价 ${formatCurrency(holding.avg_cost)}
@@ -224,6 +313,10 @@ export default function HoldingsPage() {
                           const isBuy =
                             trade.direction === 'BUY' ||
                             trade.direction === 'OPEN';
+                          const tradeUnit = getTradeQuantityUnit({
+                            ...trade,
+                            asset_type: trade.asset_type || holding.type,
+                          });
                           return (
                             <div
                               key={trade.id}
@@ -243,7 +336,7 @@ export default function HoldingsPage() {
                               </div>
                               <div className="holdings-page__trade-right">
                                 <span className="holdings-page__trade-qty text-mono">
-                                  {Number(trade.quantity).toLocaleString()} ×
+                                  {Number(trade.quantity).toLocaleString()} {tradeUnit} ×
                                 </span>
                                 <span className="holdings-page__trade-price text-mono">
                                   ${formatCurrency(trade.price)}

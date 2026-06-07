@@ -11,6 +11,7 @@ import {
   Dialog,
 } from 'antd-mobile';
 import { useTradeStore } from '../../stores/useTradeStore';
+import { useAppStore } from '../../stores/useAppStore';
 import { parseTradeImage } from '../../utils/ocrWorker';
 import { recommendDecisionForTrade, attachDecisionRecommendations } from '../../utils/decisionMatcher';
 import { parseDateTime } from '../../utils/time';
@@ -86,6 +87,8 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
   const refreshDecisions = useTradeStore((s) => s.refreshDecisions);
   const informations = useTradeStore((s) => s.informations);
   const refreshInformations = useTradeStore((s) => s.refreshInformations);
+  const syncUserId = useAppStore((s) => s.syncUserId);
+  const currentAuthor = (syncUserId || '').trim() || '未标记';
 
   // Load decisions and info for the picker
   useEffect(() => {
@@ -323,6 +326,7 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
         expiry_date: isOption && expiryDate ? expiryDate.toISOString().slice(0, 10) : null,
         option_type: isOption ? optionType[0] : null,
         contract_symbol: contractSymbol,
+        author: initialData ? (initialData.author || currentAuthor) : currentAuthor,
       };
 
       const result = initialData 
@@ -822,6 +826,7 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
                     contract_symbol: isOption
                       ? `${symbol} ${t.expiry_date || ''} ${normalizedOptionType} ${t.strike_price || ''}`.trim()
                       : null,
+                    author: t.author || currentAuthor,
                   };
 
                   const res = await addTrade(tradeToSave);

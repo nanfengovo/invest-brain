@@ -67,6 +67,8 @@ function SettingsPage() {
   const [autoSync, setAutoSync] = useState(localStorage.getItem('invest_auto_sync') === 'true');
   const [lastBackupTime, setLastBackupTime] = useState(localStorage.getItem('ib_last_autobackup_time'));
 
+  const currentAuthor = (syncUserId || syncUserIdInput || '').trim() || '未标记';
+
   useEffect(() => {
     setApiKeyInput(geminiApiKey);
   }, [geminiApiKey]);
@@ -272,7 +274,10 @@ function SettingsPage() {
               underlying_symbol: trade.underlying_symbol || trade.symbol || null,
               option_type: trade.option_type || null,
             });
-            await db.addTrade(trade);
+            await db.addTrade({
+              ...trade,
+              author: trade.author || currentAuthor,
+            });
             successCount++;
           } catch (err) {
             failCount++;
@@ -450,6 +455,22 @@ function SettingsPage() {
     }
   }
 
+  function stampExportDataWithAuthor(exportData, author) {
+    const normalizedAuthor = String(author || '').trim() || '未标记';
+    const rows = exportData?.tables?.trades;
+    if (!Array.isArray(rows)) return exportData;
+    return {
+      ...exportData,
+      tables: {
+        ...exportData.tables,
+        trades: rows.map((trade) => ({
+          ...trade,
+          author: trade.author || normalizedAuthor,
+        })),
+      },
+    };
+  }
+
   async function handleTestSyncConnection() {
     const normalizedSecret = syncSecretInput.trim();
 
@@ -487,17 +508,22 @@ function SettingsPage() {
     }
   }
 
-  async function handleSyncUpload() {
+  async function handleSyncUpload(scope = 'personal') {
     if (!syncUserId || !syncSecret) {
       Toast.show({ icon: 'fail', content: '请先填写并保存同步凭证' });
       return;
     }
+    const scopeLabel = scope === 'team' ? '团队空间' : '个人云端备份';
     try {
+      Toast.show({ icon: 'loading', content: '标记当前提交人...', duration: 0 });
+      await db.backfillTradeAuthor(syncUserId);
+      await refreshAll();
+
       Toast.show({ icon: 'loading', content: '打包本地数据...', duration: 0 });
       const result = await db.exportDB();
-      const exportData = JSON.parse(result.data);
+      const exportData = stampExportDataWithAuthor(JSON.parse(result.data), syncUserId);
 
-      Toast.show({ icon: 'loading', content: '上传至云端...', duration: 0 });
+      Toast.show({ icon: 'loading', content: `上传至${scopeLabel}...`, duration: 0 });
       const res = await fetch('/api/sync-upload', {
         method: 'POST',
         headers: {
@@ -506,6 +532,7 @@ function SettingsPage() {
         },
         body: JSON.stringify({
           userId: syncUserId,
+          scope,
           data: exportData
         })
       });
@@ -521,7 +548,7 @@ function SettingsPage() {
       if (!res.ok) throw new Error(responseData?.error || '上传失败');
 
       Toast.clear();
-      Toast.show({ icon: 'success', content: '已成功备份至云端' });
+      Toast.show({ icon: 'success', content: scope === 'team' ? '已同步到团队空间' : '个人云端备份已完成' });
     } catch (e) {
       Toast.clear();
       Toast.show({ icon: 'fail', content: e.message });
@@ -534,8 +561,8 @@ function SettingsPage() {
       return;
     }
     try {
-      Toast.show({ icon: 'loading', content: '拉取全员云端数据...', duration: 0 });
-      const res = await fetch('/api/sync-download', {
+      Toast.show({ icon: 'loading', content: '拉取团队空间数据...', duration: 0 });
+      const res = await fetch('/api/sync-download?scope=team', {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${encodeURIComponent(syncSecret)}`
@@ -563,7 +590,7 @@ function SettingsPage() {
       
       await refreshAll();
       Toast.clear();
-      Toast.show({ icon: 'success', content: '全员数据同步合并成功' });
+      Toast.show({ icon: 'success', content: '团队数据同步合并成功' });
     } catch (e) {
       Toast.clear();
       Toast.show({ icon: 'fail', content: e.message });
@@ -577,7 +604,7 @@ function SettingsPage() {
     }
     try {
       Toast.show({ icon: 'loading', content: '拉取您的云端备份...', duration: 0 });
-      const res = await fetch(`/api/sync-download?userId=${encodeURIComponent(syncUserIdInput)}`, {
+      const res = await fetch(`/api/sync-download?scope=personal&userId=${encodeURIComponent(syncUserIdInput)}`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${encodeURIComponent(syncSecretInput)}`
@@ -922,7 +949,7 @@ function SettingsPage() {
             <div className="settings-card__content">
               <div className="settings-card__label">团队同步凭证</div>
               <div className="settings-card__desc">
-                输入您的花名代号以及团队的同步暗号，即可实现一键云端合并数据，永不丢失。
+                输入您的花名代号以及团队同步暗号；新交易和导入记录会自动标记当前提交人。
               </div>
             </div>
           </div>
@@ -967,11 +994,21 @@ function SettingsPage() {
           </div>
 
           <div className="settings-card__divider" />
-          <div className="settings-card__row" onClick={handleSyncUpload}>
+          <div className="settings-card__row" onClick={() => handleSyncUpload('personal')}>
             <span className="settings-card__icon">🚀</span>
             <div className="settings-card__content">
-              <div className="settings-card__label">备份至云端</div>
-              <div className="settings-card__desc">将本地数据一键推送到团队云端空间</div>
+              <div className="settings-card__label">备份我的云端数据</div>
+              <div className="settings-card__desc">只保存到您的个人云端备份，不进入团队空间</div>
+            </div>
+            <span className="settings-card__arrow">›</span>
+          </div>
+
+          <div className="settings-card__divider" />
+          <div className="settings-card__row" onClick={() => handleSyncUpload('team')}>
+            <span className="settings-card__icon">🤝</span>
+            <div className="settings-card__content">
+              <div className="settings-card__label">同步到团队空间</div>
+              <div className="settings-card__desc">以当前花名提交数据，供团队成员合并查看</div>
             </div>
             <span className="settings-card__arrow">›</span>
           </div>
@@ -981,7 +1018,7 @@ function SettingsPage() {
             <span className="settings-card__icon">🔄</span>
             <div className="settings-card__content">
               <div className="settings-card__label">恢复我的云端数据</div>
-              <div className="settings-card__desc">仅拉取我自己的备份并覆盖到本地</div>
+              <div className="settings-card__desc">仅拉取我自己的个人备份并合并到本地</div>
             </div>
             <span className="settings-card__arrow">›</span>
           </div>
@@ -990,8 +1027,8 @@ function SettingsPage() {
           <div className="settings-card__row" onClick={handleSyncDownload}>
             <span className="settings-card__icon">📥</span>
             <div className="settings-card__content">
-              <div className="settings-card__label">拉取全员云端数据 (Admin)</div>
-              <div className="settings-card__desc">拉取所有成员数据并在本地无损智能合并</div>
+              <div className="settings-card__label">拉取团队空间数据</div>
+              <div className="settings-card__desc">拉取团队成员提交的数据并在本地无损合并</div>
             </div>
             <span className="settings-card__arrow">›</span>
           </div>

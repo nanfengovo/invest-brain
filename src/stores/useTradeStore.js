@@ -88,12 +88,12 @@ export const useTradeStore = create((set, get) => ({
   // Holdings actions
   // ==========================================
 
-  refreshHoldings: async () => {
+  refreshHoldings: async (author = null) => {
     set({ holdingsLoading: true });
     try {
       const [holdings, summary, stats] = await Promise.all([
-        db.getHoldings(),
-        db.getPortfolioSummary(),
+        db.getHoldings(author),
+        db.getPortfolioSummary(author),
         db.getStats(),
       ]);
       set({ holdings, summary, stats, holdingsLoading: false });
@@ -116,9 +116,9 @@ export const useTradeStore = create((set, get) => ({
     }
   },
 
-  getHoldings: async () => {
+  getHoldings: async (author = null) => {
     try {
-      const holdings = await db.getHoldings();
+      const holdings = await db.getHoldings(author);
       set({ holdings });
       return { success: true, data: holdings };
     } catch (err) {

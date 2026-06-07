@@ -70,6 +70,15 @@ const TRADE_TIME_SECONDS_SQL = `CASE
   ELSE unixepoch(t.trade_time)
 END`;
 
+const TRADE_AUTHOR_SQL = `COALESCE(NULLIF(TRIM(t.author), ''), '未标记')`;
+
+function appendAuthorFilter(sql, params, author) {
+  const normalizedAuthor = String(author || '').trim();
+  if (!normalizedAuthor) return sql;
+  params.push(normalizedAuthor);
+  return `${sql} AND ${TRADE_AUTHOR_SQL} = ?`;
+}
+
 /**
  * Initialize the database
  */
@@ -323,19 +332,19 @@ export const db = {
   },
 
   async addTrade(trade) {
-    const { id, asset_id, decision_id, direction, quantity, price, fee, account, trade_time, note, broker, info_id, underlying_symbol, strike_price, expiry_date, option_type, contract_symbol } = trade;
+    const { id, asset_id, decision_id, direction, quantity, price, fee, account, trade_time, note, broker, info_id, underlying_symbol, strike_price, expiry_date, option_type, contract_symbol, author } = trade;
     return this.exec(
-      `INSERT INTO trades (id, asset_id, decision_id, info_id, direction, quantity, price, fee, account, trade_time, note, broker, underlying_symbol, strike_price, expiry_date, option_type, contract_symbol)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, asset_id, decision_id || null, info_id || null, direction, quantity, price, fee || 0, account || null, trade_time, note || null, broker || null, underlying_symbol || null, strike_price || null, expiry_date || null, option_type || null, contract_symbol || null]
+      `INSERT INTO trades (id, asset_id, decision_id, info_id, direction, quantity, price, fee, account, trade_time, note, broker, underlying_symbol, strike_price, expiry_date, option_type, contract_symbol, author)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, asset_id, decision_id || null, info_id || null, direction, quantity, price, fee || 0, account || null, trade_time, note || null, broker || null, underlying_symbol || null, strike_price || null, expiry_date || null, option_type || null, contract_symbol || null, author || null]
     );
   },
 
   async updateTrade(trade) {
-    const { id, asset_id, decision_id, direction, quantity, price, fee, account, trade_time, note, broker, info_id, underlying_symbol, strike_price, expiry_date, option_type, contract_symbol } = trade;
+    const { id, asset_id, decision_id, direction, quantity, price, fee, account, trade_time, note, broker, info_id, underlying_symbol, strike_price, expiry_date, option_type, contract_symbol, author } = trade;
     return this.exec(
-      `UPDATE trades SET asset_id = ?, decision_id = ?, info_id = ?, direction = ?, quantity = ?, price = ?, fee = ?, account = ?, trade_time = ?, note = ?, broker = ?, underlying_symbol = ?, strike_price = ?, expiry_date = ?, option_type = ?, contract_symbol = ? WHERE id = ?`,
-      [asset_id, decision_id || null, info_id || null, direction, quantity, price, fee || 0, account || null, trade_time, note || null, broker || null, underlying_symbol || null, strike_price || null, expiry_date || null, option_type || null, contract_symbol || null, id]
+      `UPDATE trades SET asset_id = ?, decision_id = ?, info_id = ?, direction = ?, quantity = ?, price = ?, fee = ?, account = ?, trade_time = ?, note = ?, broker = ?, underlying_symbol = ?, strike_price = ?, expiry_date = ?, option_type = ?, contract_symbol = ?, author = ? WHERE id = ?`,
+      [asset_id, decision_id || null, info_id || null, direction, quantity, price, fee || 0, account || null, trade_time, note || null, broker || null, underlying_symbol || null, strike_price || null, expiry_date || null, option_type || null, contract_symbol || null, author || null, id]
     );
   },
 
@@ -343,7 +352,7 @@ export const db = {
     return this.exec('DELETE FROM trades WHERE id = ?', [id]);
   },
 
-  async getTradesByAssetAndBroker(assetId, broker = null) {
+  async getTradesByAssetAndBroker(assetId, broker = null, author = null) {
     let sql = `SELECT t.*, d.title as decision_title
                FROM trades t
                LEFT JOIN decisions d ON t.decision_id = d.id
@@ -355,6 +364,7 @@ export const db = {
     } else {
       sql += ` AND (t.broker IS NULL OR t.broker = '')`;
     }
+    sql = appendAuthorFilter(sql, params, author);
     sql += ` ORDER BY ${TRADE_TIME_SECONDS_SQL} DESC`;
 
     return this.query(sql, params);
@@ -518,9 +528,28 @@ export const db = {
   // Holdings & P&L calculations
   // ==========================================
 
-  async getHoldings() {
+  async getTradeAuthors() {
     return this.query(
-      `SELECT
+      `SELECT DISTINCT ${TRADE_AUTHOR_SQL} as author
+       FROM trades t
+       ORDER BY author`
+    );
+  },
+
+  async backfillTradeAuthor(author) {
+    const normalizedAuthor = String(author || '').trim();
+    if (!normalizedAuthor) return { changes: 0 };
+    return this.exec(
+      `UPDATE trades
+          SET author = ?
+        WHERE author IS NULL OR TRIM(author) = ''`,
+      [normalizedAuthor]
+    );
+  },
+
+  async getHoldings(author = null) {
+    let sql = `SELECT
+        ${TRADE_AUTHOR_SQL} as author,
         a.id as asset_id,
         a.symbol,
         a.name,
@@ -547,21 +576,34 @@ export const db = {
         MAX(${TRADE_TIME_SECONDS_SQL}) as last_trade
        FROM trades t
        JOIN assets a ON t.asset_id = a.id
-       GROUP BY a.id, t.broker
+       WHERE 1 = 1`;
+    const params = [];
+    sql = appendAuthorFilter(sql, params, author);
+    sql += `
+       GROUP BY a.id, t.broker, ${TRADE_AUTHOR_SQL}
        HAVING total_quantity > 0.0001
-       ORDER BY a.symbol`
+       ORDER BY a.symbol, author`;
+
+    return this.query(
+      sql,
+      params
     );
   },
 
-  async getPortfolioSummary() {
-    const results = await this.query(
-      `SELECT
+  async getPortfolioSummary(author = null) {
+    let sql = `SELECT
         COUNT(DISTINCT t.asset_id) as total_assets,
         COUNT(t.id) as total_trades,
         SUM(t.fee) as total_fees,
         SUM(CASE WHEN t.direction IN ('SELL', 'CLOSE') THEN t.quantity * t.price ELSE 0 END) as total_sells,
         SUM(CASE WHEN t.direction IN ('BUY', 'OPEN') THEN t.quantity * t.price ELSE 0 END) as total_buys
-       FROM trades t`
+       FROM trades t
+       WHERE 1 = 1`;
+    const params = [];
+    sql = appendAuthorFilter(sql, params, author);
+    const results = await this.query(
+      sql,
+      params
     );
     return results[0] || {};
   },

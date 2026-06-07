@@ -27,21 +27,51 @@ function createApiResponse(res) {
   };
 }
 
-function localMarketApiPlugin() {
+function readJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on('data', chunk => chunks.push(chunk));
+    req.on('end', () => {
+      const raw = Buffer.concat(chunks).toString('utf8');
+      if (!raw) {
+        resolve({});
+        return;
+      }
+      try {
+        resolve(JSON.parse(raw));
+      } catch (error) {
+        reject(error);
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
+function localApiPlugin() {
+  const routes = {
+    '/api/market': './api/market.js',
+    '/api/summarize': './api/summarize.js',
+  };
+
   return {
-    name: 'local-market-api',
+    name: 'local-api',
     configureServer(server) {
-      server.middlewares.use('/api/market', async (req, res) => {
-        try {
-          const moduleUrl = new URL(`./api/market.js?t=${Date.now()}`, import.meta.url).href;
-          const { default: handler } = await import(moduleUrl);
-          await handler(req, createApiResponse(res));
-        } catch (error) {
-          console.error('[local-market-api]', error);
-          res.statusCode = 500;
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ error: error.message || 'Local market API failed' }));
-        }
+      Object.entries(routes).forEach(([route, modulePath]) => {
+        server.middlewares.use(route, async (req, res) => {
+          try {
+            if (req.method !== 'GET' && req.method !== 'HEAD') {
+              req.body = await readJsonBody(req);
+            }
+            const moduleUrl = new URL(`${modulePath}?t=${Date.now()}`, import.meta.url).href;
+            const { default: handler } = await import(moduleUrl);
+            await handler(req, createApiResponse(res));
+          } catch (error) {
+            console.error(`[local-api] ${route}`, error);
+            res.statusCode = 500;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: error.message || 'Local API failed' }));
+          }
+        });
       });
     },
   };
@@ -53,7 +83,7 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
   plugins: [
-    localMarketApiPlugin(),
+    localApiPlugin(),
     tailwindcss(),
     react(),
     VitePWA({

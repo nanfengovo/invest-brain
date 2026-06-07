@@ -24,6 +24,21 @@ const splitList = (value) => Array.from(
 
 const splitSymbols = (value) => splitList(value).map((symbol) => symbol.toUpperCase());
 
+function appendUniqueBlock(current, next) {
+  const currentText = String(current || '').trim();
+  const nextText = String(next || '').trim();
+  if (!nextText) return currentText;
+  if (currentText.includes(nextText)) return currentText;
+  return currentText ? `${currentText}\n\n---\n\n${nextText}` : nextText;
+}
+
+function mediaLinesFromParsed(parsed) {
+  const lines = [];
+  if (parsed?.media?.primaryVideo) lines.push(`视频地址: ${parsed.media.primaryVideo}`);
+  if (parsed?.media?.primaryImage) lines.push(`封面地址: ${parsed.media.primaryImage}`);
+  return lines.join('\n');
+}
+
 export default function InformationForm({ onClose }) {
   const [form] = Form.useForm();
   const [uploading, setUploading] = useState(false);
@@ -52,19 +67,34 @@ export default function InformationForm({ onClose }) {
       const path = await saveFileToOPFS(file, 'informations');
       setFilePath(path);
       
-      // Auto trigger change to type "IMAGE" if the uploaded file is an image
+      let extractedDocument = null;
+
       if (file.type.startsWith('image/')) {
         form.setFieldsValue({ type: ['IMAGE'] });
       } else if (file.type.startsWith('video/')) {
         form.setFieldsValue({ type: ['VIDEO'] });
       } else if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.epub')) {
         form.setFieldsValue({ type: ['BOOK'] });
+        try {
+          const { extractDocumentText } = await import('../../utils/documentParser');
+          extractedDocument = await extractDocumentText(file);
+          if (extractedDocument?.content) {
+            const currentContent = form.getFieldValue('content') || '';
+            const fileTitle = extractedDocument.title ? `# ${extractedDocument.title}\n\n` : '';
+            form.setFieldsValue({
+              title: form.getFieldValue('title') || extractedDocument.title || file.name.replace(/\.[^.]+$/, ''),
+              content: appendUniqueBlock(currentContent, `${fileTitle}${extractedDocument.content}`),
+            });
+          }
+        } catch (err) {
+          console.warn('[InformationForm] Document extraction failed:', err);
+          Toast.show({ content: '附件已保存，正文抽取失败，可手动补充摘录' });
+        }
       }
 
       Toast.show({ icon: 'success', content: '上传成功' });
       
-      // Auto-summarize since a file has been uploaded
-      setTimeout(() => triggerAiSummarize(file, path), 300);
+      setTimeout(() => triggerAiSummarize(file, path), extractedDocument?.content ? 100 : 300);
     } catch (err) {
       Toast.show({ icon: 'fail', content: '上传失败: ' + err.message });
     } finally {
@@ -99,13 +129,13 @@ export default function InformationForm({ onClose }) {
     setSummarizing(true);
     const toast = Toast.show({
       icon: 'loading',
-      content: 'AI 智能提炼标题...',
+      content: '正在解析信息...',
       duration: 0,
     });
 
     try {
       let base64Image = null;
-      let mimeType = 'image/png';
+      let mimeType = targetFile?.type || 'text/plain';
       
       if (targetFile && targetFile.type.startsWith('image/')) {
         base64Image = await fileToBase64(targetFile);
@@ -137,41 +167,27 @@ export default function InformationForm({ onClose }) {
       }
 
       const result = await response.json();
+      const parsed = result.parsed || {};
       if (result.title) {
-        form.setFieldsValue({ title: result.title });
-        
-        // If API extracted content (like from X oEmbed), append it to the content textarea
-        if (result.content) {
-          const currentContent = form.getFieldValue('content') || '';
-          let newContentText = '';
-          if (result.author) {
-            newContentText = `作者: ${result.author}\n${result.content}`;
-          } else {
-            newContentText = result.content;
-          }
-          if (result.media?.videoUrl && !newContentText.includes(result.media.videoUrl)) {
-            newContentText += `\n视频地址: ${result.media.videoUrl}`;
-          }
-          if (result.media?.thumbnailUrl && !newContentText.includes(result.media.thumbnailUrl)) {
-            newContentText += `\n封面地址: ${result.media.thumbnailUrl}`;
-          }
-          
-          if (!currentContent.includes(result.content)) {
-            form.setFieldsValue({
-              content: currentContent ? `${currentContent}\n\n---\n\n${newContentText}` : newContentText
-            });
-            Toast.show({ icon: 'success', content: '标题与推文正文已提取' });
-          } else {
-            Toast.show({ icon: 'success', content: '标题自动提炼成功' });
-          }
-        } else {
-          Toast.show({ icon: 'success', content: '标题自动提炼成功' });
+        const updates = { title: result.title };
+        if (parsed.type) updates.type = [parsed.type];
+
+        const parsedContent = parsed.content || result.content;
+        if (parsedContent) {
+          const authorLine = parsed.source?.author || result.author;
+          let newContentText = authorLine ? `作者: ${authorLine}\n${parsedContent}` : parsedContent;
+          const mediaLines = mediaLinesFromParsed(parsed);
+          if (mediaLines) newContentText += `\n${mediaLines}`;
+          updates.content = appendUniqueBlock(form.getFieldValue('content'), newContentText);
         }
+
+        form.setFieldsValue(updates);
+        Toast.show({ icon: 'success', content: parsedContent ? '信息已解析并回填' : '标题已解析' });
       }
     } catch (err) {
       console.error('[AI Summarize Error]:', err);
       toast.close();
-      Toast.show({ icon: 'fail', content: '提炼失败: ' + err.message });
+      Toast.show({ icon: 'fail', content: '解析失败: ' + err.message });
     } finally {
       setSummarizing(false);
     }
@@ -253,7 +269,7 @@ export default function InformationForm({ onClose }) {
         >
           <Form.Header>基础信息</Form.Header>
           <Form.Item name="title" label="标题" rules={[{ required: true, message: '请输入标题' }]}>
-            <Input placeholder="输入情报标题，或使用下方智能提炼" clearable />
+            <Input placeholder="输入情报标题，或使用解析信息自动生成" clearable />
           </Form.Item>
           
           <div className="info-form__ai-summarize-row">
@@ -263,7 +279,7 @@ export default function InformationForm({ onClose }) {
               onClick={() => triggerAiSummarize()}
               disabled={summarizing}
             >
-              {summarizing ? '🤖 正在提炼...' : '✨ AI 智能提炼标题'}
+              {summarizing ? '正在解析...' : '解析信息'}
             </button>
           </div>
           
@@ -285,10 +301,10 @@ export default function InformationForm({ onClose }) {
 
           <Form.Item name="content" label="情报内容 (可选)">
             <TextArea 
-              placeholder="输入正文内容、摘录或您的看法，输入完毕可自动提炼标题..." 
+              placeholder="输入正文、摘录、Markdown 或 HTML；也可以粘贴链接后解析"
               rows={4} 
               showCount 
-              maxLength={2000}
+              maxLength={12000}
               onBlur={() => triggerAiSummarize()}
             />
           </Form.Item>

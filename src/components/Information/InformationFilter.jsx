@@ -10,12 +10,12 @@ export default function InformationFilter({
   availableAssets = [],
   availableTags = []
 }) {
-  const { keyword, asset, sector, tag } = filters;
+  const { keyword, asset, sector, tag, groupBy = 'DAY' } = filters;
 
   return (
     <div className="info-filter">
       <div className="info-filter__header">
-        <span className="info-filter__title">筛选与查找</span>
+        <span className="info-filter__title">筛选与视图</span>
         <button className="info-filter__close" onClick={onClose}>✕</button>
       </div>
 
@@ -28,6 +28,21 @@ export default function InformationFilter({
             value={keyword}
             onChange={(v) => onChange({ keyword: v })}
             style={{ '--background': 'var(--color-bg-secondary)' }}
+          />
+        </div>
+
+        {/* Grouping */}
+        <div className="filter-section">
+          <div className="filter-section__title">视图聚合方式</div>
+          <Selector
+            options={[
+              { label: '按日聚合', value: 'DAY' },
+              { label: '按周聚合', value: 'WEEK' },
+              { label: '按月聚合', value: 'MONTH' },
+            ]}
+            value={[groupBy === 'DATE' ? 'DAY' : groupBy]}
+            onChange={(v) => { if (v.length) onChange({ groupBy: v[0] }); }}
+            style={{ '--padding': '6px 12px' }}
           />
         </div>
 

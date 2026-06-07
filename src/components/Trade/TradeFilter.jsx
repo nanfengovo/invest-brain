@@ -65,11 +65,13 @@ export default function TradeFilter({
           <div className="filter-section__title">视图聚合方式</div>
           <Selector
             options={[
-              { label: '按日期聚合', value: 'DATE' },
+              { label: '按日聚合', value: 'DAY' },
+              { label: '按周聚合', value: 'WEEK' },
+              { label: '按月聚合', value: 'MONTH' },
               { label: '按标的聚合', value: 'ASSET' },
               { label: '不聚合(平铺)', value: 'NONE' },
             ]}
-            value={[groupBy]}
+            value={[groupBy === 'DATE' ? 'DAY' : groupBy]}
             onChange={(v) => { if (v.length) onChange({ groupBy: v[0] }); }}
             style={{ '--padding': '6px 12px' }}
           />
@@ -80,8 +82,8 @@ export default function TradeFilter({
           <div className="filter-section__title">显示模式</div>
           <Selector
             options={[
-              { label: '详细大卡片', value: 'false' },
               { label: '紧凑列表 (流水)', value: 'true' },
+              { label: '详细大卡片', value: 'false' },
             ]}
             value={[compactMode ? 'true' : 'false']}
             onChange={(v) => { if (v.length) onChange({ compactMode: v[0] === 'true' }); }}

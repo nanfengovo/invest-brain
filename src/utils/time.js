@@ -33,5 +33,38 @@ export function toIsoDateTime(value, fallback = new Date()) {
 export function toDateKey(value, fallback = '未知日期') {
   const date = parseDateTime(value);
   if (!date) return fallback;
-  return date.toISOString().slice(0, 10);
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+function getIsoWeekInfo(date) {
+  const normalized = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const day = normalized.getUTCDay() || 7;
+  normalized.setUTCDate(normalized.getUTCDate() + 4 - day);
+
+  const yearStart = new Date(Date.UTC(normalized.getUTCFullYear(), 0, 1));
+  const week = Math.ceil((((normalized - yearStart) / 86400000) + 1) / 7);
+  return {
+    year: normalized.getUTCFullYear(),
+    week,
+  };
+}
+
+export function toDateGroupKey(value, groupBy = 'DAY', fallback = '未记录日期') {
+  const date = parseDateTime(value);
+  if (!date) return fallback;
+
+  if (groupBy === 'MONTH') {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+  }
+
+  if (groupBy === 'WEEK') {
+    const { year, week } = getIsoWeekInfo(date);
+    return `${year} 第 ${String(week).padStart(2, '0')} 周`;
+  }
+
+  return toDateKey(date, fallback);
 }

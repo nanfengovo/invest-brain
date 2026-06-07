@@ -5,7 +5,7 @@ import TradeForm from '../components/Trade/TradeForm';
 import TradeCard from '../components/Trade/TradeCard';
 import TradeFilter from '../components/Trade/TradeFilter';
 import EmptyState from '../components/common/EmptyState';
-import { toDateKey } from '../utils/time';
+import { toDateGroupKey } from '../utils/time';
 import './TradesPage.css';
 
 export default function TradesPage() {
@@ -17,8 +17,8 @@ export default function TradesPage() {
     symbol: '',
     sector: 'ALL',
     direction: 'ALL',
-    groupBy: 'DATE',
-    compactMode: false,
+    groupBy: 'DAY',
+    compactMode: true,
   });
 
   const { trades, tradesLoading, refreshTrades, refreshHoldings } =
@@ -105,8 +105,8 @@ export default function TradesPage() {
     const groups = {};
     filteredTrades.forEach(t => {
       let key = '未分类';
-      if (filters.groupBy === 'DATE') {
-        key = toDateKey(t.trade_time);
+      if (filters.groupBy === 'DATE' || filters.groupBy === 'DAY' || filters.groupBy === 'WEEK' || filters.groupBy === 'MONTH') {
+        key = toDateGroupKey(t.trade_time, filters.groupBy === 'DATE' ? 'DAY' : filters.groupBy);
       } else if (filters.groupBy === 'ASSET') {
         key = t.symbol || '未知标的';
       }
@@ -174,7 +174,7 @@ export default function TradesPage() {
           filters={filters}
           onChange={(updates) => setFilters(prev => ({ ...prev, ...updates }))}
           onReset={() => setFilters({
-            symbol: '', sector: 'ALL', direction: 'ALL', groupBy: 'DATE', compactMode: false
+            symbol: '', sector: 'ALL', direction: 'ALL', groupBy: 'DAY', compactMode: true
           })}
           onClose={() => setShowFilter(false)}
           availableSectors={availableSectors}

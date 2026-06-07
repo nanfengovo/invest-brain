@@ -1,13 +1,14 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { NavBar, Button, Toast, Tag, TextArea, Divider, List, ActionSheet, SwipeAction, Modal, Popup, Selector, Input } from 'antd-mobile';
-import { LinkOutline, AppstoreOutline, MoreOutline, EditSOutline, AddOutline, PlayOutline, EyeOutline, DeleteOutline } from 'antd-mobile-icons';
+import { LinkOutline, MoreOutline, EditSOutline, AddOutline, PlayOutline, EyeOutline, DeleteOutline } from 'antd-mobile-icons';
 import { db } from '../db/database';
 import { useTradeStore } from '../stores/useTradeStore';
 import { useAppStore } from '../stores/useAppStore';
 import { getFileUrlFromOPFS } from '../utils/opfsUtils';
 import { findMediaUrls } from '../utils/mediaResolver';
 import LoadingSpinner from '../components/common/LoadingSpinner';
+import AssetLogo from '../components/common/AssetLogo';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -37,6 +38,15 @@ const TYPE_OPTIONS = [
   { label: '图表/图片', value: 'IMAGE' },
   { label: '书籍/研报', value: 'BOOK' },
 ];
+
+const SectorIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="1em" height="1em">
+    <path d="M4 5h7v7H4z" />
+    <path d="M13 5h7v7h-7z" />
+    <path d="M4 14h7v5H4z" />
+    <path d="M13 14h7v5h-7z" />
+  </svg>
+);
 
 // Viewpoint tag presets
 const VP_TAG_PRESETS = [
@@ -120,6 +130,58 @@ function getTwitterPostId(url) {
 
 function isDirectVideoUrl(url = '') {
   return /\.(mp4|webm|ogg|mov|m3u8)(\?|#|$)/i.test(url);
+}
+
+function isDirectImageUrl(url = '') {
+  return /\.(png|jpe?g|gif|webp|avif|svg)(\?|#|$)/i.test(url);
+}
+
+function isPdfUrl(url = '') {
+  return /\.pdf(\?|#|$)/i.test(url);
+}
+
+function isEpubUrl(url = '') {
+  return /\.epub(\?|#|$)/i.test(url);
+}
+
+function getFileExtension(path = '') {
+  const cleanPath = String(path || '').split(/[?#]/)[0];
+  const match = cleanPath.match(/\.([a-z0-9]+)$/i);
+  return match ? match[1].toLowerCase() : '';
+}
+
+function looksLikeHtml(content = '') {
+  return /<\/?(article|section|main|p|h[1-6]|div|table|figure|blockquote|ul|ol|img|a)\b/i.test(content);
+}
+
+function stripSourceScaffold(content = '') {
+  return String(content || '')
+    .replace(/^Title:\s*.*$/gim, '')
+    .replace(/^Markdown Content:\s*/gim, '')
+    .trim();
+}
+
+function getReaderLabel(kind) {
+  const labels = {
+    pdf: 'PDF / 财报阅读',
+    epub: 'EPUB 阅读',
+    video: '视频材料',
+    image: '图片 / 图表',
+    html: 'HTML 正文',
+    markdown: 'Markdown 正文',
+    webpage: '网页来源',
+    xpost: 'X / 推文',
+  };
+  return labels[kind] || '信息正文';
+}
+
+function escapeHtml(text = '') {
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function getTwitterFallbackText(content = '', title = '') {
@@ -304,6 +366,206 @@ function TwitterPostEmbed({ url, fallbackText }) {
       </div>
     </div>
   );
+}
+
+function HtmlDocumentReader({ html, title }) {
+  const srcDoc = useMemo(() => {
+    const baseStyles = `
+      <style>
+        :root { color-scheme: dark; }
+        body {
+          margin: 0;
+          padding: 18px;
+          background: #101826;
+          color: #e5edf8;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          font-size: 15px;
+          line-height: 1.72;
+        }
+        a { color: #8ea2ff; }
+        img, video { max-width: 100%; height: auto; border-radius: 8px; }
+        table { width: 100%; border-collapse: collapse; overflow-x: auto; display: block; }
+        th, td { border: 1px solid rgba(148, 163, 184, 0.25); padding: 8px; }
+        blockquote {
+          margin: 14px 0;
+          padding: 10px 12px;
+          border-left: 3px solid #7377ff;
+          background: rgba(115, 119, 255, 0.1);
+          border-radius: 0 8px 8px 0;
+        }
+      </style>
+    `;
+    return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title || 'HTML 文档')}</title>${baseStyles}</head><body>${html}</body></html>`;
+  }, [html, title]);
+
+  return (
+    <iframe
+      title="HTML reader"
+      className="info-detail__html-frame"
+      sandbox="allow-popups allow-popups-to-escape-sandbox"
+      srcDoc={srcDoc}
+    />
+  );
+}
+
+function WebPageReader({ url, content, title }) {
+  if (content) {
+    return (
+      <div className="info-detail__article-body">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+          {content}
+        </ReactMarkdown>
+      </div>
+    );
+  }
+
+  return (
+    <div className="info-detail__web-reader">
+      <iframe
+        title={title || '网页来源'}
+        src={url}
+        sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+      />
+      <div className="info-detail__web-reader-note">
+        外部站点如果禁止嵌套，浏览器会拦截这一块。页面仍会保留来源跳转，同时建议保存正文摘录作为系统内阅读材料。
+      </div>
+    </div>
+  );
+}
+
+function InformationReader({
+  info,
+  kind,
+  sourceUrl,
+  validUrl,
+  youtubeId,
+  bilibiliId,
+  resolvedVideoUrl,
+  resolvedImageUrl,
+  cleanContent,
+  twitterFallbackText,
+  pdfPageNumber,
+  pdfNumPages,
+  setPdfPageNumber,
+  setPdfNumPages,
+}) {
+  const title = info?.title || '信息正文';
+
+  if (kind === 'pdf') {
+    if (!sourceUrl) {
+      return <div className="info-detail__reader-state">没有找到 PDF 文件。</div>;
+    }
+    if (sourceUrl.startsWith('blob:')) {
+      return (
+        <div className="info-detail__pdf-wrapper">
+          <Document
+            file={sourceUrl}
+            onLoadSuccess={({ numPages }) => setPdfNumPages(numPages)}
+            loading={<div className="info-detail__pdf-loading">加载 PDF 中...</div>}
+          >
+            <Page
+              pageNumber={pdfPageNumber}
+              width={Math.min(window.innerWidth - 64, 680)}
+              renderTextLayer
+              renderAnnotationLayer
+              className="info-detail__pdf-page"
+            />
+          </Document>
+          {pdfNumPages && (
+            <div className="info-detail__pdf-controls">
+              <Button size="mini" disabled={pdfPageNumber <= 1} onClick={() => setPdfPageNumber(p => p - 1)}>
+                上一页
+              </Button>
+              <span className="info-detail__pdf-page-info">{pdfPageNumber} / {pdfNumPages}</span>
+              <Button size="mini" disabled={pdfPageNumber >= pdfNumPages} onClick={() => setPdfPageNumber(p => p + 1)}>
+                下一页
+              </Button>
+            </div>
+          )}
+        </div>
+      );
+    }
+    return (
+      <iframe
+        title="PDF reader"
+        className="info-detail__pdf-frame"
+        src={sourceUrl}
+      />
+    );
+  }
+
+  if (kind === 'epub') {
+    return (
+      <div className="info-detail__reader-state info-detail__reader-state--epub">
+        <strong>已识别 EPUB 文件</strong>
+        <span>当前前端不直接解析 EPUB，以避免引入不安全的 XML 解析依赖。可以先保存摘录或通过后端解析服务转成 HTML / Markdown 后在系统内阅读。</span>
+      </div>
+    );
+  }
+
+  if (kind === 'video') {
+    if (youtubeId) {
+      return (
+        <div className="info-detail__embed-player">
+          <iframe
+            src={`https://www.youtube.com/embed/${youtubeId}`}
+            title="YouTube player"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+          />
+        </div>
+      );
+    }
+    if (bilibiliId) {
+      return (
+        <div className="info-detail__embed-player">
+          <iframe
+            src={`https://player.bilibili.com/player.html?bvid=${bilibiliId}&high_quality=1&danmaku=0`}
+            title="Bilibili player"
+            allowFullScreen
+            scrolling="no"
+          />
+        </div>
+      );
+    }
+    return (
+      <video
+        src={resolvedVideoUrl || sourceUrl}
+        poster={resolvedImageUrl || undefined}
+        controls
+        playsInline
+        className="info-detail__video"
+      />
+    );
+  }
+
+  if (kind === 'image') {
+    return <img src={resolvedImageUrl || sourceUrl} alt={title} className="info-detail__image" />;
+  }
+
+  if (kind === 'xpost') {
+    return <TwitterPostEmbed url={validUrl} fallbackText={twitterFallbackText} />;
+  }
+
+  if (kind === 'html') {
+    return <HtmlDocumentReader html={cleanContent} title={title} />;
+  }
+
+  if (kind === 'markdown') {
+    return (
+      <div className="info-detail__article-body">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+          {cleanContent}
+        </ReactMarkdown>
+      </div>
+    );
+  }
+
+  if (kind === 'webpage') {
+    return <WebPageReader url={validUrl} content={cleanContent} title={title} />;
+  }
+
+  return <div className="info-detail__reader-state">还没有正文、文件或可展示来源。</div>;
 }
 
 /**
@@ -539,14 +801,17 @@ export default function InformationDetail() {
 
   const youtubeId = useMemo(() => validUrl ? getYouTubeId(validUrl) : null, [validUrl]);
   const bilibiliId = useMemo(() => validUrl ? getBilibiliId(validUrl) : null, [validUrl]);
-  const isTwitter = useMemo(() => isTwitterUrl(validUrl), [validUrl]);
   const twitterPostId = useMemo(() => validUrl ? getTwitterPostId(validUrl) : null, [validUrl]);
   const isDirectVideo = useMemo(() => validUrl ? isDirectVideoUrl(validUrl) : false, [validUrl]);
-  const isPdf = useMemo(() => info?.file_path?.toLowerCase().endsWith('.pdf'), [info?.file_path]);
+  const isDirectImage = useMemo(() => validUrl ? isDirectImageUrl(validUrl) : false, [validUrl]);
+  const isRemotePdf = useMemo(() => validUrl ? isPdfUrl(validUrl) : false, [validUrl]);
+  const isRemoteEpub = useMemo(() => validUrl ? isEpubUrl(validUrl) : false, [validUrl]);
+  const fileExtension = useMemo(() => getFileExtension(info?.file_path), [info?.file_path]);
+  const isPdf = fileExtension === 'pdf';
+  const isEpub = fileExtension === 'epub';
   const isVideoInfo = info?.type === 'VIDEO';
-  const isArticleInfo = info?.type === 'ARTICLE';
+  const isImageInfo = info?.type === 'IMAGE';
 
-  // Content: show full by default, no collapse
   const displayContent = useMemo(() => {
     let text = info?.content || '';
     if (info?.url && info.url !== validUrl) {
@@ -559,11 +824,40 @@ export default function InformationDetail() {
     }
     return text.trim();
   }, [info?.content, info?.url, validUrl]);
+  const cleanContent = useMemo(() => stripSourceScaffold(displayContent), [displayContent]);
+  const isHtmlContent = useMemo(() => looksLikeHtml(cleanContent), [cleanContent]);
   const twitterFallbackText = useMemo(() => getTwitterFallbackText(displayContent, info?.title), [displayContent, info?.title]);
   const embeddedMedia = useMemo(() => findMediaUrls(info?.url, displayContent), [displayContent, info?.url]);
   const resolvedVideoUrl = embeddedMedia.videos[0] || (isDirectVideo ? validUrl : null);
-  const resolvedImageUrl = embeddedMedia.images[0] || null;
-  const hasInlineSource = Boolean(youtubeId || bilibiliId || resolvedVideoUrl || resolvedImageUrl || twitterPostId);
+  const resolvedImageUrl = embeddedMedia.images[0] || (isDirectImage ? validUrl : null);
+  const readerKind = useMemo(() => {
+    if (isPdf || isRemotePdf) return 'pdf';
+    if (isEpub || isRemoteEpub) return 'epub';
+    if (youtubeId || bilibiliId || resolvedVideoUrl) return 'video';
+    if (resolvedImageUrl || (fileUrl && isImageInfo)) return 'image';
+    if (twitterPostId) return 'xpost';
+    if (isHtmlContent) return 'html';
+    if (cleanContent) return 'markdown';
+    if (validUrl) return 'webpage';
+    return 'empty';
+  }, [
+    cleanContent,
+    fileUrl,
+    isEpub,
+    isHtmlContent,
+    isImageInfo,
+    isPdf,
+    isRemoteEpub,
+    isRemotePdf,
+    resolvedImageUrl,
+    resolvedVideoUrl,
+    twitterPostId,
+    validUrl,
+    youtubeId,
+    bilibiliId,
+  ]);
+  const readerSourceUrl = fileUrl || validUrl;
+  const hasInlineSource = readerKind !== 'webpage' && readerKind !== 'empty';
 
   const [actionSheetVisible, setActionSheetVisible] = useState(false);
   const deleteInformation = useTradeStore(s => s.deleteInformation);
@@ -603,6 +897,12 @@ export default function InformationDetail() {
       return;
     }
     window.open(validUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const markCurrentMaterial = () => {
+    const label = getReaderLabel(readerKind);
+    setSelectedQuote(`${label}: ${info.title || extractDomain(validUrl || '')}`.slice(0, 500));
+    Toast.show({ icon: 'success', content: '已标注当前材料' });
   };
 
   const actionSheetActions = [
@@ -708,7 +1008,7 @@ export default function InformationDetail() {
                     setEditAssetVisible(true);
                   }}
                 >
-                  <AppstoreOutline style={{ marginRight: 4 }} />
+                  <AssetLogo symbol={asset} className="info-detail__asset-logo" />
                   {asset}
                   <EditSOutline className="info-detail__tag-edit-icon" />
                 </Tag>
@@ -740,6 +1040,7 @@ export default function InformationDetail() {
                     setEditSectorVisible(true);
                   }}
                 >
+                  <SectorIcon />
                   {sector}
                   <EditSOutline className="info-detail__tag-edit-icon" />
                 </Tag>
@@ -754,7 +1055,7 @@ export default function InformationDetail() {
                   setEditSectorVisible(true);
                 }}
               >
-                <AddOutline style={{ marginRight: 2 }} />
+                <SectorIcon />
                 板块
               </Tag>
             )}
@@ -861,145 +1162,38 @@ export default function InformationDetail() {
           </div>
         </Popup>
 
-        {/* ── Inline Source Embed ── */}
-        {(youtubeId || bilibiliId || resolvedVideoUrl || twitterPostId) && (
-          <div ref={inlineSourceRef} />
-        )}
-
-        {youtubeId && (
-          <div className="info-detail__embed">
-            <div className="info-detail__embed-player">
-              <iframe
-                src={`https://www.youtube.com/embed/${youtubeId}`}
-                title="YouTube player"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-              />
+        <section ref={inlineSourceRef} className="info-detail__reader glass-card">
+          <div className="info-detail__reader-header">
+            <div className="info-detail__reader-heading">
+              <span>{getReaderLabel(readerKind)}</span>
+              {validUrl && <small>{extractDomain(validUrl)}</small>}
+            </div>
+            <div className="info-detail__reader-actions">
+              <Button size="mini" fill="outline" onClick={markCurrentMaterial}>标注材料</Button>
+              {validUrl && (
+                <Button size="mini" color="primary" onClick={() => window.open(validUrl, '_blank', 'noopener,noreferrer')}>
+                  来源
+                </Button>
+              )}
             </div>
           </div>
-        )}
-
-        {bilibiliId && (
-          <div className="info-detail__embed">
-            <div className="info-detail__embed-player">
-              <iframe
-                src={`https://player.bilibili.com/player.html?bvid=${bilibiliId}&high_quality=1&danmaku=0`}
-                title="Bilibili player"
-                allowFullScreen
-                scrolling="no"
-              />
-            </div>
-          </div>
-        )}
-
-        {resolvedVideoUrl && !youtubeId && !bilibiliId && (
-          <div className="info-detail__embed">
-            <video
-              src={resolvedVideoUrl}
-              poster={resolvedImageUrl || undefined}
-              controls
-              playsInline
-              className="info-detail__video"
-            />
-          </div>
-        )}
-
-        {!resolvedVideoUrl && resolvedImageUrl && (
-          <div className="info-detail__media">
-            <img src={resolvedImageUrl} alt="媒体预览" className="info-detail__image" />
-          </div>
-        )}
-
-        {twitterPostId && !youtubeId && !bilibiliId && !resolvedVideoUrl && (
-          <TwitterPostEmbed url={validUrl} fallbackText={twitterFallbackText} />
-        )}
-
-        {/* ── Link Source Card ── */}
-        {validUrl && !youtubeId && !bilibiliId && !resolvedVideoUrl && !twitterPostId && (
-          <div className="info-detail__link-card">
-            <div className="info-detail__link-card-icon">
-              <img
-                src={`https://www.google.com/s2/favicons?domain=${extractDomain(validUrl)}&sz=32`}
-                alt=""
-                width="20"
-                height="20"
-                onError={(e) => { e.target.style.display = 'none'; }}
-              />
-            </div>
-            <div className="info-detail__link-card-body">
-              <div className="info-detail__link-card-domain">{extractDomain(validUrl)}</div>
-              <div className="info-detail__link-card-url">{validUrl}</div>
-            </div>
-            <a
-              href={validUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="info-detail__link-card-btn"
-            >
-              {isVideoInfo ? '播放' : (isArticleInfo ? '阅读' : (isTwitter ? '打开 𝕏' : '打开链接'))}
-            </a>
-          </div>
-        )}
-
-        {/* ── Uploaded Media (OPFS file) ── */}
-        {fileUrl && (
-          <div className="info-detail__media">
-            {isPdf ? (
-              <div className="info-detail__pdf-wrapper">
-                <Document
-                  file={fileUrl}
-                  onLoadSuccess={({ numPages }) => setPdfNumPages(numPages)}
-                  loading={<div className="info-detail__pdf-loading">加载 PDF 中...</div>}
-                >
-                  <Page
-                    pageNumber={pdfPageNumber}
-                    width={window.innerWidth - 32 - 32} // padding adjustments
-                    renderTextLayer={false}
-                    renderAnnotationLayer={false}
-                    className="info-detail__pdf-page"
-                  />
-                </Document>
-                {pdfNumPages && (
-                  <div className="info-detail__pdf-controls">
-                    <Button
-                      size="mini"
-                      disabled={pdfPageNumber <= 1}
-                      onClick={() => setPdfPageNumber(p => p - 1)}
-                    >
-                      上一页
-                    </Button>
-                    <span className="info-detail__pdf-page-info">
-                      {pdfPageNumber} / {pdfNumPages}
-                    </span>
-                    <Button
-                      size="mini"
-                      disabled={pdfPageNumber >= pdfNumPages}
-                      onClick={() => setPdfPageNumber(p => p + 1)}
-                    >
-                      下一页
-                    </Button>
-                  </div>
-                )}
-              </div>
-            ) : info.type === 'VIDEO' ? (
-              <video src={fileUrl} controls className="info-detail__video" />
-            ) : (
-              <img src={fileUrl} alt="附件" className="info-detail__image" />
-            )}
-          </div>
-        )}
-
-        {/* ── Content Body — Markdown Display ── */}
-        {displayContent && (
-          <div className="info-detail__body glass-card">
-            <div className="info-detail__body-label">正文内容</div>
-            <div className="info-detail__markdown-wrapper">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {displayContent}
-              </ReactMarkdown>
-            </div>
-          </div>
-        )}
+          <InformationReader
+            info={info}
+            kind={readerKind}
+            sourceUrl={readerSourceUrl}
+            validUrl={validUrl}
+            youtubeId={youtubeId}
+            bilibiliId={bilibiliId}
+            resolvedVideoUrl={resolvedVideoUrl}
+            resolvedImageUrl={resolvedImageUrl}
+            cleanContent={cleanContent}
+            twitterFallbackText={twitterFallbackText}
+            pdfPageNumber={pdfPageNumber}
+            pdfNumPages={pdfNumPages}
+            setPdfPageNumber={setPdfPageNumber}
+            setPdfNumPages={setPdfNumPages}
+          />
+        </section>
 
         <div className="info-detail__linked-decisions glass-card">
           <div className="info-detail__linked-header">

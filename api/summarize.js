@@ -84,6 +84,97 @@ function isImageUrl(url = '') {
     || /pbs\.twimg\.com\/amplify_video_thumb\//i.test(url);
 }
 
+function isPdfUrl(url = '') {
+  return /\.pdf(\?|#|$)/i.test(url);
+}
+
+function isEpubUrl(url = '') {
+  return /\.epub(\?|#|$)/i.test(url);
+}
+
+function looksLikeHtml(content = '') {
+  return /<\/?(article|section|main|p|h[1-6]|div|table|figure|blockquote|ul|ol|img|a)\b/i.test(content);
+}
+
+function detectDomain(url = '') {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return null;
+  }
+}
+
+function detectFormat({ url, content, mimeType }) {
+  if (mimeType?.startsWith('image/')) return 'image';
+  if (mimeType?.startsWith('video/')) return 'video';
+  if (mimeType === 'application/pdf' || isPdfUrl(url)) return 'pdf';
+  if (mimeType === 'application/epub+zip' || isEpubUrl(url)) return 'epub';
+  if (isVideoUrl(url)) return 'video';
+  if (isImageUrl(url)) return 'image';
+  if (looksLikeHtml(content)) return 'html';
+  if (content) return 'markdown';
+  if (url) return 'webpage';
+  return 'unknown';
+}
+
+function detectInfoType(format) {
+  if (format === 'video') return 'VIDEO';
+  if (format === 'image') return 'IMAGE';
+  if (format === 'pdf' || format === 'epub') return 'BOOK';
+  return 'ARTICLE';
+}
+
+function buildMediaFromValues(...values) {
+  const urls = extractUrls(values.filter(Boolean).join('\n'));
+  const videos = uniqueValues(urls.filter(isVideoUrl));
+  const images = uniqueValues(urls.filter(isImageUrl));
+  return {
+    videos,
+    images,
+    primaryVideo: videos[0] || null,
+    primaryImage: images[0] || null,
+  };
+}
+
+function buildParsedInformation({
+  title,
+  summary,
+  url,
+  content,
+  author,
+  media,
+  contentSource,
+  mimeType,
+}) {
+  const inferredMedia = buildMediaFromValues(url, content, media?.videoUrl, media?.thumbnailUrl);
+  const mergedMedia = {
+    videos: uniqueValues([...(inferredMedia.videos || []), media?.videoUrl]),
+    images: uniqueValues([...(inferredMedia.images || []), media?.thumbnailUrl]),
+  };
+  mergedMedia.primaryVideo = mergedMedia.videos[0] || null;
+  mergedMedia.primaryImage = mergedMedia.images[0] || null;
+
+  const format = detectFormat({ url, content, mimeType });
+  const domain = detectDomain(url);
+
+  return {
+    title,
+    summary: summary || null,
+    type: detectInfoType(format),
+    format,
+    content: content || null,
+    source: {
+      url: url || null,
+      domain,
+      author: author || null,
+      contentSource: contentSource || null,
+    },
+    media: mergedMedia,
+    embeddable: ['image', 'video', 'pdf', 'html', 'markdown'].includes(format) || Boolean(mergedMedia.primaryVideo || mergedMedia.primaryImage),
+    externalUrl: url || null,
+  };
+}
+
 function getTwitterPostId(url = '') {
   try {
     const match = new URL(url).pathname.match(/\/status(?:es)?\/(\d+)/);
@@ -507,13 +598,26 @@ JSON 格式：
       extractedSummary = extractedContent.substring(0, 100);
     }
 
-    return res.status(200).json({ 
+    const responseContent = extractedContent ? truncateText(extractedContent, MAX_RETURN_CONTENT_CHARS) : null;
+    const parsed = buildParsedInformation({
       title: cleanTitle || '未命名情报',
       summary: extractedSummary || null,
-      content: extractedContent ? truncateText(extractedContent, MAX_RETURN_CONTENT_CHARS) : null,
+      url,
+      content: responseContent,
+      author: extractedAuthor,
+      media: extractedMedia,
+      contentSource,
+      mimeType,
+    });
+
+    return res.status(200).json({
+      title: cleanTitle || '未命名情报',
+      summary: extractedSummary || null,
+      content: responseContent,
       author: extractedAuthor,
       media: extractedMedia || null,
       contentSource,
+      parsed,
       model: modelUsed,
     });
   } catch (err) {

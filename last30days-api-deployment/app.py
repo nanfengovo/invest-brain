@@ -10,6 +10,7 @@ import urllib.error
 import urllib.request
 from html import escape
 from pathlib import Path
+from price_alert_scheduler import config_from_env, start_background_scheduler
 
 # --- 页面配置 ---
 st.set_page_config(page_title="InvestBrain AI 舆情", page_icon="🤖", layout="centered")
@@ -181,6 +182,41 @@ def get_secret_value(*names):
             continue
 
     return ""
+
+
+def load_streamlit_secrets_into_env():
+    if not hasattr(st, "secrets"):
+        return
+
+    for key in (
+        "ENABLE_PRICE_ALERT_SCHEDULER",
+        "ALERTS_CRON_URL",
+        "ALERTS_CRON_INTERVAL_SECONDS",
+        "CRON_SECRET",
+        "PRICE_ALERT_RUN_ON_START",
+        "PRICE_ALERT_LOG_LEVEL",
+    ):
+        try:
+            if key in st.secrets:
+                os.environ[key] = str(st.secrets[key])
+        except Exception:
+            continue
+
+
+@st.cache_resource(show_spinner=False)
+def ensure_price_alert_scheduler():
+    load_streamlit_secrets_into_env()
+    config = config_from_env()
+    thread = start_background_scheduler(config)
+    return {
+        "enabled": config.enabled,
+        "url": config.url,
+        "interval_seconds": config.interval_seconds,
+        "running": bool(thread and thread.is_alive()),
+    }
+
+
+ensure_price_alert_scheduler()
 
 
 # 获取 URL 参数 (Streamlit 1.30+ 用法)

@@ -27,6 +27,33 @@
 
    `GEMINI_REPORT_MODELS` 可选，但建议配置。Google AI Studio 的同一个 API Key 可以调用多个可用模型；这里会按顺序尝试，遇到 429/503 会自动切到下一个模型。日常使用建议把 RPD 更高的 Lite 模型放前面，把质量更强但 RPD 较低的 Flash 模型放后面。
 
+## ⏰ 云端价格提醒定时器
+
+这个 Streamlit 应用可以顺带启动 InvestBrain 的云端价格提醒检查器。开启后，只要 Streamlit 进程在运行，它会按间隔调用移动端项目里的 `/api/alerts-cron`，让价格提醒在浏览器关闭后也能通过飞书或邮件继续发送。
+
+在 Streamlit Secrets 中加入：
+
+```toml
+ENABLE_PRICE_ALERT_SCHEDULER = "true"
+ALERTS_CRON_URL = "https://invest-brain.vercel.app/api/alerts-cron"
+ALERTS_CRON_INTERVAL_SECONDS = "300"
+
+# 如果 Vercel 上配置了 CRON_SECRET，这里也填同一个值
+CRON_SECRET = ""
+```
+
+也可以独立运行脚本：
+
+```bash
+python price_alert_scheduler.py --interval-seconds 300
+```
+
+运行一次检查并退出：
+
+```bash
+python price_alert_scheduler.py --once
+```
+
 ## 🔌 如何在移动端配合使用？
 
 系统部署成功后，你会得到一个专属的 URL（例如 `https://your-app-name.streamlit.app`）。

@@ -148,7 +148,7 @@ function loadTwitterWidgets() {
     return Promise.reject(new Error('Twitter widgets need a browser environment'));
   }
 
-  if (window.twttr?.widgets?.createTweet) {
+  if (window.twttr?.widgets?.load) {
     return Promise.resolve(window.twttr);
   }
 
@@ -157,11 +157,28 @@ function loadTwitterWidgets() {
   }
 
   twitterWidgetsPromise = new Promise((resolve, reject) => {
+    const twttrStub = window.twttr || {};
+    twttrStub._e = twttrStub._e || [];
+    twttrStub.ready = twttrStub.ready || ((callback) => twttrStub._e.push(callback));
+    window.twttr = twttrStub;
+
+    const timeoutId = window.setTimeout(() => {
+      reject(new Error('Twitter widgets initialization timed out'));
+    }, 10000);
+
     const existingScript = document.getElementById('twitter-wjs');
     const resolveWhenReady = () => {
       if (window.twttr?.ready) {
-        window.twttr.ready(() => resolve(window.twttr));
-      } else if (window.twttr?.widgets?.createTweet) {
+        window.twttr.ready(() => {
+          window.clearTimeout(timeoutId);
+          if (window.twttr?.widgets?.load) {
+            resolve(window.twttr);
+          } else {
+            reject(new Error('Twitter widgets unavailable'));
+          }
+        });
+      } else if (window.twttr?.widgets?.load) {
+        window.clearTimeout(timeoutId);
         resolve(window.twttr);
       } else {
         reject(new Error('Twitter widgets unavailable'));
@@ -171,22 +188,40 @@ function loadTwitterWidgets() {
     if (existingScript) {
       existingScript.addEventListener('load', resolveWhenReady, { once: true });
       existingScript.addEventListener('error', () => reject(new Error('Twitter widgets failed to load')), { once: true });
-      resolveWhenReady();
       return;
     }
 
     const script = document.createElement('script');
     script.id = 'twitter-wjs';
+    script.type = 'text/javascript';
     script.async = true;
     script.defer = true;
     script.charset = 'utf-8';
-    script.src = 'https://platform.x.com/widgets.js';
+    script.src = 'https://platform.twitter.com/widgets.js';
     script.onload = resolveWhenReady;
     script.onerror = () => reject(new Error('Twitter widgets failed to load'));
     document.body.appendChild(script);
   });
 
   return twitterWidgetsPromise;
+}
+
+function waitForTweetIframe(target, timeoutMs = 7000) {
+  return new Promise((resolve) => {
+    const startedAt = Date.now();
+    const tick = () => {
+      if (target?.querySelector('iframe')) {
+        resolve(true);
+        return;
+      }
+      if (Date.now() - startedAt >= timeoutMs) {
+        resolve(false);
+        return;
+      }
+      window.setTimeout(tick, 150);
+    };
+    tick();
+  });
 }
 
 function TwitterPostEmbed({ url, fallbackText }) {
@@ -201,10 +236,13 @@ function TwitterPostEmbed({ url, fallbackText }) {
     setStatus('enhancing');
 
     loadTwitterWidgets()
-      .then((twttr) => twttr.widgets.load(target))
-      .then(() => {
+      .then(async (twttr) => {
+        twttr.widgets.load(target);
+        return waitForTweetIframe(target);
+      })
+      .then((hasIframe) => {
         if (cancelled) return;
-        setStatus(target.querySelector('iframe') ? 'ready' : 'fallback');
+        setStatus(hasIframe ? 'ready' : 'fallback');
       })
       .catch(() => {
         if (!cancelled) setStatus('fallback');
@@ -258,7 +296,7 @@ function TwitterPostEmbed({ url, fallbackText }) {
               </div>
             )}
             <div className="info-detail__tweet-note">
-              官方组件未完全渲染，已显示本地保存的内容摘录。
+              已显示本地保存的 X 内容摘录。
             </div>
           </>
         )}

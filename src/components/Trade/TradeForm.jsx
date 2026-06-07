@@ -14,6 +14,9 @@ import { useTradeStore } from '../../stores/useTradeStore';
 import { parseTradeImage } from '../../utils/ocrWorker';
 import { recommendDecisionForTrade, attachDecisionRecommendations } from '../../utils/decisionMatcher';
 import { parseDateTime } from '../../utils/time';
+import {
+  getOrphanSellLifecycleItems,
+} from '../../utils/tradeLifecycle';
 import './TradeForm.css';
 
 const ASSET_TYPE_OPTIONS = [
@@ -38,6 +41,11 @@ const OCR_MODEL_OPTIONS = [
   { label: '3.5 Flash', value: 'gemini-3.5-flash', description: '高精度' },
   { label: '3.1 Lite', value: 'gemini-3.1-flash-lite', description: '高配额' },
 ];
+
+function formatMissingBuyLabel(item) {
+  const parts = String(item.key || '').split('::');
+  return parts[parts.length - 1]?.replace('|', ' ') || item.key || '未知合约';
+}
 
 /**
  * TradeForm — Full-screen trade entry form.
@@ -753,6 +761,8 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
               block 
               onClick={async () => {
                 const addTrade = useTradeStore.getState().addTrade;
+                const refreshTrades = useTradeStore.getState().refreshTrades;
+                const getTrades = () => useTradeStore.getState().trades;
                 let successCount = 0;
                 let failCount = 0;
                 const errors = [];
@@ -824,9 +834,30 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
                 }
 
                 loadingToast.close();
+                let missingBuyItems = [];
+                if (successCount > 0) {
+                  await refreshTrades();
+                  missingBuyItems = getOrphanSellLifecycleItems(getTrades());
+                }
 
                 if (failCount === 0) {
                   Toast.show({ icon: 'success', content: `成功导入 ${successCount} 笔交易` });
+                  if (missingBuyItems.length > 0) {
+                    Dialog.alert({
+                      header: <span style={{ color: 'var(--color-loss)' }}>发现缺少买入记录</span>,
+                      content: (
+                        <div style={{ textAlign: 'left', maxHeight: '220px', overflowY: 'auto' }}>
+                          <p>以下卖出记录暂时没有找到对应买入，请补充导入相关买入记录：</p>
+                          <ul style={{ paddingLeft: '20px', margin: '8px 0', color: 'var(--color-text-secondary)' }}>
+                            {missingBuyItems.map((item) => (
+                              <li key={item.key}>{formatMissingBuyLabel(item)}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      ),
+                      confirmText: '我知道了',
+                    });
+                  }
                   setOcrSheetVisible(false);
                   onSuccess?.();
                   onClose?.();
@@ -840,6 +871,16 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
                         <ul style={{ paddingLeft: '20px', margin: '8px 0', color: 'var(--color-text-secondary)' }}>
                           {errors.map((err, idx) => <li key={idx}>{err}</li>)}
                         </ul>
+                        {missingBuyItems.length > 0 && (
+                          <>
+                            <p>以下卖出记录暂时没有找到对应买入，请补充导入相关买入记录：</p>
+                            <ul style={{ paddingLeft: '20px', margin: '8px 0', color: 'var(--color-text-secondary)' }}>
+                              {missingBuyItems.map((item) => (
+                                <li key={item.key}>{formatMissingBuyLabel(item)}</li>
+                              ))}
+                            </ul>
+                          </>
+                        )}
                       </div>
                     ),
                     confirmText: '我知道了',

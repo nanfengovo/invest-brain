@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   annotateTradesWithLifecycle,
+  getOrphanSellLifecycleItems,
   getTradeAssetDisplay,
 } from '../src/utils/tradeLifecycle.js';
 
@@ -111,4 +112,21 @@ test('keeps stock pnl on a one-share multiplier', () => {
 
   assert.equal(buy.lifecycle.status, 'CLOSED');
   assert.equal(buy.lifecycle.realizedPnl, 15);
+});
+
+test('flags sell trades without matching buys', () => {
+  const [sell] = annotateTradesWithLifecycle([
+    {
+      id: 's1',
+      symbol: 'NOK',
+      asset_type: 'OPTION',
+      contract_symbol: 'NOK 260918 25 C',
+      direction: 'SELL',
+      quantity: 1,
+      price: 2,
+    },
+  ]);
+
+  assert.equal(sell.lifecycle.status, 'ORPHAN_SELL');
+  assert.equal(getOrphanSellLifecycleItems([sell]).length, 1);
 });

@@ -35,8 +35,8 @@ export default function TradeFilter({
           <Selector
             options={[
               { label: '全部', value: 'ALL' },
-              { label: '买入 (Buy)', value: 'BUY' },
-              { label: '卖出 (Sell)', value: 'SELL' },
+              { label: '买入', value: 'BUY' },
+              { label: '卖出', value: 'SELL' },
             ]}
             value={[direction]}
             onChange={(v) => { if (v.length) onChange({ direction: v[0] }); }}
@@ -69,6 +69,7 @@ export default function TradeFilter({
               { label: '未卖出', value: 'OPEN_ONLY' },
               { label: '部分卖出', value: 'PARTIAL' },
               { label: '已闭环', value: 'CLOSED' },
+              { label: '缺少买入', value: 'ORPHAN_SELL' },
             ]}
             value={[lifecycle]}
             onChange={(v) => { if (v.length) onChange({ lifecycle: v[0] }); }}

@@ -52,24 +52,38 @@ function formatQuantity(num) {
   return String(number).replace(/\.0+$/, '');
 }
 
-function getLifecycleBadge(lifecycle) {
+function getLifecycleBadge(lifecycle, directionType) {
   if (!lifecycle || lifecycle.status === 'UNTRACKED') return null;
+  if (lifecycle.status === 'ORPHAN_SELL') {
+    return directionType === 'sell'
+      ? { label: '缺少买入', type: 'warning' }
+      : null;
+  }
   if (lifecycle.status === 'OPEN_ONLY') {
-    return {
-      label: `未卖出 ${formatQuantity(lifecycle.openQty)}`,
-      type: 'open',
-    };
+    return directionType === 'buy'
+      ? {
+          label: `未卖出 ${formatQuantity(lifecycle.openQty)}`,
+          type: 'open',
+        }
+      : null;
   }
   if (lifecycle.status === 'PARTIAL') {
-    return {
-      label: `部分 ${formatQuantity(lifecycle.openQty)}`,
-      type: 'partial',
-    };
+    return directionType === 'buy'
+      ? {
+          label: `部分未卖 ${formatQuantity(lifecycle.openQty)}`,
+          type: 'partial',
+        }
+      : {
+          label: `已实现 ${formatLifecyclePnl(lifecycle.realizedPnl)}`,
+          type: lifecycle.realizedPnl >= 0 ? 'closed-profit' : 'closed-loss',
+        };
   }
-  return {
-    label: `已闭环 ${formatLifecyclePnl(lifecycle.realizedPnl)}`,
-    type: lifecycle.realizedPnl >= 0 ? 'closed-profit' : 'closed-loss',
-  };
+  return directionType === 'sell'
+    ? {
+        label: `已实现 ${formatLifecyclePnl(lifecycle.realizedPnl)}`,
+        type: lifecycle.realizedPnl >= 0 ? 'closed-profit' : 'closed-loss',
+      }
+    : null;
 }
 
 /**
@@ -88,7 +102,7 @@ export default function TradeCard({ trade, index = 0, onEdit, compactMode = fals
   const isBuy = dir.type === 'buy';
   const displaySymbol = getTradeSymbolDisplay(trade);
   const assetDisplay = getTradeAssetDisplay(trade);
-  const lifecycleBadge = getLifecycleBadge(trade.lifecycle);
+  const lifecycleBadge = getLifecycleBadge(trade.lifecycle, dir.type);
 
   const total = useMemo(() => {
     const qty = parseFloat(trade.quantity) || 0;

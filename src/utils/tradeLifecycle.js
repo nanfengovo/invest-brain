@@ -185,7 +185,9 @@ function getDirectionKind(direction) {
 }
 
 function getLifecycleStatus(stats) {
-  if (!stats || stats.buyQty <= 0) return 'UNTRACKED';
+  if (!stats) return 'UNTRACKED';
+  if (stats.buyQty <= 0 && stats.sellQty > 0) return 'ORPHAN_SELL';
+  if (stats.buyQty <= 0) return 'UNTRACKED';
   if (stats.sellQty <= 0) return 'OPEN_ONLY';
   if (stats.openQty > 0) return 'PARTIAL';
   return 'CLOSED';
@@ -255,4 +257,9 @@ export function formatLifecyclePnl(value) {
   const number = Number(value) || 0;
   const sign = number > 0 ? '+' : number < 0 ? '-' : '';
   return `${sign}$${Math.abs(number).toFixed(2)}`;
+}
+
+export function getOrphanSellLifecycleItems(trades = []) {
+  const lifecycleMap = buildTradeLifecycleMap(trades);
+  return Array.from(lifecycleMap.values()).filter((item) => item.status === 'ORPHAN_SELL');
 }

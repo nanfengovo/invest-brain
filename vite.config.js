@@ -6,12 +6,54 @@ import { readFileSync } from 'fs';
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
 
+function createApiResponse(res) {
+  return {
+    setHeader: (...args) => res.setHeader(...args),
+    status(code) {
+      res.statusCode = code;
+      return this;
+    },
+    json(payload) {
+      if (!res.getHeader('Content-Type')) {
+        res.setHeader('Content-Type', 'application/json');
+      }
+      res.end(JSON.stringify(payload));
+      return this;
+    },
+    end(payload = '') {
+      res.end(payload);
+      return this;
+    },
+  };
+}
+
+function localMarketApiPlugin() {
+  return {
+    name: 'local-market-api',
+    configureServer(server) {
+      server.middlewares.use('/api/market', async (req, res) => {
+        try {
+          const moduleUrl = new URL(`./api/market.js?t=${Date.now()}`, import.meta.url).href;
+          const { default: handler } = await import(moduleUrl);
+          await handler(req, createApiResponse(res));
+        } catch (error) {
+          console.error('[local-market-api]', error);
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: error.message || 'Local market API failed' }));
+        }
+      });
+    },
+  };
+}
+
 export default defineConfig({
   define: {
     __BUILD_TIME__: JSON.stringify(new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })),
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
   plugins: [
+    localMarketApiPlugin(),
     tailwindcss(),
     react(),
     VitePWA({

@@ -14,19 +14,19 @@ const getCachedQuote = (symbol, now, maxAge = CACHE_TTL_MS) => {
   return cached.data;
 };
 
-const getChange = (price, previousClose) => {
-  if (!Number.isFinite(price) || !Number.isFinite(previousClose) || previousClose === 0) {
+export const getChange = (price, referencePrice) => {
+  if (!Number.isFinite(price) || !Number.isFinite(referencePrice) || referencePrice === 0) {
     return { absChange: null, pctChange: null };
   }
 
-  const absChange = price - previousClose;
+  const absChange = price - referencePrice;
   return {
     absChange,
-    pctChange: (absChange / previousClose) * 100,
+    pctChange: (absChange / referencePrice) * 100,
   };
 };
 
-const findExtendedQuote = (result, previousClose) => {
+export const findExtendedQuote = (result, referencePrice) => {
   const meta = result?.meta || {};
   const timestamps = result?.timestamp || [];
   const quote = result?.indicators?.quote?.[0] || {};
@@ -51,7 +51,7 @@ const findExtendedQuote = (result, previousClose) => {
   const latest = rows.at(-1);
   if (!latest) return null;
 
-  const { absChange, pctChange } = getChange(latest.price, previousClose);
+  const { absChange, pctChange } = getChange(latest.price, referencePrice);
   return {
     session: latest.session,
     label: latest.session === 'pre' ? '盘前' : '盘后',
@@ -62,7 +62,7 @@ const findExtendedQuote = (result, previousClose) => {
   };
 };
 
-const fetchExtendedQuote = async (originalSymbol, previousClose) => {
+const fetchExtendedQuote = async (originalSymbol, referencePrice) => {
   try {
     const { result } = await fetchYahooChart(originalSymbol, {
       interval: '1m',
@@ -71,7 +71,7 @@ const fetchExtendedQuote = async (originalSymbol, previousClose) => {
       timeoutMs: YAHOO_EXTENDED_TIMEOUT_MS,
     });
 
-    return findExtendedQuote(result, previousClose);
+    return findExtendedQuote(result, referencePrice);
   } catch {
     return null;
   }
@@ -93,7 +93,7 @@ const fetchQuote = async (originalSymbol, { includeExtended = false } = {}) => {
   const previousClose = Number.isFinite(prevClose) ? prevClose : null;
   const { absChange, pctChange } = getChange(regularPrice, previousClose);
   const extendedMarket = includeExtended && meta.hasPrePostMarketData
-    ? await fetchExtendedQuote(originalSymbol, previousClose)
+    ? await fetchExtendedQuote(originalSymbol, regularPrice)
     : null;
   const displayPrice = extendedMarket?.price ?? regularPrice;
   const displayAbsChange = extendedMarket?.absChange ?? absChange;

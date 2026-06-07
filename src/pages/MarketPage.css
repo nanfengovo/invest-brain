@@ -114,6 +114,30 @@
   box-shadow: 0 0 14px rgba(11, 210, 158, 0.65);
 }
 
+.market-status-pill--pre,
+.market-status-pill--after {
+  border-color: rgba(255, 184, 80, 0.28);
+  background: rgba(255, 184, 80, 0.12);
+  color: #ffbf66;
+}
+
+.market-status-pill--pre .market-status-pill__dot,
+.market-status-pill--after .market-status-pill__dot {
+  background: #ffb14a;
+  box-shadow: 0 0 14px rgba(255, 177, 74, 0.58);
+}
+
+.market-status-pill--closed {
+  border-color: rgba(156, 170, 196, 0.22);
+  background: rgba(156, 170, 196, 0.1);
+  color: #a8b2c6;
+}
+
+.market-status-pill--closed .market-status-pill__dot {
+  background: #8a96ad;
+  box-shadow: none;
+}
+
 .market-header__actions {
   display: flex;
   align-items: center;
@@ -944,6 +968,19 @@
   border-color: rgba(15, 166, 122, 0.18);
   background: rgba(15, 166, 122, 0.1);
   color: #0b9a72;
+}
+
+[data-theme='light'] .market-status-pill--pre,
+[data-theme='light'] .market-status-pill--after {
+  border-color: rgba(193, 115, 16, 0.2);
+  background: rgba(193, 115, 16, 0.1);
+  color: #a05a08;
+}
+
+[data-theme='light'] .market-status-pill--closed {
+  border-color: rgba(79, 92, 116, 0.18);
+  background: rgba(79, 92, 116, 0.08);
+  color: #657083;
 }
 
 [data-theme='light'] .market-region-switch {

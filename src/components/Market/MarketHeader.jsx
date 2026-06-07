@@ -7,6 +7,7 @@ import {
   SearchOutline,
   CloseOutline,
 } from 'antd-mobile-icons';
+import { getUsMarketStatus } from '../../utils/marketHours';
 
 const SEARCHABLE_QUOTE_TYPES = new Set([
   'EQUITY',
@@ -30,11 +31,16 @@ const normalizeSearchResults = (items = []) => {
     .slice(0, 12);
 };
 
+function padMarketTime(ny) {
+  return `${String(ny.hour).padStart(2, '0')}:${String(ny.minute).padStart(2, '0')}`;
+}
+
 export default function MarketHeader({ watchlist = [], onAddWatchItem }) {
   const [isSearching, setIsSearching] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [marketStatus, setMarketStatus] = useState(() => getUsMarketStatus());
   const navigate = useNavigate();
   const inputRef = useRef(null);
   const watchedSymbols = new Set(watchlist.map((item) => String(item.symbol || '').toUpperCase()));
@@ -74,6 +80,14 @@ export default function MarketHeader({ watchlist = [], onAddWatchItem }) {
 
     return () => clearTimeout(searchTimer);
   }, [query]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setMarketStatus(getUsMarketStatus());
+    }, 60_000);
+
+    return () => clearInterval(timer);
+  }, []);
 
   const handleAddWatchItem = (event, item) => {
     event.stopPropagation();
@@ -179,9 +193,12 @@ export default function MarketHeader({ watchlist = [], onAddWatchItem }) {
             <div className="market-header__copy">
               <div className="market-header__title-row">
                 <h1>行情</h1>
-                <span className="market-status-pill">
+                <span
+                  className={`market-status-pill market-status-pill--${marketStatus.phase}`}
+                  title={`${marketStatus.detail} · 纽约时间 ${marketStatus.ny.key} ${padMarketTime(marketStatus.ny)}`}
+                >
                   <span className="market-status-pill__dot" aria-hidden="true" />
-                  交易中
+                  {marketStatus.label}
                 </span>
               </div>
               <p>{watchlist.length > 0 ? '关注股票实时监控' : '全球主要指数实时监控'}</p>

@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Toast } from 'antd-mobile';
 import { useAppStore } from '../stores/useAppStore';
+import { useTradeStore } from '../stores/useTradeStore';
 import MarketHeader from '../components/Market/MarketHeader';
 import IndexCardScroller from '../components/Market/IndexCardScroller';
 import SectorGrid from '../components/Market/SectorGrid';
 import WatchlistBoard from '../components/Market/WatchlistBoard';
+import { findMatchingOption, getOptionCandidates, mergeOptionQuote } from '../utils/optionsMarket';
 import './MarketPage.css';
 
 const SHARE_BASE_URL = 'https://invest-brain.vercel.app';
@@ -17,12 +19,6 @@ const INDICES = [
   { symbol: 'gb_ixic', name: '纳斯达克综合', quoteLabel: '指数 · ^IXIC' },
   { symbol: 'gb_ndx', name: '纳斯达克100', quoteLabel: '指数 · ^NDX' },
   { symbol: 'gb_inx', name: '标普500', quoteLabel: '指数 · ^GSPC' }
-];
-
-const FUTURES = [
-  { symbol: 'hf_NQ', name: '纳指期货', quoteLabel: '期货 · NQ=F' },
-  { symbol: 'hf_ES', name: '标普期货', quoteLabel: '期货 · ES=F' },
-  { symbol: 'hf_YM', name: '道琼斯期货', quoteLabel: '期货 · YM=F' }
 ];
 
 const SECTORS = [
@@ -128,8 +124,12 @@ export default function MarketPage() {
     marketWatchlist,
     addMarketWatchItem,
     removeMarketWatchItem,
+    marketDataConfig,
   } = useAppStore();
+  const trades = useTradeStore((state) => state.trades);
   const [marketData, setMarketData] = useState(() => readCachedMarketData());
+  const [optionQuotes, setOptionQuotes] = useState({});
+  const [optionLoading, setOptionLoading] = useState(false);
   const [loading, setLoading] = useState(() => Object.keys(readCachedMarketData()).length === 0);
   const [movementMap, setMovementMap] = useState({});
   const priceMemoryRef = useRef({});
@@ -168,11 +168,10 @@ export default function MarketPage() {
     const primaryConfigs = hasWatchlist ? marketWatchlist : INDICES;
     const primarySymbols = getUniqueSymbols(primaryConfigs.map(item => item.symbol));
 
-    const futureSymbols = getUniqueSymbols(FUTURES.map(f => f.symbol));
     const secondarySymbols = getUniqueSymbols([
       ...SECTORS.map(s => s.symbol),
       ...marketWatchlist.map(item => item.symbol),
-    ]).filter((symbol) => !primarySymbols.includes(symbol) && !futureSymbols.includes(symbol));
+    ]).filter((symbol) => !primarySymbols.includes(symbol));
 
     const mergeMarketData = (nextData) => {
       if (!mounted || !nextData || Object.keys(nextData).length === 0) return;
@@ -226,7 +225,6 @@ export default function MarketPage() {
       const { signal } = activeController;
 
       const primaryRequest = fetchSymbolGroup(primarySymbols, signal, { extended: hasWatchlist });
-      const futuresRequest = fetchSymbolGroup(futureSymbols, signal);
       const secondaryRequest = fetchSymbolGroup(secondarySymbols, signal);
 
       try {
@@ -234,16 +232,6 @@ export default function MarketPage() {
       } catch (err) {
         if (err.name !== 'AbortError') {
           console.error('Failed to fetch primary market data:', err);
-        }
-      } finally {
-        if (mounted && isInitial) setLoading(false);
-      }
-
-      try {
-        mergeMarketData(await futuresRequest);
-      } catch (err) {
-        if (err.name !== 'AbortError') {
-          console.error('Failed to fetch futures market data:', err);
         }
       } finally {
         if (mounted && isInitial) setLoading(false);
@@ -271,6 +259,82 @@ export default function MarketPage() {
     };
   }, [marketWatchlist]);
 
+  const optionCandidates = useMemo(() => getOptionCandidates({
+    watchlist: marketWatchlist,
+    trades,
+    limit: 3,
+  }), [marketWatchlist, trades]);
+
+  useEffect(() => {
+    let mounted = true;
+    let activeController = null;
+
+    const fetchOptionQuotes = async () => {
+      if (optionCandidates.length === 0) {
+        setOptionQuotes({});
+        setOptionLoading(false);
+        return;
+      }
+
+      activeController?.abort();
+      activeController = new AbortController();
+      setOptionLoading(true);
+
+      try {
+        const grouped = optionCandidates.reduce((acc, candidate) => {
+          const key = `${candidate.underlying}:${candidate.expiration}`;
+          if (!acc[key]) acc[key] = [];
+          acc[key].push(candidate);
+          return acc;
+        }, {});
+        const nextQuotes = {};
+
+        await Promise.all(Object.entries(grouped).map(async ([, candidates]) => {
+          const first = candidates[0];
+          const params = new URLSearchParams({
+            symbol: first.underlying,
+            expiration: first.expiration,
+            provider: marketDataConfig.optionProvider || 'auto',
+          });
+          const res = await fetch(`/api/options-chain?${params.toString()}`, {
+            signal: activeController.signal,
+            headers: {
+              ...(marketDataConfig.tradierToken ? { 'X-Tradier-Token': marketDataConfig.tradierToken } : {}),
+              ...(marketDataConfig.polygonToken ? { 'X-Polygon-Token': marketDataConfig.polygonToken } : {}),
+            },
+          });
+          const json = await res.json();
+          if (!res.ok) throw new Error(json.error || '期权行情加载失败');
+
+          candidates.forEach((candidate) => {
+            const match = findMatchingOption(json.options || [], candidate);
+            if (match) {
+              nextQuotes[candidate.id] = mergeOptionQuote(candidate, match);
+            }
+          });
+        }));
+
+        if (!mounted) return;
+        setOptionQuotes(nextQuotes);
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          console.warn('Failed to fetch option quotes:', error);
+        }
+      } finally {
+        if (mounted) setOptionLoading(false);
+      }
+    };
+
+    fetchOptionQuotes();
+    const intervalId = setInterval(fetchOptionQuotes, MARKET_POLL_INTERVAL_MS * 3);
+
+    return () => {
+      mounted = false;
+      activeController?.abort();
+      clearInterval(intervalId);
+    };
+  }, [optionCandidates, marketDataConfig]);
+
   // Map symbols to full data objects
   const mapData = (configList) => {
     return configList.map(config => {
@@ -292,7 +356,15 @@ export default function MarketPage() {
 
   const hasWatchlist = marketWatchlist.length > 0;
   const primaryItems = mapData(hasWatchlist ? marketWatchlist : INDICES);
-  const futureItems = mapData(FUTURES);
+  const optionItems = optionCandidates.map((candidate) => ({
+    ...candidate,
+    ...(optionQuotes[candidate.id] || {}),
+    price: optionQuotes[candidate.id]?.price ?? null,
+    pctChange: optionQuotes[candidate.id]?.pctChange ?? null,
+    absChange: optionQuotes[candidate.id]?.absChange ?? null,
+    quoteLabel: optionQuotes[candidate.id]?.quoteLabel || `${candidate.underlying} · ${candidate.expiration.slice(5)} · ${candidate.optionType}`,
+    movement: movementMap[candidate.id] || '',
+  }));
   const sectorItems = mapData(SECTORS);
   const watchlistItems = marketWatchlist.map((item) => {
     const data = marketData[item.symbol] || {};
@@ -363,14 +435,21 @@ export default function MarketPage() {
         <section>
           <div className="market-section-title market-section-title--orange">
             <span className="market-section-title__bar" />
-            <h2>指数期货</h2>
+            <h2>期权</h2>
           </div>
-          <IndexCardScroller
-            items={futureItems}
-            colorConvention={colorConvention}
-            loading={loading}
-            variant="futures"
-          />
+          {optionItems.length > 0 ? (
+            <IndexCardScroller
+              items={optionItems}
+              colorConvention={colorConvention}
+              loading={optionLoading}
+              variant="options"
+            />
+          ) : (
+            <div className="market-watchlist-empty market-options-empty">
+              <div className="market-watchlist-empty__title">暂无期权</div>
+              <p>关注期权后显示关注合约；没有关注时显示最近买入的期权。</p>
+            </div>
+          )}
         </section>
 
         <section>

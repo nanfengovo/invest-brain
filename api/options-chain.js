@@ -278,7 +278,7 @@ export default async function handler(req, res) {
         generatedAt: new Date().toISOString(),
         ...(await fetchPolygon(symbol, expiration, polygonToken)),
       };
-    } else if (provider === 'yahoo') {
+    } else if (provider === 'yahoo' || provider === 'auto') {
       payload = {
         success: true,
         symbol,

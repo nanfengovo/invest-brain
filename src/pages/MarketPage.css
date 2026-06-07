@@ -455,7 +455,8 @@
   display: none;
 }
 
-.market-index-strip--futures {
+.market-index-strip--futures,
+.market-index-strip--options {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   margin: 0;
@@ -482,7 +483,8 @@
   will-change: transform, box-shadow;
 }
 
-.market-index-strip--futures .market-index-card {
+.market-index-strip--futures .market-index-card,
+.market-index-strip--options .market-index-card {
   flex-basis: auto;
   min-height: 106px;
 }
@@ -546,8 +548,13 @@
   font-variant-numeric: tabular-nums;
 }
 
-.market-index-strip--futures .market-index-card__price {
+.market-index-strip--futures .market-index-card__price,
+.market-index-strip--options .market-index-card__price {
   font-size: 17px;
+}
+
+.market-options-empty {
+  min-height: 106px;
 }
 
 .market-index-card__change {

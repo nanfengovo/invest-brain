@@ -48,13 +48,6 @@ const TYPE_LABELS = {
   BOOK: '书籍',
 };
 
-const TYPE_SHORT_LABELS = {
-  ARTICLE: '文',
-  VIDEO: '视',
-  IMAGE: '图',
-  BOOK: '书',
-};
-
 const splitList = (value) => String(value || '')
   .split(/[,\n，、]/)
   .map((item) => item.trim())
@@ -272,7 +265,6 @@ export default function InformationPage() {
                     >
                       <div className="info-row__type">
                         <span className="info-row__type-icon">{TYPE_ICONS[info.type] || <LinkOutline />}</span>
-                        <span>{TYPE_SHORT_LABELS[info.type] || '情'}</span>
                       </div>
                       <div className="info-row__main">
                         <div className="info-row__title">{info.title}</div>

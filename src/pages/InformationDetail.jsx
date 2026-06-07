@@ -6,6 +6,7 @@ import { db } from '../db/database';
 import { useTradeStore } from '../stores/useTradeStore';
 import { useAppStore } from '../stores/useAppStore';
 import { getFileUrlFromOPFS } from '../utils/opfsUtils';
+import { findMediaUrls } from '../utils/mediaResolver';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -118,7 +119,7 @@ function getTwitterPostId(url) {
 }
 
 function isDirectVideoUrl(url = '') {
-  return /\.(mp4|webm|ogg|mov)(\?|#|$)/i.test(url);
+  return /\.(mp4|webm|ogg|mov|m3u8)(\?|#|$)/i.test(url);
 }
 
 function getTwitterFallbackText(content = '', title = '') {
@@ -351,6 +352,7 @@ export default function InformationDetail() {
   const [viewpoints, setViewpoints] = useState([]);
   const [linkedDecisions, setLinkedDecisions] = useState([]);
   const [fileUrl, setFileUrl] = useState(null);
+  const [resolvedMedia, setResolvedMedia] = useState(null);
 
   // PDF state
   const [pdfNumPages, setPdfNumPages] = useState(null);
@@ -544,7 +546,6 @@ export default function InformationDetail() {
   const isPdf = useMemo(() => info?.file_path?.toLowerCase().endsWith('.pdf'), [info?.file_path]);
   const isVideoInfo = info?.type === 'VIDEO';
   const isArticleInfo = info?.type === 'ARTICLE';
-  const hasInlineSource = Boolean(youtubeId || bilibiliId || isDirectVideo || twitterPostId);
 
   // Content: show full by default, no collapse
   const displayContent = useMemo(() => {
@@ -560,6 +561,43 @@ export default function InformationDetail() {
     return text.trim();
   }, [info?.content, info?.url, validUrl]);
   const twitterFallbackText = useMemo(() => getTwitterFallbackText(displayContent, info?.title), [displayContent, info?.title]);
+  const embeddedMedia = useMemo(() => findMediaUrls(info?.url, displayContent), [displayContent, info?.url]);
+  const resolvedVideoUrl = resolvedMedia?.videoUrl || embeddedMedia.videos[0] || (isDirectVideo ? validUrl : null);
+  const resolvedImageUrl = resolvedMedia?.thumbnailUrl || embeddedMedia.images[0] || null;
+  const hasInlineSource = Boolean(youtubeId || bilibiliId || resolvedVideoUrl || resolvedImageUrl || twitterPostId);
+
+  useEffect(() => {
+    let cancelled = false;
+    setResolvedMedia(null);
+
+    if (!validUrl || embeddedMedia.videos.length > 0 || isDirectVideo) {
+      return undefined;
+    }
+
+    async function resolveMedia() {
+      try {
+        const response = await fetch('/api/resolve-media', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            url: validUrl,
+            content: displayContent,
+          }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!cancelled && response.ok && data.success) {
+          setResolvedMedia(data.media || null);
+        }
+      } catch (err) {
+        console.warn('[InformationDetail] Media resolve failed:', err);
+      }
+    }
+
+    resolveMedia();
+    return () => {
+      cancelled = true;
+    };
+  }, [displayContent, embeddedMedia.videos.length, isDirectVideo, validUrl]);
 
   const [actionSheetVisible, setActionSheetVisible] = useState(false);
   const deleteInformation = useTradeStore(s => s.deleteInformation);
@@ -858,7 +896,7 @@ export default function InformationDetail() {
         </Popup>
 
         {/* ── Inline Source Embed ── */}
-        {(youtubeId || bilibiliId || isDirectVideo || twitterPostId) && (
+        {(youtubeId || bilibiliId || resolvedVideoUrl || twitterPostId) && (
           <div ref={inlineSourceRef} />
         )}
 
@@ -888,18 +926,30 @@ export default function InformationDetail() {
           </div>
         )}
 
-        {isVideoInfo && isDirectVideo && !youtubeId && !bilibiliId && (
+        {resolvedVideoUrl && !youtubeId && !bilibiliId && (
           <div className="info-detail__embed">
-            <video src={validUrl} controls className="info-detail__video" />
+            <video
+              src={resolvedVideoUrl}
+              poster={resolvedImageUrl || undefined}
+              controls
+              playsInline
+              className="info-detail__video"
+            />
           </div>
         )}
 
-        {twitterPostId && !youtubeId && !bilibiliId && !isDirectVideo && (
+        {!resolvedVideoUrl && resolvedImageUrl && (
+          <div className="info-detail__media">
+            <img src={resolvedImageUrl} alt="媒体预览" className="info-detail__image" />
+          </div>
+        )}
+
+        {twitterPostId && !youtubeId && !bilibiliId && !resolvedVideoUrl && (
           <TwitterPostEmbed url={validUrl} fallbackText={twitterFallbackText} />
         )}
 
         {/* ── Link Source Card ── */}
-        {validUrl && !youtubeId && !bilibiliId && !isDirectVideo && !twitterPostId && (
+        {validUrl && !youtubeId && !bilibiliId && !resolvedVideoUrl && !twitterPostId && (
           <div className="info-detail__link-card">
             <div className="info-detail__link-card-icon">
               <img

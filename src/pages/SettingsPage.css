@@ -284,3 +284,56 @@
   flex: 1;
   min-width: 0;
 }
+
+[data-theme='light'] .settings-page .settings-card__input-wrapper {
+  background: rgba(255, 255, 255, 0.96);
+  border-color: rgba(71, 85, 105, 0.22);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+[data-theme='light'] .settings-page .settings-card__input-wrapper:focus-within {
+  border-color: rgba(99, 102, 241, 0.58);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+}
+
+[data-theme='light'] .settings-page .settings-card__input-wrapper .adm-input,
+[data-theme='light'] .settings-page .settings-card__input-wrapper .adm-input-element {
+  color: #0f172a;
+}
+
+[data-theme='light'] .settings-page .settings-card__input-wrapper .adm-input-element::placeholder {
+  color: #475569;
+  opacity: 1;
+}
+
+[data-theme='light'] .settings-page .adm-selector .adm-selector-item {
+  background: rgba(248, 250, 252, 0.98);
+  border-color: rgba(71, 85, 105, 0.22);
+  color: #334155;
+  font-weight: 600;
+}
+
+[data-theme='light'] .settings-page .adm-selector .adm-selector-item-active {
+  background: rgba(99, 102, 241, 0.14);
+  border-color: rgba(79, 70, 229, 0.72);
+  color: #3730a3;
+}
+
+[data-theme='light'] .settings-page .settings-card__actions-row .adm-button {
+  border-color: rgba(79, 70, 229, 0.55);
+}
+
+[data-theme='light'] .settings-page .settings-card__actions-row .adm-button-fill-outline {
+  background: rgba(255, 255, 255, 0.82);
+  background-image: none;
+  color: #4f46e5;
+}
+
+[data-theme='light'] .settings-page .settings-card__actions-row .adm-button.adm-button-disabled,
+[data-theme='light'] .settings-page .settings-card__actions-row .adm-button:disabled {
+  background: rgba(226, 232, 240, 0.82);
+  background-image: none;
+  border-color: rgba(100, 116, 139, 0.28);
+  color: #64748b;
+  opacity: 1;
+}

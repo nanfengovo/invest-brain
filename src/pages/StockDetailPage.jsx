@@ -6,6 +6,7 @@ import KlineChart from '../components/Market/KlineChart';
 import { useAppStore } from '../stores/useAppStore';
 import { db } from '../db/database';
 import { checkPriceAlerts } from '../utils/priceAlertRunner';
+import { syncServerPriceAlerts } from '../utils/serverPriceAlerts';
 import './StockDetailPage.css';
 
 const SHARE_BASE_URL = 'https://invest-brain.vercel.app';
@@ -89,7 +90,7 @@ const copyText = async (text) => {
 export default function StockDetailPage() {
   const { symbol } = useParams();
   const navigate = useNavigate();
-  const { colorConvention, streamlitUrl, notificationConfig, marketDataConfig } = useAppStore();
+  const { colorConvention, streamlitUrl, notificationConfig, marketDataConfig, syncUserId, syncSecret } = useAppStore();
   
   const [activeTab, setActiveTab] = useState('1d');
   const [chartData, setChartData] = useState([]);
@@ -371,6 +372,12 @@ export default function StockDetailPage() {
     });
     setAlertTarget('');
     await reloadAlerts();
+    syncServerPriceAlerts({
+      syncUserId,
+      syncSecret,
+      notificationConfig,
+      marketDataConfig,
+    }).catch((error) => console.warn('Server alert sync failed:', error));
     Toast.show({ icon: 'success', content: '提醒已添加' });
   };
 
@@ -395,6 +402,12 @@ export default function StockDetailPage() {
       note: `${option.expiration} ${option.type} ${option.strike}`,
     });
     await reloadAlerts();
+    syncServerPriceAlerts({
+      syncUserId,
+      syncSecret,
+      notificationConfig,
+      marketDataConfig,
+    }).catch((error) => console.warn('Server alert sync failed:', error));
     Toast.show({ icon: 'success', content: '期权提醒已添加' });
   };
 
@@ -650,7 +663,7 @@ export default function StockDetailPage() {
         <div className="stock-detail__module-header">
           <div>
             <h3>价格提醒</h3>
-            <p>App 打开时自动检查，也可以手动触发检查</p>
+            <p>App 打开时自动检查；已配置同步凭证时会同步到后台定时检查</p>
           </div>
           <button type="button" onClick={handleCheckAlertsNow}>检查</button>
         </div>

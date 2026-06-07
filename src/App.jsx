@@ -6,6 +6,7 @@ import { useTradeStore } from './stores/useTradeStore';
 import { initDB, db } from './db/database';
 import { hasBackup, restoreAutoBackup } from './utils/autoBackup';
 import { checkPriceAlerts } from './utils/priceAlertRunner';
+import { syncCloudAlerts } from './utils/cloudAlerts';
 import AppShell from './components/Layout/AppShell';
 import DashboardPage from './pages/DashboardPage';
 import LoadingSpinner from './components/common/LoadingSpinner';
@@ -102,6 +103,14 @@ function App({ onReady }) {
     };
     const timer = window.setInterval(run, intervalMs);
     return () => window.clearInterval(timer);
+  }, [isDbReady, notificationConfig, marketDataConfig]);
+
+  useEffect(() => {
+    if (!isDbReady) return undefined;
+    const timer = window.setTimeout(() => {
+      syncCloudAlerts({ notificationConfig, marketDataConfig });
+    }, 1500);
+    return () => window.clearTimeout(timer);
   }, [isDbReady, notificationConfig, marketDataConfig]);
 
   if (initError) {

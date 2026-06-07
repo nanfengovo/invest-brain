@@ -6,6 +6,7 @@ import { useTradeStore } from '../stores/useTradeStore';
 import { parseTradesFile } from '../utils/importTrades';
 import { attachDecisionRecommendations } from '../utils/decisionMatcher';
 import { restoreAutoBackup } from '../utils/autoBackup';
+import { syncCloudAlerts } from '../utils/cloudAlerts';
 import './SettingsPage.css';
 
 function AgentLogo() {
@@ -367,6 +368,10 @@ function SettingsPage() {
 
     try {
       await saveSyncConfig(normalizedUserId, normalizedSecret);
+      await syncCloudAlerts({
+        notificationConfig: notificationInput,
+        marketDataConfig: marketDataInput,
+      });
       Toast.show({ icon: 'success', content: '云端配置已保存' });
     } catch (e) {
       Toast.show({ icon: 'fail', content: '保存失败' });
@@ -376,6 +381,10 @@ function SettingsPage() {
   async function handleSaveNotificationConfig() {
     try {
       await saveNotificationConfig(notificationInput);
+      await syncCloudAlerts({
+        notificationConfig: notificationInput,
+        marketDataConfig: marketDataInput,
+      });
       Toast.show({ icon: 'success', content: '提醒通道已保存' });
     } catch {
       Toast.show({ icon: 'fail', content: '保存失败' });
@@ -431,6 +440,10 @@ function SettingsPage() {
   async function handleSaveMarketDataConfig() {
     try {
       await saveMarketDataConfig(marketDataInput);
+      await syncCloudAlerts({
+        notificationConfig: notificationInput,
+        marketDataConfig: marketDataInput,
+      });
       Toast.show({ icon: 'success', content: '行情数据源已保存' });
     } catch {
       Toast.show({ icon: 'fail', content: '保存失败' });

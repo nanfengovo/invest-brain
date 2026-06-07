@@ -6,6 +6,7 @@ import KlineChart from '../components/Market/KlineChart';
 import { useAppStore } from '../stores/useAppStore';
 import { db } from '../db/database';
 import { checkPriceAlerts } from '../utils/priceAlertRunner';
+import { syncCloudAlerts } from '../utils/cloudAlerts';
 import './StockDetailPage.css';
 
 const SHARE_BASE_URL = 'https://invest-brain.vercel.app';
@@ -398,6 +399,7 @@ export default function StockDetailPage() {
 
     resetAlertForm();
     await reloadAlerts();
+    await syncCloudAlerts({ notificationConfig, marketDataConfig });
   };
 
   const handleEditAlert = (alert) => {
@@ -414,6 +416,7 @@ export default function StockDetailPage() {
       resetAlertForm();
     }
     await reloadAlerts();
+    await syncCloudAlerts({ notificationConfig, marketDataConfig });
     Toast.show({ icon: 'success', content: '提醒已删除' });
   };
 
@@ -424,10 +427,12 @@ export default function StockDetailPage() {
       return;
     }
     const normalizedMinutes = Math.min(720, Math.round(minutes));
-    await saveNotificationConfig({
+    const nextConfig = {
       ...notificationConfig,
       alertCheckIntervalMinutes: normalizedMinutes,
-    });
+    };
+    await saveNotificationConfig(nextConfig);
+    await syncCloudAlerts({ notificationConfig: nextConfig, marketDataConfig });
     setAlertIntervalInput(String(normalizedMinutes));
     Toast.show({ icon: 'success', content: `自动检查间隔已设为 ${normalizedMinutes} 分钟` });
   };
@@ -453,6 +458,7 @@ export default function StockDetailPage() {
       note: `${option.expiration} ${option.type} ${option.strike}`,
     });
     await reloadAlerts();
+    await syncCloudAlerts({ notificationConfig, marketDataConfig });
     Toast.show({ icon: 'success', content: '期权提醒已添加' });
   };
 
@@ -708,7 +714,7 @@ export default function StockDetailPage() {
         <div className="stock-detail__module-header">
           <div>
             <h3>价格提醒</h3>
-            <p>App 打开时自动检查，也可以手动触发检查</p>
+            <p>云端定时检查，本页也可手动触发</p>
           </div>
           <button type="button" onClick={handleCheckAlertsNow}>检查</button>
         </div>

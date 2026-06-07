@@ -1,4 +1,10 @@
 {
+  "crons": [
+    {
+      "path": "/api/alerts-cron",
+      "schedule": "* * * * *"
+    }
+  ],
   "rewrites": [
     {
       "source": "/((?!api/).*)",

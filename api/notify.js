@@ -6,7 +6,7 @@ function cleanText(value, max = 2000) {
   return String(value || '').trim().slice(0, max);
 }
 
-async function sendFeishu(webhook, title, body) {
+export async function sendFeishu(webhook, title, body) {
   if (!webhook) return { skipped: true };
   const response = await fetch(webhook, {
     method: 'POST',
@@ -25,7 +25,7 @@ async function sendFeishu(webhook, title, body) {
   return { ok: true };
 }
 
-async function sendResendEmail(email, title, body) {
+export async function sendResendEmail(email, title, body) {
   if (!email?.apiKey || !email?.from || !email?.to) return { skipped: true };
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',

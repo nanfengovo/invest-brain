@@ -149,6 +149,12 @@ export default function InformationForm({ onClose }) {
           } else {
             newContentText = result.content;
           }
+          if (result.media?.videoUrl && !newContentText.includes(result.media.videoUrl)) {
+            newContentText += `\n视频地址: ${result.media.videoUrl}`;
+          }
+          if (result.media?.thumbnailUrl && !newContentText.includes(result.media.thumbnailUrl)) {
+            newContentText += `\n封面地址: ${result.media.thumbnailUrl}`;
+          }
           
           if (!currentContent.includes(result.content)) {
             form.setFieldsValue({

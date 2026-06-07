@@ -352,7 +352,6 @@ export default function InformationDetail() {
   const [viewpoints, setViewpoints] = useState([]);
   const [linkedDecisions, setLinkedDecisions] = useState([]);
   const [fileUrl, setFileUrl] = useState(null);
-  const [resolvedMedia, setResolvedMedia] = useState(null);
 
   // PDF state
   const [pdfNumPages, setPdfNumPages] = useState(null);
@@ -562,42 +561,9 @@ export default function InformationDetail() {
   }, [info?.content, info?.url, validUrl]);
   const twitterFallbackText = useMemo(() => getTwitterFallbackText(displayContent, info?.title), [displayContent, info?.title]);
   const embeddedMedia = useMemo(() => findMediaUrls(info?.url, displayContent), [displayContent, info?.url]);
-  const resolvedVideoUrl = resolvedMedia?.videoUrl || embeddedMedia.videos[0] || (isDirectVideo ? validUrl : null);
-  const resolvedImageUrl = resolvedMedia?.thumbnailUrl || embeddedMedia.images[0] || null;
+  const resolvedVideoUrl = embeddedMedia.videos[0] || (isDirectVideo ? validUrl : null);
+  const resolvedImageUrl = embeddedMedia.images[0] || null;
   const hasInlineSource = Boolean(youtubeId || bilibiliId || resolvedVideoUrl || resolvedImageUrl || twitterPostId);
-
-  useEffect(() => {
-    let cancelled = false;
-    setResolvedMedia(null);
-
-    if (!validUrl || embeddedMedia.videos.length > 0 || isDirectVideo) {
-      return undefined;
-    }
-
-    async function resolveMedia() {
-      try {
-        const response = await fetch('/api/resolve-media', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            url: validUrl,
-            content: displayContent,
-          }),
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!cancelled && response.ok && data.success) {
-          setResolvedMedia(data.media || null);
-        }
-      } catch (err) {
-        console.warn('[InformationDetail] Media resolve failed:', err);
-      }
-    }
-
-    resolveMedia();
-    return () => {
-      cancelled = true;
-    };
-  }, [displayContent, embeddedMedia.videos.length, isDirectVideo, validUrl]);
 
   const [actionSheetVisible, setActionSheetVisible] = useState(false);
   const deleteInformation = useTradeStore(s => s.deleteInformation);

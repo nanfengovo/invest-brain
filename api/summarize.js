@@ -66,6 +66,74 @@ function cleanMarkdownForPrompt(markdown) {
     .trim();
 }
 
+const URL_PATTERN = /https?:\/\/[^\s)"'<>]+/g;
+
+function extractUrls(text = '') {
+  return [...new Set(String(text || '').match(URL_PATTERN) || [])]
+    .map((url) => url.replace(/[，。；;,.]+$/g, ''));
+}
+
+function isVideoUrl(url = '') {
+  return /\.(mp4|webm|ogg|mov|m3u8)(\?|#|$)/i.test(url)
+    || /video\.twimg\.com\/.+\.(mp4|m3u8)(\?|#|$)/i.test(url);
+}
+
+function isImageUrl(url = '') {
+  return /\.(png|jpe?g|gif|webp)(\?|#|$)/i.test(url)
+    || /pbs\.twimg\.com\/media\//i.test(url)
+    || /pbs\.twimg\.com\/amplify_video_thumb\//i.test(url);
+}
+
+function getTwitterPostId(url = '') {
+  try {
+    const match = new URL(url).pathname.match(/\/status(?:es)?\/(\d+)/);
+    return match ? match[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+function pickBestVideoVariant(variants = []) {
+  const mp4Variants = variants
+    .filter((variant) => variant?.url && variant.content_type === 'video/mp4')
+    .sort((a, b) => Number(b.bit_rate || 0) - Number(a.bit_rate || 0));
+  return mp4Variants[0]?.url || variants.find((variant) => variant?.url)?.url || null;
+}
+
+async function resolveTwitterMediaViaApi(url) {
+  const bearerToken = process.env.X_BEARER_TOKEN || process.env.TWITTER_BEARER_TOKEN;
+  const tweetId = getTwitterPostId(url);
+  if (!bearerToken || !tweetId) return null;
+
+  const params = new URLSearchParams({
+    expansions: 'attachments.media_keys',
+    'tweet.fields': 'attachments',
+    'media.fields': 'duration_ms,height,media_key,preview_image_url,type,url,width,variants',
+  });
+  const response = await fetch(`https://api.x.com/2/tweets/${tweetId}?${params.toString()}`, {
+    headers: {
+      Authorization: `Bearer ${bearerToken}`,
+      Accept: 'application/json',
+    },
+    signal: AbortSignal.timeout(10000),
+  });
+
+  if (!response.ok) {
+    console.warn(`[Summarize API] X media API returned ${response.status}`);
+    return null;
+  }
+
+  const data = await response.json();
+  const mediaItems = data.includes?.media || [];
+  const videoItem = mediaItems.find((item) => item.type === 'video' || item.type === 'animated_gif');
+  const imageItem = mediaItems.find((item) => item.type === 'photo');
+  return {
+    videoUrl: pickBestVideoVariant(videoItem?.variants || []),
+    thumbnailUrl: videoItem?.preview_image_url || imageItem?.url || null,
+    mediaType: videoItem?.type || imageItem?.type || null,
+  };
+}
+
 function buildJinaReaderUrl(url) {
   return `https://r.jina.ai/${url}`;
 }
@@ -235,6 +303,7 @@ export default async function handler(req, res) {
     let extractedAuthor = null;
     let extractedSummary = null;
     let contentSource = null;
+    let extractedMedia = null;
 
     // 1. If URL is provided, try parsing it (with graceful fallback)
     if (url) {
@@ -261,6 +330,7 @@ export default async function handler(req, res) {
       if (isTwitter) {
         try {
           console.log(`[Summarize API] Using X oEmbed API for: ${url}`);
+          extractedMedia = await resolveTwitterMediaViaApi(url);
           const oembedUrl = `https://publish.twitter.com/oembed?url=${encodeURIComponent(url)}&omit_script=true`;
           const oembedResp = await fetch(oembedUrl, { signal: AbortSignal.timeout(8000) });
           if (oembedResp.ok) {
@@ -279,6 +349,13 @@ export default async function handler(req, res) {
             if (!extractedContent) {
               extractedContent = tweetText;
               contentSource = 'x-oembed';
+            }
+            if (extractedMedia?.videoUrl || extractedMedia?.thumbnailUrl) {
+              const mediaLines = [
+                extractedMedia.videoUrl ? `视频地址: ${extractedMedia.videoUrl}` : null,
+                extractedMedia.thumbnailUrl ? `封面地址: ${extractedMedia.thumbnailUrl}` : null,
+              ].filter(Boolean).join('\n');
+              extractedContent = extractedContent ? `${extractedContent}\n\n${mediaLines}` : mediaLines;
             }
             extractedAuthor = author;
           } else {
@@ -435,6 +512,7 @@ JSON 格式：
       summary: extractedSummary || null,
       content: extractedContent ? truncateText(extractedContent, MAX_RETURN_CONTENT_CHARS) : null,
       author: extractedAuthor,
+      media: extractedMedia || null,
       contentSource,
       model: modelUsed,
     });

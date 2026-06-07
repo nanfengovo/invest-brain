@@ -40,6 +40,13 @@ export default function HoldingsPage() {
   const [expandedId, setExpandedId] = useState(null);
   const [expandedTrades, setExpandedTrades] = useState([]);
   const [tradesLoading, setTradesLoading] = useState(false);
+  const [viewMode, setViewMode] = useState(() => {
+    try {
+      return localStorage.getItem('ib_holdings_view_mode') || 'compact';
+    } catch {
+      return 'compact';
+    }
+  });
   const [authors, setAuthors] = useState([]);
   const [authorSearch, setAuthorSearch] = useState('');
   const [selectedAuthor, setSelectedAuthor] = useState('');
@@ -94,6 +101,15 @@ export default function HoldingsPage() {
     },
     [activeAuthor, expandedId]
   );
+
+  const handleViewModeChange = (nextMode) => {
+    setViewMode(nextMode);
+    try {
+      localStorage.setItem('ib_holdings_view_mode', nextMode);
+    } catch {
+      // Ignore storage failures; the current session still updates.
+    }
+  };
 
   const totalBuys = Number(summary?.total_buys) || 0;
   const totalSells = Number(summary?.total_sells) || 0;
@@ -205,6 +221,30 @@ export default function HoldingsPage() {
 
       {/* ── Holdings List ── */}
       <div className="holdings-page__section">
+        <div className="holdings-page__list-toolbar">
+          <span className="holdings-page__list-count">
+            {holdings.length} 个活跃持仓
+          </span>
+          <div className="holdings-page__view-toggle" aria-label="持仓视图">
+            <button
+              className={`holdings-page__view-toggle-btn ${
+                viewMode === 'compact' ? 'holdings-page__view-toggle-btn--active' : ''
+              }`}
+              onClick={() => handleViewModeChange('compact')}
+            >
+              紧凑
+            </button>
+            <button
+              className={`holdings-page__view-toggle-btn ${
+                viewMode === 'card' ? 'holdings-page__view-toggle-btn--active' : ''
+              }`}
+              onClick={() => handleViewModeChange('card')}
+            >
+              卡片
+            </button>
+          </div>
+        </div>
+
         {holdingsLoading && holdings.length === 0 ? (
           <div className="holdings-page__loading">
             {[1, 2, 3].map((i) => (
@@ -228,7 +268,7 @@ export default function HoldingsPage() {
                   key={holdingKey}
                   className={`holdings-page__card glass-card ${
                     isExpanded ? 'holdings-page__card--expanded' : ''
-                  }`}
+                  } ${viewMode === 'compact' ? 'holdings-page__card--compact' : ''}`}
                   style={{ animationDelay: `${idx * 60}ms` }}
                 >
                   {/* Card Main Content */}

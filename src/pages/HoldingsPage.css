@@ -209,6 +209,45 @@
 }
 
 /* ── Holdings List ── */
+.holdings-page__list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.holdings-page__list-count {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.holdings-page__view-toggle {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.holdings-page__view-toggle-btn {
+  min-width: 44px;
+  min-height: 26px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 0 8px;
+}
+
+.holdings-page__view-toggle-btn--active {
+  background: var(--color-accent-bg);
+  color: var(--color-accent-light);
+}
+
 .holdings-page__list {
   display: flex;
   flex-direction: column;
@@ -244,6 +283,92 @@
 .holdings-page__card--expanded {
   border-color: var(--color-border-light);
   box-shadow: var(--shadow-lg), 0 0 20px var(--color-accent-glow);
+}
+
+.holdings-page__card--compact {
+  border-radius: 8px;
+}
+
+.holdings-page__card--compact .holdings-page__card-main {
+  align-items: center;
+  padding: 10px 12px;
+  gap: 10px;
+}
+
+.holdings-page__card--compact .holdings-page__symbol-row {
+  gap: 6px;
+}
+
+.holdings-page__card--compact .holdings-page__symbol {
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.holdings-page__card--compact .holdings-page__type-badge {
+  padding: 1px 6px;
+  font-size: 9px;
+  letter-spacing: 0;
+}
+
+.holdings-page__card--compact .holdings-page__name-row {
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.holdings-page__card--compact .holdings-page__name {
+  max-width: 150px;
+  font-size: 11px;
+}
+
+.holdings-page__card--compact .holdings-page__broker-badge,
+.holdings-page__card--compact .holdings-page__author-badge {
+  padding: 1px 5px;
+  border-radius: 5px;
+  font-size: 9px;
+}
+
+.holdings-page__card--compact .holdings-page__sector {
+  display: none;
+}
+
+.holdings-page__card--compact .holdings-page__card-right {
+  display: grid;
+  grid-template-columns: auto;
+  gap: 1px;
+  min-width: 88px;
+}
+
+.holdings-page__card--compact .holdings-page__position-value {
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.holdings-page__card--compact .holdings-page__quantity {
+  font-size: 11px;
+  margin-top: 0;
+}
+
+.holdings-page__card--compact .holdings-page__avg-cost {
+  font-size: 10px;
+  margin-top: 0;
+}
+
+.holdings-page__card--compact .holdings-page__card-footer {
+  display: none;
+}
+
+.holdings-page__card--compact.holdings-page__card--expanded .holdings-page__card-footer {
+  display: flex;
+  padding: 7px 12px;
+}
+
+.holdings-page__card--compact .holdings-page__trades-list {
+  padding: 4px 0;
+}
+
+.holdings-page__card--compact .holdings-page__trade-item {
+  padding: 8px 12px;
 }
 
 /* Card main content — clickable */

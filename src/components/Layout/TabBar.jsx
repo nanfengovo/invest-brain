@@ -49,6 +49,7 @@ const tabs = [
   { key: '/', title: '看板', icon: <AppOutline /> },
   { key: '/market', title: '行情', icon: <MarketIcon /> },
   { key: '/trades', title: '交易', icon: <HistogramOutline /> },
+  { key: '/holdings', title: '持仓', icon: <PieIcon /> },
   { key: '/information', title: '情报', icon: <CompassOutline /> },
   { key: '/settings', title: '我的', icon: <SetOutline /> },
 ];

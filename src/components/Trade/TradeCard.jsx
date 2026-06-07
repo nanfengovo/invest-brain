@@ -112,6 +112,7 @@ export default function TradeCard({ trade, index = 0, onEdit, compactMode = fals
   const assetDisplay = getTradeAssetDisplay(trade);
   const quantityUnit = getTradeQuantityUnit(trade);
   const lifecycleBadge = getLifecycleBadge(trade.lifecycle, dir.type);
+  const authorLabel = String(trade.author || '').trim() || '未标记';
 
   const total = useMemo(() => {
     const qty = parseFloat(trade.quantity) || 0;
@@ -196,6 +197,9 @@ export default function TradeCard({ trade, index = 0, onEdit, compactMode = fals
                   {lifecycleBadge.label}
                 </span>
               )}
+              <span className="trade-card__author-tag">
+                提交人 {authorLabel}
+              </span>
             </div>
           </div>
 
@@ -214,8 +218,11 @@ export default function TradeCard({ trade, index = 0, onEdit, compactMode = fals
         </div>
 
         {/* Footer: Decision Tag / Broker / Account / Note */}
-        {(trade.decision_title || trade.account || trade.note || trade.broker) && (
+        {(trade.decision_title || trade.account || trade.note || trade.broker || authorLabel) && (
           <div className="trade-card__footer">
+            <span className="trade-card__author-tag trade-card__author-tag--footer">
+              提交人 {authorLabel}
+            </span>
             {trade.broker && (
               <span className="trade-card__broker-tag">{trade.broker}</span>
             )}

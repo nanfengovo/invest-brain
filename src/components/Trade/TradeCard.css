@@ -37,7 +37,7 @@
 /* ── Main Layout ── */
 .trade-card__body {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
@@ -63,6 +63,7 @@
   white-space: nowrap;
   flex-shrink: 0;
   margin-top: 2px;
+  min-width: 42px;
 }
 
 .trade-card__direction-badge--buy {
@@ -81,9 +82,39 @@
   min-width: 0;
   flex: 1;
   display: flex;
-  align-items: baseline;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+}
+
+.trade-card__title-row,
+.trade-card__meta-row,
+.trade-card__status-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.trade-card__title-row {
   gap: 7px;
+  min-height: 22px;
+}
+
+.trade-card__meta-row {
+  min-height: 20px;
+}
+
+.trade-card__meta-row--empty::before {
+  content: '';
+  display: block;
+  height: 1px;
+}
+
+.trade-card__status-row {
+  gap: 6px;
+  row-gap: 4px;
   flex-wrap: wrap;
+  min-height: 18px;
 }
 
 .trade-card__symbol {
@@ -92,7 +123,9 @@
   color: var(--color-text-primary);
   letter-spacing: 0.02em;
   line-height: 1.3;
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -102,7 +135,7 @@
   font-size: 12px;
   color: var(--color-text-muted);
   min-width: 0;
-  flex: 0 1 auto;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -114,7 +147,6 @@
   border: 1px solid var(--option-exp-border, transparent);
   border-radius: var(--radius-full);
   padding: 2px 7px;
-  flex-basis: 100%;
   max-width: 100%;
 }
 
@@ -301,6 +333,10 @@
 .trade-card__right {
   text-align: right;
   flex-shrink: 0;
+  width: 98px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
 }
 
 .trade-card__price-qty {
@@ -312,6 +348,7 @@
   color: var(--color-text-primary);
   letter-spacing: -0.01em;
   line-height: 1.3;
+  white-space: nowrap;
 }
 
 .trade-card__total {
@@ -322,6 +359,7 @@
   color: var(--color-text-secondary);
   margin-top: 2px;
   letter-spacing: -0.01em;
+  white-space: nowrap;
 }
 
 .trade-card__time {
@@ -441,39 +479,56 @@
 
 /* Compact Mode */
 .trade-card--compact {
-  padding: 8px 12px;
-  min-height: auto;
-  border-radius: 8px;
+  padding: 10px 12px;
+  min-height: 89px;
+  border-radius: 12px;
   gap: 8px;
 }
 
 .trade-card--compact .trade-card__body {
   align-items: center;
+  gap: 10px;
 }
 
 .trade-card--compact .trade-card__direction-badge {
   padding: 2px 6px;
   font-size: 10px;
+  min-width: 38px;
+  margin-top: 1px;
 }
 
 .trade-card--compact .trade-card__info {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  gap: 4px;
+}
+
+.trade-card--compact .trade-card__title-row {
+  min-height: 21px;
+}
+
+.trade-card--compact .trade-card__meta-row {
+  min-height: 19px;
+}
+
+.trade-card--compact .trade-card__status-row {
+  min-height: 18px;
+  gap: 5px;
+}
+
+.trade-card--compact .trade-card__symbol {
+  font-size: 15px;
+  max-width: 128px;
 }
 
 .trade-card--compact .trade-card__asset-name {
   font-size: 10px;
-  margin-top: 0;
-  max-width: 118px;
+  max-width: 168px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .trade-card--compact .trade-card__asset-name--option {
-  flex-basis: auto;
-  max-width: 160px;
+  max-width: 172px;
 }
 
 .trade-card--compact .trade-card__option-type {
@@ -496,6 +551,7 @@
 
 .trade-card--compact .trade-card__right {
   text-align: right;
+  width: 90px;
 }
 
 .trade-card--compact .trade-card__price-qty {

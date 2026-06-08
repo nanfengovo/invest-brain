@@ -128,6 +128,9 @@ export default function TradeCard({ trade, index = 0, onEdit, compactMode = fals
   const lifecycleBadge = getLifecycleBadge(trade.lifecycle, dir.type);
   const authorLabel = String(trade.author || '').trim() || '未标记';
   const syncMeta = getSyncStatusMeta(trade);
+  const titleText = isOption && optionTitle ? optionTitle : displaySymbol;
+  const hasOptionExpiration = isOption && trade.option_expiration_label;
+  const hasAssetMeta = hasOptionExpiration || Boolean(assetDisplay);
 
   const total = useMemo(() => {
     const qty = parseFloat(trade.quantity) || 0;
@@ -203,30 +206,36 @@ export default function TradeCard({ trade, index = 0, onEdit, compactMode = fals
               {dir.label}
             </span>
             <div className="trade-card__info">
-              <div className="trade-card__symbol">{isOption && optionTitle ? optionTitle : displaySymbol}</div>
-              {isOption && optionType && (
-                <span className={`trade-card__option-type trade-card__option-type--${optionType.toLowerCase()}`}>
-                  {optionType}
+              <div className="trade-card__title-row">
+                <div className="trade-card__symbol">{titleText}</div>
+                {isOption && optionType && (
+                  <span className={`trade-card__option-type trade-card__option-type--${optionType.toLowerCase()}`}>
+                    {optionType}
+                  </span>
+                )}
+              </div>
+              <div className={`trade-card__meta-row ${hasAssetMeta ? '' : 'trade-card__meta-row--empty'}`}>
+                {hasOptionExpiration ? (
+                  <div className={`trade-card__asset-name trade-card__asset-name--option trade-card__asset-name--option-${expirationTone}`}>
+                    {trade.option_expiration_label}
+                  </div>
+                ) : assetDisplay ? (
+                  <div className="trade-card__asset-name">{assetDisplay}</div>
+                ) : null}
+              </div>
+              <div className="trade-card__status-row">
+                {lifecycleBadge && (
+                  <span className={`trade-card__lifecycle trade-card__lifecycle--${lifecycleBadge.type}`}>
+                    {lifecycleBadge.label}
+                  </span>
+                )}
+                <span className="trade-card__author-tag">
+                  提交人 {authorLabel}
                 </span>
-              )}
-              {isOption && trade.option_expiration_label ? (
-                <div className={`trade-card__asset-name trade-card__asset-name--option trade-card__asset-name--option-${expirationTone}`}>
-                  {trade.option_expiration_label}
-                </div>
-              ) : assetDisplay && (
-                <div className="trade-card__asset-name">{assetDisplay}</div>
-              )}
-              {lifecycleBadge && (
-                <span className={`trade-card__lifecycle trade-card__lifecycle--${lifecycleBadge.type}`}>
-                  {lifecycleBadge.label}
+                <span className={`trade-card__sync-tag ${syncMeta.className}`}>
+                  {syncMeta.label}
                 </span>
-              )}
-              <span className="trade-card__author-tag">
-                提交人 {authorLabel}
-              </span>
-              <span className={`trade-card__sync-tag ${syncMeta.className}`}>
-                {syncMeta.label}
-              </span>
+              </div>
             </div>
           </div>
 

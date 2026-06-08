@@ -1454,21 +1454,21 @@ export default function InformationDetail() {
               {canTranslateReader && (
                 isTranslatedMode ? (
                   <>
-                    <Button size="mini" fill="outline" onClick={() => setReaderMode('original')}>原文</Button>
-                    <Button size="mini" fill="outline" disabled={translationLoading} onClick={() => handleTranslateReader(true)}>
+                    <Button size="mini" fill="outline" className="info-detail__reader-action info-detail__reader-action--muted" onClick={() => setReaderMode('original')}>原文</Button>
+                    <Button size="mini" fill="outline" className="info-detail__reader-action info-detail__reader-action--translate" disabled={translationLoading} onClick={() => handleTranslateReader(true)}>
                       {translationLoading ? '翻译中' : '重译'}
                     </Button>
                   </>
                 ) : (
-                  <Button size="mini" fill="outline" disabled={translationLoading} onClick={() => handleTranslateReader(false)}>
+                  <Button size="mini" fill="outline" className="info-detail__reader-action info-detail__reader-action--translate" disabled={translationLoading} onClick={() => handleTranslateReader(false)}>
                     {translationLoading ? '翻译中' : '翻译中文'}
                   </Button>
                 )
               )}
-              <Button size="mini" fill="outline" onClick={handleShareInformationPoster}>分享图</Button>
-              <Button size="mini" fill="outline" onClick={markCurrentMaterial}>标注材料</Button>
+              <Button size="mini" fill="outline" className="info-detail__reader-action info-detail__reader-action--utility" onClick={handleShareInformationPoster}>分享图</Button>
+              <Button size="mini" fill="outline" className="info-detail__reader-action info-detail__reader-action--utility" onClick={markCurrentMaterial}>标注材料</Button>
               {validUrl && (
-                <Button size="mini" color="primary" onClick={() => window.open(validUrl, '_blank', 'noopener,noreferrer')}>
+                <Button size="mini" color="primary" className="info-detail__reader-action info-detail__reader-action--source" onClick={() => window.open(validUrl, '_blank', 'noopener,noreferrer')}>
                   来源
                 </Button>
               )}

@@ -7,6 +7,7 @@ import { useTradeStore } from '../stores/useTradeStore';
 import { useAppStore } from '../stores/useAppStore';
 import { getFileUrlFromOPFS } from '../utils/opfsUtils';
 import { findMediaUrls } from '../utils/mediaResolver';
+import { resolveInformationReaderKind } from '../utils/informationReaderKind';
 import { getSyncStatusMeta, isTeamMirrorRecord } from '../utils/syncStatus';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import AssetLogo from '../components/common/AssetLogo';
@@ -862,24 +863,35 @@ export default function InformationDetail() {
   const resolvedVideoUrl = embeddedMedia.videos[0] || (isDirectVideo ? validUrl : null);
   const resolvedImageUrl = embeddedMedia.images[0] || (isDirectImage ? validUrl : null);
   const readerKind = useMemo(() => {
-    if (isPdf || isRemotePdf) return 'pdf';
-    if (isEpub || isRemoteEpub) return 'epub';
-    if (youtubeId || bilibiliId || resolvedVideoUrl) return 'video';
-    if (resolvedImageUrl || (fileUrl && isImageInfo)) return 'image';
-    if (twitterPostId) return 'xpost';
-    if (isHtmlContent) return 'html';
-    if (cleanContent) return 'markdown';
-    if (validUrl) return 'webpage';
-    return 'empty';
+    return resolveInformationReaderKind({
+      infoType: info?.type,
+      cleanContent,
+      fileUrl,
+      isPdf,
+      isRemotePdf,
+      isEpub,
+      isRemoteEpub,
+      isHtmlContent,
+      isImageInfo,
+      isVideoInfo,
+      resolvedImageUrl,
+      resolvedVideoUrl,
+      twitterPostId,
+      validUrl,
+      youtubeId,
+      bilibiliId,
+    });
   }, [
     cleanContent,
     fileUrl,
     isEpub,
     isHtmlContent,
     isImageInfo,
+    isVideoInfo,
     isPdf,
     isRemoteEpub,
     isRemotePdf,
+    info?.type,
     resolvedImageUrl,
     resolvedVideoUrl,
     twitterPostId,

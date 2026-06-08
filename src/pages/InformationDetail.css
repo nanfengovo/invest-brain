@@ -9,6 +9,11 @@
   background-color: var(--color-bg-primary);
 }
 
+.info-detail > .adm-nav-bar {
+  flex: 0 0 auto;
+  padding-top: max(var(--safe-area-top), env(safe-area-inset-top, 0px));
+}
+
 .info-detail__content {
   flex: 1;
   overflow-y: auto;

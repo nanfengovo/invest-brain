@@ -961,9 +961,10 @@ export default function InformationDetail() {
     }
 
     setTranslationLoading(true);
+    const estimatedChunkCount = Math.max(1, Math.ceil(translationSourceContent.length / 7000));
     const toast = Toast.show({
       icon: 'loading',
-      content: '正在翻译成中文...',
+      content: estimatedChunkCount > 1 ? '正在分段翻译中文...' : '正在翻译成中文...',
       duration: 0,
     });
 
@@ -998,9 +999,14 @@ export default function InformationDetail() {
       const modelLabel = getAiUsageLabel(result);
       setTranslationModel(modelLabel || result.model || '');
       setReaderMode('translated');
+      const chunkCount = Number(result.chunk_count || 1);
+      const translatedChunks = Number(result.translated_chunks || chunkCount);
+      const completionText = chunkCount > 1
+        ? `分段翻译完成 · ${translatedChunks}/${chunkCount} 段`
+        : '翻译完成';
       Toast.show({
         icon: 'success',
-        content: `${result.truncated ? '已翻译前半部分正文' : '翻译完成'}${modelLabel ? ` · ${modelLabel}` : ''}`,
+        content: `${completionText}${modelLabel ? ` · ${modelLabel}` : ''}`,
       });
     } catch (error) {
       toast.close();

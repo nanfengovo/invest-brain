@@ -31,7 +31,10 @@ const DEFAULT_GEMINI_MODELS = [
 const MAX_READER_CHARS = 9000;
 const MAX_RETURN_CONTENT_CHARS = 3500;
 const MAX_USER_CONTENT_CHARS = 9000;
-const MAX_TRANSLATE_CHARS = 12000;
+const MAX_TRANSLATE_SOURCE_CHARS = 48000;
+const TRANSLATE_CHUNK_CHARS = 7000;
+const MAX_TRANSLATE_CHUNKS = 8;
+const TRANSLATE_CHUNK_CONCURRENCY = 2;
 
 function uniqueValues(values) {
   return [...new Set(values.map(v => String(v || '').trim()).filter(Boolean))];
@@ -49,6 +52,114 @@ function getGeminiModelPool(...configuredValues) {
 function truncateText(text, limit) {
   const normalized = String(text || '').replace(/\s+\n/g, '\n').trim();
   return normalized.length > limit ? `${normalized.slice(0, limit).trim()}...` : normalized;
+}
+
+function normalizePromptText(text) {
+  return String(text || '')
+    .replace(/\s+\n/g, '\n')
+    .replace(/\n{4,}/g, '\n\n\n')
+    .trim();
+}
+
+function splitTranslateChunks(text, limit = TRANSLATE_CHUNK_CHARS) {
+  const normalized = normalizePromptText(text);
+  if (!normalized) return [];
+  if (normalized.length <= limit) return [normalized];
+
+  const paragraphs = normalized.split(/\n{2,}/);
+  const chunks = [];
+  let current = '';
+
+  const pushCurrent = () => {
+    const value = current.trim();
+    if (value) chunks.push(value);
+    current = '';
+  };
+
+  for (const paragraph of paragraphs) {
+    const block = paragraph.trim();
+    if (!block) continue;
+
+    if (block.length > limit) {
+      pushCurrent();
+      for (let start = 0; start < block.length; start += limit) {
+        chunks.push(block.slice(start, start + limit).trim());
+      }
+      continue;
+    }
+
+    const next = current ? `${current}\n\n${block}` : block;
+    if (next.length > limit) {
+      pushCurrent();
+      current = block;
+    } else {
+      current = next;
+    }
+  }
+
+  pushCurrent();
+  return chunks;
+}
+
+function buildTranslatePrompt({ chunk, title, sourceLanguage, chunkIndex, chunkCount }) {
+  const chunkHint = chunkCount > 1
+    ? `\n这是全文第 ${chunkIndex + 1}/${chunkCount} 段。请只翻译这一段，不要承接、总结或补写其他段落。`
+    : '';
+
+  return `你是投资情报翻译助手。请把下面的材料翻译成简体中文。
+
+要求：
+1. 保留 Markdown 段落、标题、列表、引用等结构。
+2. 股票代码、公司名、产品名、技术名可以保留英文或常用中文译名。
+3. 不要总结、不要删减观点、不要添加原文没有的信息。
+4. 如果原文中有链接或代码块，请保留。
+5. 只输出翻译后的中文正文，不要解释。${chunkHint}
+
+标题：${title || '无'}
+来源语言：${sourceLanguage}
+
+原文：
+${chunk}`;
+}
+
+async function translateChunk({ chunk, chunkIndex, chunkCount, title, sourceLanguage, keys, models, requestedModel }) {
+  const prompt = buildTranslatePrompt({ chunk, title, sourceLanguage, chunkIndex, chunkCount });
+  const result = await callAiWithModelPool({
+    keys,
+    models,
+    parts: [{ text: prompt }],
+    maxOutputTokens: 8192,
+    responseMimeType: 'text/plain',
+  });
+
+  return {
+    translatedText: result.rawResponse,
+    result,
+    metadata: buildAiMetadata(result, requestedModel || models[0]),
+  };
+}
+
+async function translateChunksWithLimit(options) {
+  const { chunks } = options;
+  const results = new Array(chunks.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < chunks.length) {
+      const chunkIndex = nextIndex;
+      nextIndex += 1;
+      results[chunkIndex] = await translateChunk({
+        ...options,
+        chunk: chunks[chunkIndex],
+        chunkIndex,
+        chunkCount: chunks.length,
+      });
+    }
+  }
+
+  const workerCount = Math.min(TRANSLATE_CHUNK_CONCURRENCY, chunks.length);
+  await Promise.all(Array.from({ length: workerCount }, worker));
+  return results;
 }
 
 function decodeHtmlEntities(text) {
@@ -517,25 +628,13 @@ async function handleTranslateMode({ req, res, keys }) {
     model,
     textModel,
   } = req.body || {};
-  const sourceText = truncateText(text, MAX_TRANSLATE_CHARS);
+  const sourceText = normalizePromptText(text);
   if (!sourceText) {
     return res.status(400).json({ error: '没有可翻译的正文' });
   }
-
-  const prompt = `你是投资情报翻译助手。请把下面的材料翻译成简体中文。
-
-要求：
-1. 保留 Markdown 段落、标题、列表、引用等结构。
-2. 股票代码、公司名、产品名、技术名可以保留英文或常用中文译名。
-3. 不要总结、不要删减观点、不要添加原文没有的信息。
-4. 如果原文中有链接或代码块，请保留。
-5. 只输出翻译后的中文正文，不要解释。
-
-标题：${title || '无'}
-来源语言：${sourceLanguage}
-
-原文：
-${sourceText}`;
+  if (sourceText.length > MAX_TRANSLATE_SOURCE_CHARS) {
+    return res.status(413).json({ error: `正文太长，请先拆成多条情报后再翻译（当前 ${sourceText.length} 字，最多 ${MAX_TRANSLATE_SOURCE_CHARS} 字）` });
+  }
 
   const requestedModel = String(model || textModel || '').trim();
   const models = getAiModelPool({
@@ -552,20 +651,36 @@ ${sourceText}`;
     ],
     keys,
   });
-  const result = await callAiWithModelPool({
+
+  const chunks = splitTranslateChunks(sourceText);
+  if (chunks.length > MAX_TRANSLATE_CHUNKS) {
+    return res.status(413).json({ error: `正文分段过多，请先拆成多条情报后再翻译（当前 ${chunks.length} 段，最多 ${MAX_TRANSLATE_CHUNKS} 段）` });
+  }
+
+  const chunkResults = await translateChunksWithLimit({
     keys,
     models,
-    parts: [{ text: prompt }],
-    maxOutputTokens: 8192,
-    responseMimeType: 'text/plain',
+    chunks,
+    title,
+    sourceLanguage,
+    requestedModel,
   });
-  const metadata = buildAiMetadata(result, requestedModel || models[0]);
+  const successfulResults = chunkResults.filter(Boolean);
+  const firstResult = successfulResults[0]?.result || {};
+  const metadata = successfulResults[0]?.metadata || buildAiMetadata(firstResult, requestedModel || models[0]);
+  const translatedText = successfulResults
+    .map(item => String(item.translatedText || '').trim())
+    .filter(Boolean)
+    .join('\n\n');
 
   return res.status(200).json({
     success: true,
-    translatedText: result.rawResponse,
-    model: result.model,
-    truncated: String(text || '').length > sourceText.length,
+    translatedText,
+    model: firstResult.model,
+    truncated: false,
+    chunk_count: chunks.length,
+    translated_chunks: successfulResults.length,
+    source_chars: sourceText.length,
     ...metadata,
   });
 }

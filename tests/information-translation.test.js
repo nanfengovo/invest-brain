@@ -6,6 +6,9 @@ test('summarize api translate mode keeps markdown structure and Chinese output i
   const source = readFileSync(new URL('../api/summarize.js', import.meta.url), 'utf8');
 
   assert.match(source, /mode === 'translate'/);
+  assert.match(source, /splitTranslateChunks/);
+  assert.match(source, /chunk_count/);
+  assert.match(source, /translated_chunks/);
   assert.match(source, /保留 Markdown 段落、标题、列表、引用等结构/);
   assert.match(source, /只输出翻译后的中文正文/);
   assert.match(source, /x-gemini-api-key/);
@@ -35,5 +38,17 @@ test('information translation cleans source scaffold and reports failures clearl
   assert.match(source, /Published Time:/);
   assert.match(source, /Post\|Conversation/);
   assert.match(source, /模型没有返回翻译正文，请稍后重试/);
+  assert.match(source, /正在分段翻译中文/);
+  assert.match(source, /分段翻译完成/);
+  assert.doesNotMatch(source, /已翻译前半部分正文/);
   assert.match(source, /toast\.close\(\);\s*Toast\.show\(\{ icon: 'fail'/);
+});
+
+test('information detail page uses mobile PWA safe viewport sizing', () => {
+  const source = readFileSync(new URL('../src/pages/InformationDetail.css', import.meta.url), 'utf8');
+
+  assert.match(source, /100dvh/);
+  assert.match(source, /100svh/);
+  assert.match(source, /-webkit-overflow-scrolling: touch/);
+  assert.match(source, /overscroll-behavior: contain/);
 });

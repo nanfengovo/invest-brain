@@ -435,8 +435,10 @@ function InformationReader({
   pdfNumPages,
   setPdfPageNumber,
   setPdfNumPages,
+  readerContent,
 }) {
   const title = info?.title || '信息正文';
+  const content = readerContent ?? cleanContent;
 
   if (kind === 'pdf') {
     if (!sourceUrl) {
@@ -524,21 +526,21 @@ function InformationReader({
   }
 
   if (kind === 'html') {
-    return <HtmlDocumentReader html={cleanContent} title={title} />;
+    return <HtmlDocumentReader html={content} title={title} />;
   }
 
   if (kind === 'markdown') {
     return (
       <div className="info-detail__article-body">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>
-          {cleanContent}
+          {content}
         </ReactMarkdown>
       </div>
     );
   }
 
   if (kind === 'webpage') {
-    return <WebPageReader url={validUrl} content={cleanContent} title={title} />;
+    return <WebPageReader url={validUrl} content={content} title={title} />;
   }
 
   return <div className="info-detail__reader-state">还没有正文、文件或可展示来源。</div>;
@@ -601,10 +603,15 @@ export default function InformationDetail() {
   const syncUserId = useAppStore(s => s.syncUserId);
   const workspaceScope = useAppStore(s => s.workspaceScope);
   const addMarketWatchItem = useAppStore(s => s.addMarketWatchItem);
+  const geminiApiKey = useAppStore(s => s.geminiApiKey);
   const [authorName, setAuthorName] = useState(
     syncUserId || localStorage.getItem('invest_sync_user_id') || '我'
   );
   const [submittingVp, setSubmittingVp] = useState(false);
+  const [translationText, setTranslationText] = useState('');
+  const [translationModel, setTranslationModel] = useState('');
+  const [translationLoading, setTranslationLoading] = useState(false);
+  const [readerMode, setReaderMode] = useState('original');
 
   // Tag editing state
   const [editTypeVisible, setEditTypeVisible] = useState(false);
@@ -662,6 +669,12 @@ export default function InformationDetail() {
       }
     };
   }, [id, navigate, reloadContext]);
+
+  useEffect(() => {
+    setTranslationText('');
+    setTranslationModel('');
+    setReaderMode('original');
+  }, [id]);
 
   const handleAddViewpoint = async () => {
     if (readOnly) {
@@ -877,10 +890,63 @@ export default function InformationDetail() {
   ]);
   const readerSourceUrl = fileUrl || validUrl;
   const hasInlineSource = readerKind !== 'webpage' && readerKind !== 'empty';
+  const canTranslateReader = ['markdown', 'html', 'webpage'].includes(readerKind) && Boolean(cleanContent);
+  const activeReaderContent = readerMode === 'translated' && translationText ? translationText : cleanContent;
 
   const [actionSheetVisible, setActionSheetVisible] = useState(false);
   const deleteInformation = useTradeStore(s => s.deleteInformation);
   const updateInformation = useTradeStore(s => s.updateInformation);
+
+  const handleTranslateReader = async (force = false) => {
+    if (!canTranslateReader) {
+      Toast.show({ content: '当前材料没有可翻译的正文' });
+      return;
+    }
+
+    if (translationText && !force) {
+      setReaderMode('translated');
+      return;
+    }
+
+    setTranslationLoading(true);
+    const toast = Toast.show({
+      icon: 'loading',
+      content: '正在翻译成中文...',
+      duration: 0,
+    });
+
+    try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (geminiApiKey) {
+        headers['x-gemini-api-key'] = geminiApiKey;
+      }
+
+      const response = await fetch('/api/translate', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          title: info?.title || '',
+          text: cleanContent,
+          sourceLanguage: 'auto',
+        }),
+      });
+
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result.error || `HTTP ${response.status}`);
+      }
+
+      setTranslationText(result.translatedText || '');
+      setTranslationModel(result.model || '');
+      setReaderMode('translated');
+      Toast.show({ icon: 'success', content: result.truncated ? '已翻译前半部分正文' : '翻译完成' });
+    } catch (error) {
+      Toast.show({ icon: 'fail', content: error.message || '翻译失败' });
+    } finally {
+      toast.close();
+      setTranslationLoading(false);
+    }
+  };
 
   const handleAction = async (action) => {
     setActionSheetVisible(false);
@@ -1279,10 +1345,28 @@ export default function InformationDetail() {
         <section ref={inlineSourceRef} className="info-detail__reader glass-card">
           <div className="info-detail__reader-header">
             <div className="info-detail__reader-heading">
-              <span>{getReaderLabel(readerKind)}</span>
+              <span>
+                {getReaderLabel(readerKind)}
+                {readerMode === 'translated' && translationText ? ' · 中文翻译' : ''}
+              </span>
               {validUrl && <small>{extractDomain(validUrl)}</small>}
+              {readerMode === 'translated' && translationModel && <small>翻译模型 {translationModel}</small>}
             </div>
             <div className="info-detail__reader-actions">
+              {canTranslateReader && (
+                readerMode === 'translated' && translationText ? (
+                  <>
+                    <Button size="mini" fill="outline" onClick={() => setReaderMode('original')}>原文</Button>
+                    <Button size="mini" fill="outline" disabled={translationLoading} onClick={() => handleTranslateReader(true)}>
+                      重译
+                    </Button>
+                  </>
+                ) : (
+                  <Button size="mini" fill="outline" disabled={translationLoading} onClick={() => handleTranslateReader(false)}>
+                    {translationLoading ? '翻译中' : '中文'}
+                  </Button>
+                )
+              )}
               <Button size="mini" fill="outline" onClick={markCurrentMaterial}>标注材料</Button>
               {validUrl && (
                 <Button size="mini" color="primary" onClick={() => window.open(validUrl, '_blank', 'noopener,noreferrer')}>
@@ -1300,6 +1384,7 @@ export default function InformationDetail() {
             resolvedVideoUrl={resolvedVideoUrl}
             resolvedImageUrl={resolvedImageUrl}
             cleanContent={cleanContent}
+            readerContent={activeReaderContent}
             twitterFallbackText={twitterFallbackText}
             pdfPageNumber={pdfPageNumber}
             pdfNumPages={pdfNumPages}

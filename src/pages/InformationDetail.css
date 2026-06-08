@@ -1042,6 +1042,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 10px;
   padding: 10px 12px;
   border-bottom: 1px solid var(--color-border);
@@ -1070,6 +1071,8 @@
 .info-detail__reader-actions {
   display: flex;
   flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 6px;
 }
 

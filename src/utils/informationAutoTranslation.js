@@ -27,6 +27,15 @@ function normalizePromptText(value = '') {
     .trim();
 }
 
+function cleanTranslatedText(value = '') {
+  return String(value || '')
+    .replace(/^标题[:：].*（第\s*\d+\s*\/\s*\d+\s*段）\s*$/gim, '')
+    .replace(/^标题[:：]\s*情报正文（第\s*\d+\s*\/\s*\d+\s*段）\s*$/gim, '')
+    .replace(/^只输出翻译后的中文正文[:：]?\s*$/gim, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 export function splitInformationTranslationChunks(text = '', limit = TRANSLATION_CHUNK_CHARS) {
   const normalized = normalizePromptText(text);
   if (!normalized) return [];
@@ -134,7 +143,7 @@ export function getCachedInformationTranslation(info, { title = '', content = ''
   const contentHash = hashText(content || info?.content || '');
   return {
     title: cached.titleHash === titleHash ? cached.title || '' : '',
-    content: cached.contentHash === contentHash ? cached.content || '' : '',
+    content: cached.contentHash === contentHash ? cleanTranslatedText(cached.content) : '',
     modelLabel: cached.modelLabel || '',
   };
 }
@@ -148,7 +157,7 @@ export function saveInformationTranslation(info, { title = '', content = '', tra
   cache[id] = {
     ...previous,
     title: translatedTitle || previous.title || '',
-    content: translatedContent || previous.content || '',
+    content: translatedContent ? cleanTranslatedText(translatedContent) : previous.content || '',
     titleHash: translatedTitle ? hashText(title || info?.title || '') : previous.titleHash,
     contentHash: translatedContent ? hashText(content || info?.content || '') : previous.contentHash,
     modelLabel: modelLabel || previous.modelLabel || '',
@@ -225,7 +234,7 @@ export async function translateTextToChinese({
   }
 
   return {
-    translatedText: String(result.translatedText || '').trim(),
+    translatedText: cleanTranslatedText(result.translatedText),
     modelLabel: getAiUsageLabel(result) || result.model || '',
     raw: result,
   };
@@ -295,7 +304,7 @@ export async function translateTextToChineseInChunks({
   }
 
   return {
-    translatedText: translatedChunks.join('\n\n').trim(),
+    translatedText: cleanTranslatedText(translatedChunks.join('\n\n')),
     modelLabel,
     chunkCount: chunks.length,
     translatedChunks: translatedChunks.length,

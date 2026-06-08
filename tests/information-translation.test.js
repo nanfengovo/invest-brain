@@ -48,9 +48,14 @@ test('information detail reader exposes Chinese and original toggles', () => {
   assert.match(source, /自动翻译中\{autoTranslationModelLabel/);
   assert.match(source, /中文\{autoTranslationModelLabel/);
   assert.match(source, /自动翻译失败，可手动重试/);
-  assert.match(source, /chunkTimeoutMs: 18000/);
+  assert.match(source, /AUTO_READER_TRANSLATION_CHUNK_TIMEOUT_MS = 45000/);
+  assert.match(source, /chunkTimeoutMs: AUTO_READER_TRANSLATION_CHUNK_TIMEOUT_MS/);
   assert.match(source, /armReaderWatchdog/);
-  assert.match(source, /22000/);
+  assert.match(source, /AUTO_READER_TRANSLATION_WATCHDOG_MS = 55000/);
+  assert.match(source, /readerWatchdogTimedOut/);
+  assert.match(source, /autoTranslationRequestRef\.current === requestKey/);
+  assert.match(source, /autoTranslationRequestRef\.current = ''/);
+  assert.match(source, /saveInformationTranslation\(info, \{\s*title: info\?\.title \|\| '',\s*content: translationSourceContent,\s*translatedTitle: autoTitleTranslation,\s*translatedContent: nextTranslationText,/);
   assert.doesNotMatch(source, /getSummarizeApiUrl\(Boolean\(localGeminiKey \|\| localNvidiaKey\)\)/);
   assert.doesNotMatch(source, /const BUILTIN_AI_API_BASE_URL/);
   assert.match(css, /max-width: min\(100%, 260px\)/);
@@ -105,4 +110,6 @@ test('information list auto-translates non-Chinese titles with local cache', () 
   assert.match(util, /mode: 'translate'/);
   assert.match(util, /buildAiRequestBody/);
   assert.match(util, /buildAiRequestHeaders/);
+  assert.match(util, /cleanTranslatedText/);
+  assert.match(util, /标题\[:：\]\.\*（第\\s\*\\d\+\\s\*\\\/\\s\*\\d\+\\s\*段）/);
 });

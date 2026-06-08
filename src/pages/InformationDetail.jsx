@@ -79,6 +79,10 @@ const VP_STATUS_CONFIG = {
   ARCHIVED: { label: '已归档', color: '#6b7280', bg: 'rgba(107,114,128,0.12)' },
 };
 
+const AUTO_TITLE_TRANSLATION_TIMEOUT_MS = 18000;
+const AUTO_READER_TRANSLATION_CHUNK_TIMEOUT_MS = 45000;
+const AUTO_READER_TRANSLATION_WATCHDOG_MS = 55000;
+
 /**
  * Convert a Unix timestamp (seconds) to locale date string.
  */
@@ -992,6 +996,7 @@ export default function InformationDetail() {
     const controller = new AbortController();
     let cancelled = false;
     let readerWatchdogId = null;
+    let readerWatchdogTimedOut = false;
     const clearReaderWatchdog = () => {
       if (readerWatchdogId) {
         window.clearTimeout(readerWatchdogId);
@@ -1000,12 +1005,14 @@ export default function InformationDetail() {
     };
     const armReaderWatchdog = () => {
       clearReaderWatchdog();
+      readerWatchdogTimedOut = false;
       readerWatchdogId = window.setTimeout(() => {
         if (cancelled) return;
-        controller.abort();
+        readerWatchdogTimedOut = true;
         setAutoReaderTranslationStatus('failed');
         setAutoReaderTranslationProgress(null);
-      }, 22000);
+        controller.abort();
+      }, AUTO_READER_TRANSLATION_WATCHDOG_MS);
     };
     setAutoTranslationStatus(needsTitleTranslation && !cached?.title ? 'translating' : (cached?.title ? 'ready' : ''));
     setAutoTranslationModel(cached?.modelLabel || '');
@@ -1026,7 +1033,7 @@ export default function InformationDetail() {
             nvidiaApiKey,
             aiProviderConfig,
             signal: controller.signal,
-            timeoutMs: 18000,
+            timeoutMs: AUTO_TITLE_TRANSLATION_TIMEOUT_MS,
           });
           translatedTitle = titleResult.translatedText;
           modelLabel = titleResult.modelLabel || modelLabel;
@@ -1057,7 +1064,7 @@ export default function InformationDetail() {
             nvidiaApiKey,
             aiProviderConfig,
             signal: controller.signal,
-            chunkTimeoutMs: 18000,
+            chunkTimeoutMs: AUTO_READER_TRANSLATION_CHUNK_TIMEOUT_MS,
             onProgress: (progress) => {
               if (!cancelled) {
                 setAutoReaderTranslationProgress(progress);
@@ -1091,7 +1098,8 @@ export default function InformationDetail() {
         }
       } catch {
         clearReaderWatchdog();
-        if (cancelled || controller.signal.aborted) return;
+        if (cancelled) return;
+        if (controller.signal.aborted && !readerWatchdogTimedOut) return;
         setAutoTranslationStatus(translatedTitle ? 'ready' : 'failed');
         setAutoReaderTranslationStatus('failed');
         setAutoReaderTranslationProgress(null);
@@ -1103,6 +1111,9 @@ export default function InformationDetail() {
       cancelled = true;
       clearReaderWatchdog();
       controller.abort();
+      if (autoTranslationRequestRef.current === requestKey) {
+        autoTranslationRequestRef.current = '';
+      }
     };
   }, [
     aiProviderConfig,
@@ -1130,8 +1141,10 @@ export default function InformationDetail() {
       return;
     }
 
-    setTranslationLoading(true);
     const estimatedChunkCount = Math.max(1, Math.ceil(translationSourceContent.length / 2800));
+    setTranslationLoading(true);
+    setAutoReaderTranslationStatus('translating');
+    setAutoReaderTranslationProgress({ completed: 0, total: estimatedChunkCount });
     let toast = Toast.show({
       icon: 'loading',
       content: estimatedChunkCount > 1 ? '正在分段翻译中文...' : '正在翻译成中文...',
@@ -1148,6 +1161,7 @@ export default function InformationDetail() {
         aiProviderConfig,
         chunkTimeoutMs: 45000,
         onProgress: ({ completed, total }) => {
+          setAutoReaderTranslationProgress({ completed, total });
           if (total <= 1) return;
           const nextProgressText = `正在分段翻译中文... ${completed}/${total}`;
           if (nextProgressText === lastProgressText) return;
@@ -1166,7 +1180,17 @@ export default function InformationDetail() {
       setTranslationText(nextTranslationText);
       const modelLabel = result.modelLabel || getAiUsageLabel(result);
       setTranslationModel(modelLabel || result.model || '');
+      setAutoTranslationModel(modelLabel || '');
+      setAutoReaderTranslationStatus('ready');
+      setAutoReaderTranslationProgress(null);
       setReaderMode('translated');
+      saveInformationTranslation(info, {
+        title: info?.title || '',
+        content: translationSourceContent,
+        translatedTitle: autoTitleTranslation,
+        translatedContent: nextTranslationText,
+        modelLabel,
+      });
       const chunkCount = Number(result.chunkCount || result.chunk_count || 1);
       const translatedChunks = Number(result.translatedChunks || result.translated_chunks || chunkCount);
       const completionText = chunkCount > 1
@@ -1179,6 +1203,8 @@ export default function InformationDetail() {
     } catch (error) {
       toast.close();
       Toast.show({ icon: 'fail', content: error.message || '翻译失败' });
+      setAutoReaderTranslationStatus('failed');
+      setAutoReaderTranslationProgress(null);
     } finally {
       setTranslationLoading(false);
     }

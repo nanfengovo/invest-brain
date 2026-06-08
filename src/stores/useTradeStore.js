@@ -1,6 +1,11 @@
 import { create } from 'zustand';
 import { db } from '../db/database';
 import { triggerAutoBackup } from '../utils/autoBackup';
+import {
+  buildDecisionAssetPayload,
+  getDecisionPersistenceErrorMessage,
+  normalizeDecisionAssetId,
+} from '../utils/decisionPersistence';
 import { useAppStore } from './useAppStore';
 
 const getWorkspaceScope = () => useAppStore.getState().workspaceScope || 'personal';
@@ -13,6 +18,16 @@ const assertPersonalWorkspace = () => {
     return { success: false, error: '团队工作区是只读镜像，请先切换到个人工作区再编辑' };
   }
   return null;
+};
+const ensureDecisionAsset = async (assetId, sector) => {
+  const assetPayload = buildDecisionAssetPayload(assetId, sector);
+  if (!assetPayload) return null;
+
+  const existing = await db.getAssetById(assetPayload.id);
+  if (!existing) {
+    await db.upsertAsset(assetPayload);
+  }
+  return assetPayload.id;
 };
 
 export const useTradeStore = create((set, get) => ({
@@ -163,8 +178,10 @@ export const useTradeStore = create((set, get) => ({
       const blocked = assertPersonalWorkspace();
       if (blocked) return blocked;
       const currentAuthor = getCurrentAuthor();
+      const assetId = await ensureDecisionAsset(decision.asset_id, decision.sector);
       await db.addDecision({
         ...decision,
+        asset_id: assetId,
         author: decision.author || currentAuthor,
         source_author: decision.source_author || decision.author || currentAuthor,
         workspace_scope: 'personal',
@@ -177,7 +194,7 @@ export const useTradeStore = create((set, get) => ({
       return { success: true };
     } catch (err) {
       console.error('Failed to add decision:', err);
-      return { success: false, error: err.message };
+      return { success: false, error: getDecisionPersistenceErrorMessage(err, '保存') };
     }
   },
 
@@ -185,13 +202,22 @@ export const useTradeStore = create((set, get) => ({
     try {
       const blocked = assertPersonalWorkspace();
       if (blocked) return blocked;
-      await db.updateDecision(id, { ...updates, sync_status: 'local' });
+      const hasAssetUpdate = Object.prototype.hasOwnProperty.call(updates, 'asset_id');
+      const normalizedAssetId = hasAssetUpdate ? normalizeDecisionAssetId(updates.asset_id) : undefined;
+      if (normalizedAssetId) {
+        await ensureDecisionAsset(normalizedAssetId, updates.sector);
+      }
+      await db.updateDecision(id, {
+        ...updates,
+        ...(hasAssetUpdate ? { asset_id: normalizedAssetId } : {}),
+        sync_status: 'local',
+      });
       await get().refreshDecisions();
       triggerAutoBackup().catch((e) => console.error('[AutoBackup] Error:', e));
       return { success: true };
     } catch (err) {
       console.error('Failed to update decision:', err);
-      return { success: false, error: err.message };
+      return { success: false, error: getDecisionPersistenceErrorMessage(err, '更新') };
     }
   },
 

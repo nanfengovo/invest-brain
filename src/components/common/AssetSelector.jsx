@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Input } from 'antd-mobile';
 import { useTradeStore } from '../../stores/useTradeStore';
 import './AssetSelector.css';
@@ -10,6 +10,15 @@ export default function AssetSelector({ value, onChange, placeholder = "如: AAP
   const { assets, getHoldings, refreshAssets } = useTradeStore();
   const [holdings, setHoldings] = useState([]);
   const containerRef = useRef(null);
+  const holdingWeight = useMemo(
+    () => new Map(
+      holdings.map((holding) => [
+        holding.asset_id,
+        Math.abs(Number(holding.total_quantity || 0) * Number(holding.avg_cost || 0)),
+      ])
+    ),
+    [holdings]
+  );
 
   useEffect(() => {
     setInputValue(value || '');
@@ -25,7 +34,7 @@ export default function AssetSelector({ value, onChange, placeholder = "如: AAP
       }
     };
     loadHoldings();
-  }, [getHoldings]);
+  }, [getHoldings, refreshAssets]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -56,13 +65,6 @@ export default function AssetSelector({ value, onChange, placeholder = "如: AAP
     );
 
     // Prioritize larger holdings
-    const holdingWeight = new Map(
-      holdings.map((holding) => [
-        holding.asset_id,
-        Math.abs(Number(holding.total_quantity || 0) * Number(holding.avg_cost || 0)),
-      ])
-    );
-    
     matches.sort((a, b) => {
       const aWeight = holdingWeight.get(a.id) || 0;
       const bWeight = holdingWeight.get(b.id) || 0;

@@ -264,6 +264,7 @@ async function generateAiBackground(posterConfig = {}) {
         ...(config.nvidiaApiKey ? { 'x-nvidia-api-key': config.nvidiaApiKey } : {}),
       },
       body: JSON.stringify({
+        mode: 'share-background',
         provider: 'nvidia',
         model: promptResult.model || selectedModel,
         prompt: promptResult.prompt,

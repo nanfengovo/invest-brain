@@ -5,6 +5,7 @@ import {
   getAiModelPool,
   hasAnyAiKey,
 } from './_lib/aiProviders.js';
+import { generateShareBackground } from './_lib/shareBackground.js';
 
 /**
  * Vercel Serverless Function — /api/summarize
@@ -569,6 +570,33 @@ ${sourceText}`;
   });
 }
 
+async function handleShareBackgroundMode({ req, res }) {
+  const apiKey = req.headers['x-nvidia-api-key'] || process.env.NVIDIA_API_KEY;
+  const {
+    prompt,
+    model: requestedModel,
+    width: requestedWidth = 1080,
+    height: requestedHeight = 1440,
+  } = req.body || {};
+
+  try {
+    const payload = await generateShareBackground({
+      apiKey,
+      prompt,
+      requestedModel,
+      requestedWidth,
+      requestedHeight,
+    });
+    return res.status(200).json(payload);
+  } catch (error) {
+    const status = /请输入|未配置/.test(error.message || '') ? 400 : 500;
+    return res.status(status).json({
+      error: error.message || 'AI 背景生成失败',
+      model: requestedModel,
+    });
+  }
+}
+
 function getLegacyGeminiSummaryModels() {
   return getGeminiModelPool(
     process.env.GEMINI_TRANSLATE_MODELS,
@@ -607,6 +635,10 @@ export default async function handler(req, res) {
 
     if (mode === 'translate') {
       return await handleTranslateMode({ req, res, keys });
+    }
+
+    if (mode === 'share-background') {
+      return await handleShareBackgroundMode({ req, res });
     }
 
     if (!url && !content && !image) {

@@ -1,14 +1,3 @@
-/**
- * Vercel Serverless Function — /api/share-background
- *
- * Generates optional poster backgrounds through NVIDIA Build / NIM.
- * Critical trading text and numbers are still rendered locally by Canvas.
- */
-
-export const config = {
-  maxDuration: 60,
-};
-
 const ALLOWED_MODELS = [
   'qwen-image-2512',
   'qwen-image',
@@ -124,57 +113,31 @@ async function callDirectModelEndpoint({ apiKey, model, prompt, width, height })
   return payload;
 }
 
-export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-nvidia-api-key');
-
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+export async function generateShareBackground({ apiKey, prompt, requestedModel, requestedWidth = 1080, requestedHeight = 1440 }) {
+  if (!apiKey) {
+    throw new Error('NVIDIA API Key 未配置，请先在设置页或环境变量中添加。');
   }
 
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: '仅支持 POST 请求' });
+  const safePrompt = String(prompt || '').trim();
+  if (!safePrompt) {
+    throw new Error('请先输入背景提示词');
   }
 
-  try {
-    const apiKey = req.headers['x-nvidia-api-key'] || process.env.NVIDIA_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ error: 'NVIDIA API Key 未配置，请先在设置页或环境变量中添加。' });
-    }
+  const model = normalizeModel(requestedModel);
+  const width = Math.min(1536, Math.max(512, Number(requestedWidth) || 1080));
+  const height = Math.min(1536, Math.max(512, Number(requestedHeight) || 1440));
+  const payload = MODEL_ENDPOINTS[model]
+    ? await callDirectModelEndpoint({ apiKey, model, prompt: safePrompt, width, height })
+    : await callOpenAiCompatibleImageApi({ apiKey, model, prompt: safePrompt, width, height });
+  const image = await extractImageFromNvidiaPayload(payload);
 
-    const {
-      prompt,
-      model: requestedModel,
-      width: requestedWidth = 1080,
-      height: requestedHeight = 1440,
-    } = req.body || {};
-
-    const safePrompt = String(prompt || '').trim();
-    if (!safePrompt) {
-      return res.status(400).json({ error: '请先输入背景提示词' });
-    }
-
-    const model = normalizeModel(requestedModel);
-    const width = Math.min(1536, Math.max(512, Number(requestedWidth) || 1080));
-    const height = Math.min(1536, Math.max(512, Number(requestedHeight) || 1440));
-    const payload = MODEL_ENDPOINTS[model]
-      ? await callDirectModelEndpoint({ apiKey, model, prompt: safePrompt, width, height })
-      : await callOpenAiCompatibleImageApi({ apiKey, model, prompt: safePrompt, width, height });
-    const image = await extractImageFromNvidiaPayload(payload);
-
-    if (!image) {
-      return res.status(502).json({ error: 'NVIDIA 返回中未找到图片数据', model });
-    }
-
-    return res.status(200).json({
-      image,
-      model,
-      provider: 'nvidia',
-    });
-  } catch (error) {
-    return res.status(500).json({
-      error: error.message || 'AI 背景生成失败',
-    });
+  if (!image) {
+    throw new Error('NVIDIA 返回中未找到图片数据');
   }
+
+  return {
+    image,
+    model,
+    provider: 'nvidia',
+  };
 }

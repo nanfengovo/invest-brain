@@ -54,10 +54,14 @@ InvestBrain 的核心逻辑是 Investment Decision Closed-Loop：每一笔交易
 ## 主要功能
 
 - **本地优先的数据安全策略**：使用 SQLite3 WASM + OPFS，交易、笔记、附件优先留在浏览器本地，降低中心化泄露风险。
-- **AI 情报提炼**：`/api/summarize` 会优先使用 Jina Reader 把 URL 转成 LLM 友好的 Markdown，再通过 Gemini 模型池生成中文标题和摘要。
+- **统一 AI 模型路由**：`/api/summarize`、`/api/ocr` 和 AI 交易体检支持 Gemini 与 NVIDIA NIM/OpenAI-compatible 模型，本地设置优先，环境变量兜底，并在结果中返回实际使用的 provider/model。
+- **AI 情报提炼与翻译**：`/api/summarize` 会优先使用 Jina Reader 把 URL 转成 LLM 友好的 Markdown，再通过配置的模型池生成中文标题、摘要或中文翻译。
+- **截图 OCR 交易录入**：交易表单支持 Gemini Vision 与 NVIDIA Vision 模型识别券商截图，自动提取正股/期权交易字段。
+- **期权监控与复盘**：支持期权合约字段、DTE 倒计时、ITM/OTM 距离感、到期归零生命周期和 Delta/Theta/Vega 结构化归因。
 - **舆情研究入口**：`last30days-api-deployment` 封装 last30days-skill，用于按标的拉取最近 30 天 Reddit / Hacker News / Polymarket / Web 讨论，并生成中文研究简报。
 - **美股数据证据快照**：股票详情页会基于 Yahoo Chart 数据生成趋势、波动、回撤、52 周位置和量能指标，可一键复制为决策证据。
 - **闭环数据模型**：情报、观点、决策、交易、复盘都有独立表结构和关联字段，支持从结果反查原因。
+- **分享图生成**：行情、交易、决策、情报可生成 1080×1440 分享图；文字和收益数据由本地 Canvas 绘制，背景可选本地风格、上传图片或 NVIDIA AI 生成。
 - **PWA 移动体验**：支持添加到手机桌面，保留移动端手势、暗色界面和离线优先体验。
 - **富媒体留存**：支持图片/视频附件上传，支持 YouTube、Bilibili、X/Twitter 等外部内容的辅助留存。
 
@@ -93,19 +97,28 @@ npm install
 ```
 
 ### 3. 配置环境变量
-在项目根目录创建一个 `.env` 文件，并填入你的大模型 API Key（目前用于智能提炼功能）：
+在项目根目录创建一个 `.env.local` 文件，并填入你的大模型 API Key。前端设置页里保存的本地 Key 会优先使用；如果没有本地 Key，Serverless API 会读取这里或 Vercel 环境变量里的内置 Key。
 ```env
-# Gemini API Key (推荐)
+# Gemini API Key
 GEMINI_API_KEY=your_gemini_api_key_here
 
-# URL 情报卡片总结模型池 (可选，按顺序自动兜底)
+# NVIDIA NIM / Build API Key
+NVIDIA_API_KEY=your_nvidia_api_key_here
+
+# 文本/翻译/诊断模型（可选）
+NVIDIA_MODEL=nvidia/llama-3.3-nemotron-super-49b-v1.5
+
+# 视觉/OCR 模型池（可选，按顺序自动兜底）
+NVIDIA_VISION_MODELS=meta/llama-3.2-90b-vision-instruct,meta/llama-3.2-11b-vision-instruct
+
+# URL 情报卡片总结模型池（可选，按顺序自动兜底）
 GEMINI_SUMMARY_MODELS=gemini-3.1-flash-lite,gemini-2.5-flash-lite,gemini-3.5-flash,gemini-3-flash,gemini-2.5-flash
 
-# 备用大语言模型配置 (可选)
-OPENROUTER_API_KEY=your_openrouter_api_key_here
-DEEPSEEK_API_KEY=your_deepseek_api_key_here
-SILICONFLOW_API_KEY=your_siliconflow_api_key_here
+# NVIDIA 图片背景模型（可选）
+NVIDIA_IMAGE_BASE_URL=https://integrate.api.nvidia.com/v1
 ```
+
+> `.env.local` 会被 git 忽略，不要把真实 API Key 写入仓库。部署到 Vercel 时，请在 Project Settings → Environment Variables 中配置 `GEMINI_API_KEY`、`NVIDIA_API_KEY` 等变量。
 
 ### 4. 启动本地开发服务器
 ```bash
@@ -137,7 +150,7 @@ npm run build
 - **数据库表结构**: 位于 `src/db/migrations.js`。若需新增表或字段，只需增加 `version` 并在数组末尾添加新的 SQL 语句即可完成自动迁移。
 - **闭环测试契约**: 位于 `tests/closed-loop-schema.test.js`。修改情报、观点、决策、交易、复盘关系时，先更新测试再调整迁移。
 - **页面入口**: 位于 `src/App.jsx`。
-- **API 代理**: 位于 `api/` 目录下（Vercel 部署环境适用）。
+- **API 代理**: 位于 `api/` 目录下（Vercel 部署环境适用）。Hobby 计划最多 12 个 Serverless Functions；分享图背景接口通过 `/api/share-background` rewrite 到 `/api/summarize` 的 `share-background` 模式承载，避免额外占用函数额度。
 
 ---
 

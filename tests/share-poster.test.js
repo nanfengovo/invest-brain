@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 
 test('share poster utility creates local PNG posters and recommends free-ish model paths', () => {
   const source = readFileSync(new URL('../src/utils/sharePoster.js', import.meta.url), 'utf8');
@@ -37,23 +37,31 @@ test('market trade decision and information modules expose share poster actions'
 
 test('share poster background picker supports local upload and NVIDIA generation', () => {
   const picker = readFileSync(new URL('../src/utils/sharePosterBackgrounds.jsx', import.meta.url), 'utf8');
-  const api = readFileSync(new URL('../api/share-background.js', import.meta.url), 'utf8');
+  const api = readFileSync(new URL('../api/_lib/shareBackground.js', import.meta.url), 'utf8');
+  const summarize = readFileSync(new URL('../api/summarize.js', import.meta.url), 'utf8');
   const settings = readFileSync(new URL('../src/pages/SettingsPage.jsx', import.meta.url), 'utf8');
   const appStore = readFileSync(new URL('../src/stores/useAppStore.js', import.meta.url), 'utf8');
   const viteConfig = readFileSync(new URL('../vite.config.js', import.meta.url), 'utf8');
+  const vercelConfig = readFileSync(new URL('../vercel.json', import.meta.url), 'utf8');
+  const apiFunctions = readdirSync(new URL('../api', import.meta.url))
+    .filter((file) => file.endsWith('.js'));
 
   assert.match(picker, /选择本地背景/);
   assert.match(picker, /使用我的图片/);
   assert.match(picker, /NVIDIA AI 生成/);
+  assert.match(picker, /mode: 'share-background'/);
   assert.match(picker, /qwen-image-2512/);
   assert.match(picker, /flux\.2-klein-4b/);
   assert.match(api, /integrate\.api\.nvidia\.com\/v1/);
   assert.match(api, /\$\{baseUrl\}\/images\/generations/);
-  assert.match(api, /NVIDIA_API_KEY/);
   assert.match(api, /NVIDIA_IMAGE_BASE_URL/);
-  assert.match(api, /x-nvidia-api-key/);
+  assert.match(summarize, /mode === 'share-background'/);
+  assert.match(summarize, /NVIDIA_API_KEY/);
+  assert.match(summarize, /x-nvidia-api-key/);
   assert.match(settings, /分享图背景生成/);
   assert.match(settings, /NVIDIA API Key/);
   assert.match(appStore, /share_background_config/);
   assert.match(viteConfig, /\/api\/share-background/);
+  assert.match(vercelConfig, /"source": "\/api\/share-background"/);
+  assert.ok(apiFunctions.length <= 12, `Vercel Hobby allows at most 12 Serverless Functions, found ${apiFunctions.length}`);
 });

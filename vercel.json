@@ -7,6 +7,10 @@
   ],
   "rewrites": [
     {
+      "source": "/api/share-background",
+      "destination": "/api/summarize"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }

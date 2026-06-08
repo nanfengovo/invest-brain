@@ -53,7 +53,7 @@ function localApiPlugin() {
     '/api/summarize': './api/summarize.js',
     '/api/ocr': './api/ocr.js',
     '/api/analyze-personality': './api/analyze-personality.js',
-    '/api/share-background': './api/share-background.js',
+    '/api/share-background': './api/summarize.js',
   };
 
   return {

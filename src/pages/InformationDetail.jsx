@@ -805,7 +805,6 @@ export default function InformationDetail() {
   const realUrlMatch = info?.url?.match(/(https?:\/\/[^\s]+)/);
   const validUrl = realUrlMatch ? realUrlMatch[1] : null;
 
-  const labeledVideoEmbedUrl = useMemo(() => getLabeledUrl(displayContent, '视频嵌入'), [displayContent]);
   const videoPlatform = useMemo(() => validUrl ? detectVideoPlatform(validUrl) : null, [validUrl]);
   const twitterPostId = useMemo(() => validUrl ? getTwitterPostId(validUrl) : null, [validUrl]);
   const isDirectVideo = useMemo(() => validUrl ? isDirectVideoUrl(validUrl) : false, [validUrl]);
@@ -830,6 +829,8 @@ export default function InformationDetail() {
     }
     return text.trim();
   }, [info?.content, info?.url, validUrl]);
+
+  const labeledVideoEmbedUrl = useMemo(() => getLabeledUrl(displayContent, '视频嵌入'), [displayContent]);
   const cleanContent = useMemo(() => stripSourceScaffold(displayContent), [displayContent]);
   const isHtmlContent = useMemo(() => looksLikeHtml(cleanContent), [cleanContent]);
   const twitterFallbackText = useMemo(() => getTwitterFallbackText(displayContent, info?.title), [displayContent, info?.title]);

@@ -97,9 +97,8 @@ function getTableColumns(tableName) {
 }
 
 function normalizeImportedDump(dump, options = {}) {
-  if (!dump?.tables?.trades || !Array.isArray(dump.tables.trades)) return dump;
-
   const {
+    allowedTables = null,
     workspaceScope = null,
     sourceScope = null,
     currentAuthor = null,
@@ -107,11 +106,28 @@ function normalizeImportedDump(dump, options = {}) {
     teamMirror = false,
     syncStatus = null,
   } = options || {};
+  const allowedTableSet = Array.isArray(allowedTables) && allowedTables.length
+    ? new Set(allowedTables)
+    : null;
+  const filteredTables = {};
+
+  for (const [tableName, rows] of Object.entries(dump?.tables || {})) {
+    if (!allowedTableSet || allowedTableSet.has(tableName)) {
+      filteredTables[tableName] = rows;
+    }
+  }
+
+  if (!Array.isArray(filteredTables.trades)) {
+    return {
+      ...dump,
+      tables: filteredTables,
+    };
+  }
 
   const normalizedAuthor = String(currentAuthor || '').trim();
   const authorFilter = String(restrictAuthor || '').trim();
 
-  const trades = dump.tables.trades
+  const trades = filteredTables.trades
     .filter((row) => {
       if (!authorFilter) return true;
       return String(row?.author || row?.source_author || '').trim() === authorFilter;
@@ -143,7 +159,7 @@ function normalizeImportedDump(dump, options = {}) {
   return {
     ...dump,
     tables: {
-      ...dump.tables,
+      ...filteredTables,
       trades,
     },
   };

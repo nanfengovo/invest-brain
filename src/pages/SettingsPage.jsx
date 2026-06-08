@@ -9,6 +9,20 @@ import { restoreAutoBackup } from '../utils/autoBackup';
 import { syncCloudAlerts } from '../utils/cloudAlerts';
 import './SettingsPage.css';
 
+const PERSONAL_SYNC_TABLES = [
+  'assets',
+  'informations',
+  'information_asset_links',
+  'information_sector_links',
+  'decisions',
+  'decision_info_links',
+  'reviews',
+  'viewpoints',
+  'trades',
+  'price_alerts',
+];
+const TEAM_SYNC_TABLES = ['assets', 'trades'];
+
 function AgentLogo() {
   return (
     <svg viewBox="0 0 48 48" role="img" aria-label="智能体">
@@ -200,7 +214,13 @@ function SettingsPage() {
         Toast.show({ icon: 'loading', content: '正在合并数据...' });
 
         const text = await file.text();
-        const res = await db.importDB(text, true); // merge = true
+        const res = await db.importDB(text, true, {
+          allowedTables: TEAM_SYNC_TABLES,
+          workspaceScope: 'team',
+          sourceScope: 'team',
+          teamMirror: true,
+          syncStatus: 'synced',
+        });
         
         if (res.success) {
           await refreshAll();
@@ -589,6 +609,7 @@ function SettingsPage() {
       const jsonString = JSON.stringify(responseData.mergedData);
       await db.clearTradeWorkspace('team');
       await db.importDB(jsonString, true, {
+        allowedTables: TEAM_SYNC_TABLES,
         workspaceScope: 'team',
         sourceScope: 'team',
         teamMirror: true,
@@ -636,6 +657,7 @@ function SettingsPage() {
       
       const jsonString = JSON.stringify(responseData.mergedData);
       await db.importDB(jsonString, true, {
+        allowedTables: PERSONAL_SYNC_TABLES,
         workspaceScope: 'personal',
         sourceScope: 'personal',
         currentAuthor: syncUserIdInput,
@@ -1038,7 +1060,7 @@ function SettingsPage() {
             <span className="settings-card__icon">🚀</span>
             <div className="settings-card__content">
               <div className="settings-card__label">备份我的云端数据</div>
-              <div className="settings-card__desc">只保存当前花名的个人工作区数据，不进入团队空间</div>
+              <div className="settings-card__desc">保存个人工作区数据；不会上传 API Key、同步暗号和通知配置</div>
             </div>
             <span className="settings-card__arrow">›</span>
           </div>
@@ -1048,7 +1070,7 @@ function SettingsPage() {
             <span className="settings-card__icon">🤝</span>
             <div className="settings-card__content">
               <div className="settings-card__label">同步到团队空间</div>
-              <div className="settings-card__desc">只发布当前花名的个人交易，供团队成员聚合查看</div>
+              <div className="settings-card__desc">只发布当前花名的交易和资产快照，供团队成员聚合查看</div>
             </div>
             <span className="settings-card__arrow">›</span>
           </div>
@@ -1068,7 +1090,7 @@ function SettingsPage() {
             <span className="settings-card__icon">📥</span>
             <div className="settings-card__content">
               <div className="settings-card__label">拉取团队空间数据</div>
-              <div className="settings-card__desc">刷新团队镜像数据，不覆盖个人工作区</div>
+              <div className="settings-card__desc">只刷新团队交易镜像，不覆盖个人工作区和私密配置</div>
             </div>
             <span className="settings-card__arrow">›</span>
           </div>

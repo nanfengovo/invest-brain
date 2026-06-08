@@ -1,6 +1,20 @@
 import { normalizeCloudAlertPayload } from './_lib/alertRules.js';
 import { createRedisClient, verifySyncSecret } from './_lib/redis.js';
 
+const PERSONAL_SYNC_TABLES = new Set([
+  'assets',
+  'informations',
+  'information_asset_links',
+  'information_sector_links',
+  'decisions',
+  'decision_info_links',
+  'reviews',
+  'viewpoints',
+  'trades',
+  'price_alerts',
+]);
+const TEAM_SYNC_TABLES = new Set(['assets', 'trades']);
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: '不支持的请求方法' });
@@ -71,9 +85,26 @@ export default async function handler(req, res) {
 }
 
 function normalizeSyncDump(data, userId, scope) {
-  if (!data?.tables?.trades || !Array.isArray(data.tables.trades)) return data;
+  const allowedTables = scope === 'team' ? TEAM_SYNC_TABLES : PERSONAL_SYNC_TABLES;
+  const sourceTables = data?.tables || {};
+  const tables = {};
+
+  for (const [tableName, rows] of Object.entries(sourceTables)) {
+    if (allowedTables.has(tableName)) {
+      tables[tableName] = rows;
+    }
+  }
+
+  if (!Array.isArray(tables.trades)) {
+    return {
+      ...data,
+      workspaceScope: scope,
+      author: String(userId || '').trim(),
+      tables,
+    };
+  }
   const normalizedUserId = String(userId || '').trim();
-  const trades = data.tables.trades
+  const trades = tables.trades
     .filter((trade) => {
       const author = String(trade?.author || trade?.source_author || '').trim();
       return !normalizedUserId || author === normalizedUserId;
@@ -93,7 +124,7 @@ function normalizeSyncDump(data, userId, scope) {
     workspaceScope: scope,
     author: normalizedUserId,
     tables: {
-      ...data.tables,
+      ...tables,
       trades,
     },
   };

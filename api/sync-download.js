@@ -1,9 +1,38 @@
 import { createRedisClient, parseRedisJson, verifySyncSecret } from './_lib/redis.js';
 
-function mergeUserDumps(allData) {
+const PERSONAL_SYNC_TABLES = new Set([
+  'assets',
+  'informations',
+  'information_asset_links',
+  'information_sector_links',
+  'decisions',
+  'decision_info_links',
+  'reviews',
+  'viewpoints',
+  'trades',
+  'price_alerts',
+]);
+const TEAM_SYNC_TABLES = new Set(['assets', 'trades']);
+
+function filterDumpTables(dump, scope) {
+  const allowedTables = scope === 'team' ? TEAM_SYNC_TABLES : PERSONAL_SYNC_TABLES;
+  const tables = {};
+  for (const [tableName, rows] of Object.entries(dump?.tables || {})) {
+    if (allowedTables.has(tableName)) {
+      tables[tableName] = rows;
+    }
+  }
+  return {
+    ...dump,
+    tables,
+  };
+}
+
+function mergeUserDumps(allData, scope) {
   const mergedDump = { tables: {}, version: Date.now() };
 
-  for (const userDump of allData) {
+  for (const rawDump of allData) {
+    const userDump = filterDumpTables(rawDump, scope);
     if (!userDump || !userDump.tables) continue;
 
     for (const [tableName, rows] of Object.entries(userDump.tables)) {
@@ -64,7 +93,7 @@ export default async function handler(req, res) {
         return res.status(200).json({ mergedData: null, usersFound: 0, scope });
       }
 
-      return res.status(200).json({ mergedData: parsedData, usersFound: 1, scope });
+      return res.status(200).json({ mergedData: filterDumpTables(parsedData, scope), usersFound: 1, scope });
     }
 
     const keys = await redis.keys(`${keyPrefix}:*`);
@@ -76,7 +105,7 @@ export default async function handler(req, res) {
     const allData = values.map(parseRedisJson).filter(Boolean);
 
     return res.status(200).json({
-      mergedData: mergeUserDumps(allData),
+      mergedData: mergeUserDumps(allData, scope),
       usersFound: keys.length,
       scope,
     });

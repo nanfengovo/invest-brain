@@ -73,6 +73,22 @@ END`;
 
 const TRADE_AUTHOR_SQL = `COALESCE(NULLIF(TRIM(t.author), ''), '未标记')`;
 const TRADE_WORKSPACE_SQL = `COALESCE(NULLIF(TRIM(t.workspace_scope), ''), 'personal')`;
+const PERSONAL_SYNC_TABLES = [
+  'assets',
+  'informations',
+  'information_asset_links',
+  'information_sector_links',
+  'decisions',
+  'decision_info_links',
+  'reviews',
+  'viewpoints',
+  'trades',
+  'price_alerts',
+];
+const TEAM_SYNC_TABLES = [
+  'assets',
+  'trades',
+];
 
 function appendAuthorFilter(sql, params, author) {
   const normalizedAuthor = String(author || '').trim();
@@ -645,6 +661,7 @@ export const db = {
 
   async exportTradeWorkspaceDump({ author = null, scope = 'personal', targetScope = 'personal' } = {}) {
     const normalizedScope = normalizeWorkspaceScope(scope);
+    const allowedTables = targetScope === 'team' ? TEAM_SYNC_TABLES : PERSONAL_SYNC_TABLES;
     const rows = await this.query(
       `SELECT name FROM sqlite_master
         WHERE type='table'
@@ -654,6 +671,7 @@ export const db = {
     );
     const tables = {};
     for (const table of rows) {
+      if (!allowedTables.includes(table.name)) continue;
       if (table.name === 'trades') {
         let sql = `SELECT * FROM trades t WHERE 1 = 1`;
         const params = [];

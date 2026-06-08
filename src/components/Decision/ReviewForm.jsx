@@ -1,6 +1,11 @@
 import { useState } from 'react';
 import { Form, Input, Button, Selector, TextArea, Toast, NavBar } from 'antd-mobile';
 import { useTradeStore } from '../../stores/useTradeStore';
+import {
+  OPTION_REVIEW_ATTRIBUTIONS,
+  normalizeOptionDisciplineScore,
+  normalizeOptionLesson,
+} from '../../utils/optionReview';
 import './ReviewForm.css';
 
 const LOGIC_OPTIONS = [
@@ -27,9 +32,15 @@ const SUCCESS_OPTIONS = [
   { label: '📉 投资失败 (亏损/不达预期)', value: '0' },
 ];
 
+const OPTION_ATTRIBUTION_OPTIONS = OPTION_REVIEW_ATTRIBUTIONS.map((item) => ({
+  label: `${item.shortLabel} · ${item.label}`,
+  value: item.value,
+}));
+
 export default function ReviewForm({ decision, onClose, onSuccess }) {
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
+  const [optionDisciplineScore, setOptionDisciplineScore] = useState(70);
   const addReview = useTradeStore((s) => s.addReview);
 
   const onFinish = async (values) => {
@@ -42,6 +53,9 @@ export default function ReviewForm({ decision, onClose, onSuccess }) {
         logicRating: values.logicRating?.[0] || 'CORRECT',
         timingRating: values.timingRating?.[0] || 'GOOD',
         disciplineRating: values.disciplineRating?.[0] || 'YES',
+        optionAttribution: values.optionAttribution?.[0] || '',
+        optionDisciplineScore: normalizeOptionDisciplineScore(optionDisciplineScore),
+        optionLesson: normalizeOptionLesson(values.optionLesson),
       });
 
       const review = {
@@ -85,6 +99,8 @@ export default function ReviewForm({ decision, onClose, onSuccess }) {
             logicRating: ['CORRECT'],
             timingRating: ['GOOD'],
             disciplineRating: ['YES'],
+            optionAttribution: [],
+            optionLesson: '',
           }}
         >
           <div className="review-form__header-info">
@@ -106,6 +122,39 @@ export default function ReviewForm({ decision, onClose, onSuccess }) {
 
           <Form.Item name="disciplineRating" label="3. 知行合一 (严格执行最初的计划了吗？)">
             <Selector options={DISCIPLINE_OPTIONS} columns={1} />
+          </Form.Item>
+
+          <div className="review-form__section-title">期权专项复盘（如适用）</div>
+          <div className="review-form__option-panel">
+            <div className="review-form__option-panel-title">Theta / Vega / Delta 归因</div>
+            <div className="review-form__option-panel-desc">
+              平仓或到期后，把最主要死因/盈利点结构化保存，周报 Agent 才能算出 IV Crush、Theta Decay 的真实亏损占比。
+            </div>
+          </div>
+
+          <Form.Item name="optionAttribution" label="期权核心归因（单选）">
+            <Selector options={OPTION_ATTRIBUTION_OPTIONS} columns={1} />
+          </Form.Item>
+
+          <Form.Item label={`期权纪律执行力：${optionDisciplineScore} 分`}>
+            <input
+              className="review-form__range"
+              type="range"
+              min="1"
+              max="100"
+              step="1"
+              value={optionDisciplineScore}
+              onChange={(event) => setOptionDisciplineScore(Number(event.target.value))}
+            />
+          </Form.Item>
+
+          <Form.Item name="optionLesson" label="期权经验萃取（50 字内）">
+            <TextArea
+              placeholder="例如：财报前不裸买当周期权，改用远期或价差。"
+              rows={2}
+              maxLength={50}
+              showCount
+            />
           </Form.Item>
 
           <div className="review-form__section-title">结果与反思</div>

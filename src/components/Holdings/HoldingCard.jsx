@@ -6,6 +6,7 @@ import {
   getTradeOptionDisplay,
   getTradeQuantityUnit,
 } from '../../utils/tradeLifecycle';
+import { getDteMonitor, getMoneynessMonitor } from '../../utils/optionMonitoring';
 import './HoldingCard.css';
 
 const TYPE_LABELS = {
@@ -37,6 +38,7 @@ const formatDate = (dateStr) => {
 
 export default function HoldingCard({
   holding,
+  underlyingPrice = null,
   index = 0,
   viewMode = 'compact',
   isExpanded = false,
@@ -44,6 +46,7 @@ export default function HoldingCard({
   expandedTrades = [],
   tradesLoading = false,
   onToggle,
+  onAddOptionAlert,
 }) {
   const assetType = String(holding.type || 'STOCK').toUpperCase();
   const isOption = assetType === 'OPTION';
@@ -65,6 +68,12 @@ export default function HoldingCard({
     option_type: holding.option_type,
   }) : '';
   const optionExpirationRisk = isOption ? getOptionExpirationRisk(holding.expiry_date) : null;
+  const dteMonitor = isOption ? getDteMonitor(holding.expiry_date) : null;
+  const moneynessMonitor = isOption ? getMoneynessMonitor({
+    underlyingPrice,
+    strikePrice: holding.strike_price,
+    optionType: holding.option_type,
+  }) : null;
   const quantityUnit = getTradeQuantityUnit({ asset_type: holding.type });
   const positionValue =
     (Number(holding.total_quantity) || 0) *
@@ -111,6 +120,11 @@ export default function HoldingCard({
                 {optionDisplay.optionType}
               </span>
             )}
+            {isOption && (
+              <span className={`holding-card__moneyness holding-card__moneyness--${moneynessMonitor?.tone || 'unknown'}`}>
+                {moneynessMonitor?.label || '距离未知'}
+              </span>
+            )}
             {holding.broker && (
               <span className="holding-card__broker-badge">
                 🏦 {holding.broker}
@@ -125,6 +139,18 @@ export default function HoldingCard({
               <span className="holding-card__sector-badge">
                 {holding.sector}
               </span>
+            )}
+            {isOption && onAddOptionAlert && (
+              <button
+                type="button"
+                className="holding-card__alert-btn"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onAddOptionAlert(holding);
+                }}
+              >
+                设提醒
+              </button>
             )}
           </div>
         </div>
@@ -153,6 +179,21 @@ export default function HoldingCard({
           ▾
         </span>
       </div>
+
+      {isOption && dteMonitor && (
+        <div
+          className={`holding-card__dte holding-card__dte--${dteMonitor.tone} ${dteMonitor.urgent ? 'holding-card__dte--urgent' : ''}`}
+          aria-label={dteMonitor.label}
+        >
+          <div className="holding-card__dte-track">
+            <span style={{ width: `${dteMonitor.progress}%` }} />
+          </div>
+          <div className="holding-card__dte-label">
+            <span>Theta Clock</span>
+            <strong>{dteMonitor.label}</strong>
+          </div>
+        </div>
+      )}
 
       {isExpanded && (
         <div className="holding-card__trades-list">

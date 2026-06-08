@@ -13,6 +13,17 @@
   }
 }
 
+@keyframes holdingDtePulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 rgba(244, 63, 94, 0);
+  }
+  50% {
+    opacity: 0.68;
+    box-shadow: 0 0 16px rgba(244, 63, 94, 0.38);
+  }
+}
+
 .holding-card {
   padding: 0;
   overflow: hidden;
@@ -95,9 +106,11 @@
 
 .holding-card__type-badge,
 .holding-card__option-badge,
+.holding-card__moneyness,
 .holding-card__broker-badge,
 .holding-card__author-badge,
-.holding-card__sector-badge {
+.holding-card__sector-badge,
+.holding-card__alert-btn {
   display: inline-flex;
   align-items: center;
   min-height: 18px;
@@ -220,6 +233,31 @@
   border: 1px solid rgba(192, 132, 252, 0.3);
 }
 
+.holding-card__moneyness {
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.holding-card__moneyness--itm {
+  color: #34d399;
+  background: rgba(52, 211, 153, 0.13);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+}
+
+.holding-card__moneyness--otm {
+  color: #94a3b8;
+  background: rgba(148, 163, 184, 0.08);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.holding-card__moneyness--unknown {
+  color: var(--color-text-muted);
+  background: rgba(148, 163, 184, 0.06);
+  border: 1px dashed rgba(148, 163, 184, 0.18);
+}
+
 .holding-card__broker-badge {
   gap: 2px;
   padding: 2px 6px;
@@ -249,6 +287,22 @@
   color: var(--color-text-muted);
   background: rgba(148, 163, 184, 0.08);
   border: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.holding-card__alert-btn {
+  padding: 2px 7px;
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  border-radius: var(--radius-full);
+  background: rgba(245, 158, 11, 0.12);
+  color: #fbbf24;
+  font-size: 10px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.holding-card__alert-btn:active {
+  transform: scale(0.96);
+  background: rgba(245, 158, 11, 0.18);
 }
 
 .holding-card__right {
@@ -293,6 +347,62 @@
   padding: 10px 16px;
   border-top: 1px solid var(--color-border);
   background: rgba(0, 0, 0, 0.15);
+}
+
+.holding-card__dte {
+  padding: 0 16px 10px;
+}
+
+.holding-card__dte-track {
+  height: 3px;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.holding-card__dte-track span {
+  display: block;
+  height: 100%;
+  min-width: 8px;
+  border-radius: inherit;
+  background: rgba(16, 185, 129, 0.5);
+  transition: width var(--transition-normal);
+}
+
+.holding-card__dte--warning .holding-card__dte-track span {
+  background: rgba(245, 158, 11, 0.58);
+}
+
+.holding-card__dte--endgame .holding-card__dte-track span {
+  background: #f43f5e;
+}
+
+.holding-card__dte--expired .holding-card__dte-track span {
+  background: rgba(100, 116, 139, 0.6);
+}
+
+.holding-card__dte--urgent .holding-card__dte-track span {
+  animation: holdingDtePulse 1.25s ease-in-out infinite;
+}
+
+.holding-card__dte-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 5px;
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.holding-card__dte-label strong {
+  color: var(--color-text-secondary);
+  font-weight: 850;
+}
+
+.holding-card__dte--endgame .holding-card__dte-label strong {
+  color: #fb7185;
 }
 
 .holding-card__trade-count,
@@ -424,7 +534,8 @@
 .holding-card--compact .holding-card__option-badge,
 .holding-card--compact .holding-card__broker-badge,
 .holding-card--compact .holding-card__author-badge,
-.holding-card--compact .holding-card__sector-badge {
+.holding-card--compact .holding-card__sector-badge,
+.holding-card--compact .holding-card__alert-btn {
   min-height: 17px;
   padding: 2px 6px;
   font-size: 9px;

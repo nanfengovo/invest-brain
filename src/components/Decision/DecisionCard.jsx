@@ -3,6 +3,12 @@ import { SwipeAction, Dialog, Toast, ActionSheet, Popup } from 'antd-mobile';
 import { useTradeStore } from '../../stores/useTradeStore';
 import { db } from '../../db/database';
 import { getSyncStatusMeta } from '../../utils/syncStatus';
+import {
+  getOptionReviewAttribution,
+  hasOptionReviewData,
+  normalizeOptionDisciplineScore,
+  normalizeOptionLesson,
+} from '../../utils/optionReview';
 import ReviewForm from './ReviewForm';
 import './DecisionCard.css';
 
@@ -136,6 +142,7 @@ export default function DecisionCard({ decision, index = 0, onClick, onEdit, onR
     let logicText = '无';
     let timingText = '无';
     let disciplineText = '无';
+    let optionReview = null;
 
     try {
       if (decision.review_content) {
@@ -147,6 +154,15 @@ export default function DecisionCard({ decision, index = 0, onClick, onEdit, onR
         logicText = LOGIC_MAP[ratings.logicRating] || ratings.logicRating || '无';
         timingText = TIMING_MAP[ratings.timingRating] || ratings.timingRating || '无';
         disciplineText = DISCIPLINE_MAP[ratings.disciplineRating] || ratings.disciplineRating || '无';
+        if (hasOptionReviewData(ratings)) {
+          const attribution = getOptionReviewAttribution(ratings.optionAttribution);
+          optionReview = {
+            attributionLabel: attribution ? `${attribution.shortLabel} · ${attribution.label}` : ratings.optionAttribution,
+            attributionDesc: attribution?.description || '',
+            score: normalizeOptionDisciplineScore(ratings.optionDisciplineScore),
+            lesson: normalizeOptionLesson(ratings.optionLesson),
+          };
+        }
       }
     } catch (e) {
       console.error('[Review Parse Error]:', e);
@@ -193,6 +209,43 @@ export default function DecisionCard({ decision, index = 0, onClick, onEdit, onR
               <div style={{ fontWeight: 'bold', color: 'var(--color-text-primary)' }}>{disciplineText}</div>
             </div>
           </div>
+
+          {optionReview && (
+            <div style={{
+              padding: '12px 14px',
+              background: 'rgba(245, 158, 11, 0.07)',
+              borderRadius: '6px',
+              border: '1px solid rgba(245, 158, 11, 0.22)',
+              marginTop: 12,
+            }}>
+              <div style={{ fontSize: '12px', color: '#fbbf24', fontWeight: 'bold', marginBottom: 8 }}>期权专项复盘</div>
+              <div style={{ display: 'grid', gap: 8, fontSize: '12px' }}>
+                <div>
+                  <span style={{ color: 'var(--color-text-secondary)' }}>核心归因：</span>
+                  <span style={{ color: 'var(--color-text-primary)', fontWeight: 'bold' }}>
+                    {optionReview.attributionLabel || '未选择'}
+                  </span>
+                  {optionReview.attributionDesc && (
+                    <div style={{ color: 'var(--color-text-muted)', marginTop: 2, fontSize: '11px' }}>
+                      {optionReview.attributionDesc}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <span style={{ color: 'var(--color-text-secondary)' }}>纪律执行：</span>
+                  <span style={{ color: 'var(--color-text-primary)', fontWeight: 'bold' }}>
+                    {optionReview.score === null ? '未评分' : `${optionReview.score} 分`}
+                  </span>
+                </div>
+                {optionReview.lesson && (
+                  <div>
+                    <span style={{ color: 'var(--color-text-secondary)' }}>经验萃取：</span>
+                    <span style={{ color: 'var(--color-text-primary)' }}>{optionReview.lesson}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           
           <div style={{ 
             padding: '12px 14px', 

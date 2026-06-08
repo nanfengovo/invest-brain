@@ -7,6 +7,7 @@ import { useAppStore } from '../stores/useAppStore';
 import { db } from '../db/database';
 import { checkPriceAlerts } from '../utils/priceAlertRunner';
 import { syncCloudAlerts } from '../utils/cloudAlerts';
+import { parseOptionAlertInput } from '../utils/optionMonitoring';
 import './StockDetailPage.css';
 
 const SHARE_BASE_URL = 'https://invest-brain.vercel.app';
@@ -68,6 +69,23 @@ const formatCompact = (value) => {
   if (value >= 1e6) return `${(value / 1e6).toFixed(2)}M`;
   if (value >= 1e4) return `${(value / 1e4).toFixed(2)}万`;
   return Number(value).toLocaleString();
+};
+
+const formatAlertAssetLabel = (alert) => {
+  const assetType = String(alert.asset_type || 'STOCK').toUpperCase();
+  if (assetType !== 'OPTION') {
+    return {
+      title: alert.asset_id || alert.symbol,
+      subtitle: '股票提醒',
+      badge: '股票',
+    };
+  }
+
+  return {
+    title: alert.asset_id || alert.symbol,
+    subtitle: alert.note || `${alert.symbol} 期权提醒`,
+    badge: '期权',
+  };
 };
 
 const copyText = async (text) => {
@@ -439,11 +457,17 @@ export default function StockDetailPage() {
 
   const handleAddOptionAlert = async (option) => {
     const defaultTarget = option.mark || option.last || option.bid || '';
-    const input = window.prompt(`设置 ${option.contractSymbol} 目标价格`, defaultTarget);
+    const input = window.prompt(
+      [
+        `设置 ${option.contractSymbol} 期权提醒`,
+        '输入格式：>1.50 表示高于等于提醒，<0.80 表示低于等于提醒',
+      ].join('\n'),
+      defaultTarget ? `>${defaultTarget}` : '>'
+    );
     if (!input) return;
-    const target = Number(input);
-    if (!Number.isFinite(target) || target <= 0) {
-      Toast.show({ content: '目标价格无效' });
+    const parsedAlert = parseOptionAlertInput(input, 'ABOVE');
+    if (!parsedAlert) {
+      Toast.show({ content: '请输入有效提醒，例如 >1.50 或 <0.80' });
       return;
     }
     await db.addPriceAlert({
@@ -451,15 +475,22 @@ export default function StockDetailPage() {
       symbol: normalizedSymbol,
       asset_id: option.contractSymbol,
       asset_type: 'OPTION',
-      condition: 'ABOVE',
-      target_price: target,
+      condition: parsedAlert.condition,
+      target_price: parsedAlert.target,
       last_price: option.mark || option.last || null,
       channels: null,
-      note: `${option.expiration} ${option.type} ${option.strike}`,
+      note: [
+        `${option.expiration} ${option.type} ${option.strike}`,
+        option.impliedVolatility ? `IV ${(option.impliedVolatility * 100).toFixed(2)}%` : '',
+        Number.isFinite(Number(option.delta)) ? `Delta ${Number(option.delta).toFixed(2)}` : '',
+      ].filter(Boolean).join(' · '),
     });
     await reloadAlerts();
     await syncCloudAlerts({ notificationConfig, marketDataConfig });
-    Toast.show({ icon: 'success', content: '期权提醒已添加' });
+    Toast.show({
+      icon: 'success',
+      content: `期权提醒已添加：${parsedAlert.condition === 'ABOVE' ? '高于等于' : '低于等于'} ${parsedAlert.target}`,
+    });
   };
 
   const handleCheckAlertsNow = async () => {
@@ -754,16 +785,26 @@ export default function StockDetailPage() {
         </div>
         {activeAlerts.length > 0 ? (
           <div className="stock-detail__alert-list">
-            {activeAlerts.map((alert) => (
-              <div key={alert.id} className="stock-detail__alert-item">
-                <span>{alert.asset_id || alert.symbol}</span>
-                <strong>{alert.condition === 'ABOVE' ? '≥' : '≤'} {Number(alert.target_price).toFixed(2)}</strong>
-                <div className="stock-detail__alert-actions">
-                  <button type="button" onClick={() => handleEditAlert(alert)}>修改</button>
-                  <button type="button" onClick={() => handleDeleteAlert(alert)}>删除</button>
+            {activeAlerts.map((alert) => {
+              const alertLabel = formatAlertAssetLabel(alert);
+              return (
+                <div
+                  key={alert.id}
+                  className={`stock-detail__alert-item stock-detail__alert-item--${String(alert.asset_type || 'STOCK').toLowerCase()}`}
+                >
+                  <div className="stock-detail__alert-asset">
+                    <span>{alertLabel.title}</span>
+                    <em>{alertLabel.subtitle}</em>
+                  </div>
+                  <span className="stock-detail__alert-type">{alertLabel.badge}</span>
+                  <strong>{alert.condition === 'ABOVE' ? '≥' : '≤'} {Number(alert.target_price).toFixed(2)}</strong>
+                  <div className="stock-detail__alert-actions">
+                    <button type="button" onClick={() => handleEditAlert(alert)}>修改</button>
+                    <button type="button" onClick={() => handleDeleteAlert(alert)}>删除</button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <div className="stock-detail__alert-empty">暂无活动提醒</div>
@@ -822,6 +863,9 @@ export default function StockDetailPage() {
                 <span>{formatCompact(option.volume)} / {formatCompact(option.openInterest)}</span>
               </button>
             ))}
+            <div className="stock-detail__options-hint">
+              点击合约可添加期权价格提醒，输入 <strong>&gt;1.50</strong> 或 <strong>&lt;0.80</strong> 即可决定高于/低于触发。
+            </div>
           </div>
         ) : (
           <div className="stock-detail__alert-empty">

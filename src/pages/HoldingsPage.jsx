@@ -1,9 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Toast } from 'antd-mobile';
 import { useTradeStore } from '../stores/useTradeStore';
 import { useAppStore } from '../stores/useAppStore';
 import { db } from '../db/database';
 import EmptyState from '../components/common/EmptyState';
 import HoldingCard from '../components/Holdings/HoldingCard';
+import { parseOptionAlertInput } from '../utils/optionMonitoring';
+import { getTradeOptionDisplay } from '../utils/tradeLifecycle';
+import { syncCloudAlerts } from '../utils/cloudAlerts';
 import './HoldingsPage.css';
 
 const formatCurrency = (num) => {
@@ -18,6 +22,8 @@ export default function HoldingsPage() {
   const { holdings, summary, holdingsLoading, refreshHoldings } =
     useTradeStore();
   const workspaceScope = useAppStore((s) => s.workspaceScope);
+  const notificationConfig = useAppStore((s) => s.notificationConfig);
+  const marketDataConfig = useAppStore((s) => s.marketDataConfig);
   const isTeamWorkspace = workspaceScope === 'team';
 
   const [expandedId, setExpandedId] = useState(null);
@@ -33,6 +39,7 @@ export default function HoldingsPage() {
   const [authors, setAuthors] = useState([]);
   const [authorSearch, setAuthorSearch] = useState('');
   const [selectedAuthor, setSelectedAuthor] = useState('');
+  const [underlyingQuotes, setUnderlyingQuotes] = useState({});
 
   const activeAuthor = selectedAuthor || null;
   const filteredAuthors = authors.filter((author) =>
@@ -49,6 +56,45 @@ export default function HoldingsPage() {
   useEffect(() => {
     refreshHoldings(activeAuthor, workspaceScope);
   }, [activeAuthor, refreshHoldings, workspaceScope]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadUnderlyingQuotes() {
+      const symbols = Array.from(new Set(
+        holdings
+          .filter((holding) => String(holding.type || '').toUpperCase() === 'OPTION')
+          .map((holding) => String(holding.underlying_symbol || holding.symbol || '').trim().toUpperCase())
+          .filter(Boolean)
+      ));
+
+      if (symbols.length === 0) {
+        setUnderlyingQuotes({});
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/market?symbols=${encodeURIComponent(symbols.join(','))}`);
+        const json = await res.json();
+        if (cancelled) return;
+        const nextQuotes = {};
+        symbols.forEach((symbol) => {
+          const item = json?.data?.[symbol];
+          const price = Number(item?.displayPrice ?? item?.price);
+          if (Number.isFinite(price)) {
+            nextQuotes[symbol] = price;
+          }
+        });
+        setUnderlyingQuotes(nextQuotes);
+      } catch (err) {
+        console.warn('Failed to load option underlying quotes:', err);
+      }
+    }
+
+    loadUnderlyingQuotes();
+    return () => {
+      cancelled = true;
+    };
+  }, [holdings]);
 
   useEffect(() => {
     let cancelled = false;
@@ -99,6 +145,64 @@ export default function HoldingsPage() {
     } catch {
       // Ignore storage failures; the current session still updates.
     }
+  };
+
+  const handleAddOptionAlert = async (holding) => {
+    if (isTeamWorkspace) {
+      Toast.show({ content: '团队工作区是只读镜像，请先切换到个人工作区再设置提醒' });
+      return;
+    }
+
+    const optionDisplay = getTradeOptionDisplay({
+      asset_type: 'OPTION',
+      symbol: holding.symbol,
+      underlying_symbol: holding.underlying_symbol,
+      strike_price: holding.strike_price,
+      expiry_date: holding.expiry_date,
+      option_type: holding.option_type,
+      contract_symbol: holding.contract_symbol || holding.asset_id,
+    });
+    const title = optionDisplay?.title || holding.symbol || holding.asset_id;
+    const defaultTarget = Number(holding.avg_cost);
+    const input = window.prompt(
+      [
+        `设置 ${title} 期权提醒`,
+        '输入格式：>1.50 表示高于等于提醒，<0.80 表示低于等于提醒',
+      ].join('\n'),
+      Number.isFinite(defaultTarget) && defaultTarget > 0 ? `>${defaultTarget.toFixed(2)}` : '>'
+    );
+    if (!input) return;
+
+    const parsedAlert = parseOptionAlertInput(input, 'ABOVE');
+    if (!parsedAlert) {
+      Toast.show({ content: '请输入有效提醒，例如 >1.50 或 <0.80' });
+      return;
+    }
+
+    const underlyingSymbol = String(holding.underlying_symbol || holding.symbol || '').trim().toUpperCase();
+    const contractSymbol = optionDisplay?.contractSymbol || String(holding.asset_id || '').replace(/^OPTION_/i, '');
+    await db.addPriceAlert({
+      id: crypto.randomUUID(),
+      symbol: underlyingSymbol,
+      asset_id: contractSymbol || holding.asset_id,
+      asset_type: 'OPTION',
+      condition: parsedAlert.condition,
+      target_price: parsedAlert.target,
+      last_price: Number.isFinite(defaultTarget) ? defaultTarget : null,
+      channels: null,
+      note: [
+        holding.expiry_date ? `EXP ${holding.expiry_date}` : '',
+        holding.option_type || '',
+        holding.strike_price ? `Strike ${holding.strike_price}` : '',
+        holding.broker ? `Broker ${holding.broker}` : '',
+      ].filter(Boolean).join(' · '),
+    });
+
+    await syncCloudAlerts({ notificationConfig, marketDataConfig });
+    Toast.show({
+      icon: 'success',
+      content: `期权提醒已添加：${parsedAlert.condition === 'ABOVE' ? '高于等于' : '低于等于'} ${parsedAlert.target}`,
+    });
   };
 
   const totalBuys = Number(summary?.total_buys) || 0;
@@ -255,6 +359,7 @@ export default function HoldingsPage() {
                 <HoldingCard
                   key={holdingKey}
                   holding={holding}
+                  underlyingPrice={underlyingQuotes[String(holding.underlying_symbol || holding.symbol || '').trim().toUpperCase()]}
                   index={idx}
                   viewMode={viewMode}
                   isExpanded={isExpanded}
@@ -262,6 +367,7 @@ export default function HoldingsPage() {
                   expandedTrades={isExpanded ? expandedTrades : []}
                   tradesLoading={tradesLoading}
                   onToggle={handleToggle}
+                  onAddOptionAlert={!isTeamWorkspace ? handleAddOptionAlert : null}
                 />
               );
             })}

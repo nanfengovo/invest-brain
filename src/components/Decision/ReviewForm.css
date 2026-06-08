@@ -42,6 +42,29 @@
   text-transform: uppercase;
 }
 
+.review-form__option-panel {
+  margin: 10px 16px 4px;
+  padding: 14px 16px;
+  border: 1px solid rgba(245, 158, 11, 0.22);
+  border-radius: 14px;
+  background:
+    linear-gradient(135deg, rgba(245, 158, 11, 0.14), rgba(14, 165, 233, 0.06)),
+    var(--color-bg-card);
+}
+
+.review-form__option-panel-title {
+  color: #fbbf24;
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.review-form__option-panel-desc {
+  margin-top: 6px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .review-form .adm-form {
   --background-color: transparent;
   --border-inner: 1px solid var(--color-border);
@@ -70,6 +93,11 @@
   background: rgba(99, 102, 241, 0.12);
   border-color: var(--color-accent);
   color: var(--color-accent-light);
+}
+
+.review-form__range {
+  width: 100%;
+  accent-color: #f59e0b;
 }
 
 .review-form .adm-input {

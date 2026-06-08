@@ -47,6 +47,8 @@ function SettingsPage() {
     saveGeminiApiKey,
     syncUserId,
     syncSecret,
+    workspaceScope,
+    setWorkspaceScope,
     saveSyncConfig,
     streamlitUrl,
     setStreamlitUrl,
@@ -68,6 +70,7 @@ function SettingsPage() {
   const [lastBackupTime, setLastBackupTime] = useState(localStorage.getItem('ib_last_autobackup_time'));
 
   const currentAuthor = (syncUserId || syncUserIdInput || '').trim() || '未标记';
+  const workspaceLabel = workspaceScope === 'team' ? '团队工作区' : '个人工作区';
 
   useEffect(() => {
     setApiKeyInput(geminiApiKey);
@@ -455,22 +458,6 @@ function SettingsPage() {
     }
   }
 
-  function stampExportDataWithAuthor(exportData, author) {
-    const normalizedAuthor = String(author || '').trim() || '未标记';
-    const rows = exportData?.tables?.trades;
-    if (!Array.isArray(rows)) return exportData;
-    return {
-      ...exportData,
-      tables: {
-        ...exportData.tables,
-        trades: rows.map((trade) => ({
-          ...trade,
-          author: trade.author || normalizedAuthor,
-        })),
-      },
-    };
-  }
-
   async function handleTestSyncConnection() {
     const normalizedSecret = syncSecretInput.trim();
 
@@ -519,9 +506,23 @@ function SettingsPage() {
       await db.backfillTradeAuthor(syncUserId);
       await refreshAll();
 
-      Toast.show({ icon: 'loading', content: '打包本地数据...', duration: 0 });
-      const result = await db.exportDB();
-      const exportData = stampExportDataWithAuthor(JSON.parse(result.data), syncUserId);
+      Toast.show({
+        icon: 'loading',
+        content: scope === 'team' ? '打包我的交易发布到团队...' : '打包我的个人工作区...',
+        duration: 0,
+      });
+      const exportData = await db.exportTradeWorkspaceDump({
+        author: syncUserId,
+        scope: 'personal',
+        targetScope: scope,
+      });
+
+      const tradeCount = exportData?.tables?.trades?.length || 0;
+      if (tradeCount === 0) {
+        Toast.clear();
+        Toast.show({ content: '当前花名下没有可同步的个人交易记录' });
+        return;
+      }
 
       Toast.show({ icon: 'loading', content: `上传至${scopeLabel}...`, duration: 0 });
       const res = await fetch('/api/sync-upload', {
@@ -548,7 +549,7 @@ function SettingsPage() {
       if (!res.ok) throw new Error(responseData?.error || '上传失败');
 
       Toast.clear();
-      Toast.show({ icon: 'success', content: scope === 'team' ? '已同步到团队空间' : '个人云端备份已完成' });
+      Toast.show({ icon: 'success', content: scope === 'team' ? `已发布 ${tradeCount} 笔我的交易到团队空间` : `个人云端备份已完成（${tradeCount} 笔）` });
     } catch (e) {
       Toast.clear();
       Toast.show({ icon: 'fail', content: e.message });
@@ -583,14 +584,20 @@ function SettingsPage() {
         return;
       }
 
-      Toast.show({ icon: 'loading', content: `合并 ${responseData.usersFound} 位成员的数据...`, duration: 0 });
+      Toast.show({ icon: 'loading', content: `刷新 ${responseData.usersFound} 位成员的团队镜像...`, duration: 0 });
       
       const jsonString = JSON.stringify(responseData.mergedData);
-      await db.importDB(jsonString, true); // true indicates merge mode
+      await db.clearTradeWorkspace('team');
+      await db.importDB(jsonString, true, {
+        workspaceScope: 'team',
+        sourceScope: 'team',
+        teamMirror: true,
+        syncStatus: 'synced',
+      });
       
       await refreshAll();
       Toast.clear();
-      Toast.show({ icon: 'success', content: '团队数据同步合并成功' });
+      Toast.show({ icon: 'success', content: '团队数据已更新，可切换到团队工作区查看' });
     } catch (e) {
       Toast.clear();
       Toast.show({ icon: 'fail', content: e.message });
@@ -628,7 +635,12 @@ function SettingsPage() {
       Toast.show({ icon: 'loading', content: '恢复并合并数据...', duration: 0 });
       
       const jsonString = JSON.stringify(responseData.mergedData);
-      await db.importDB(jsonString, true); // true indicates merge mode
+      await db.importDB(jsonString, true, {
+        workspaceScope: 'personal',
+        sourceScope: 'personal',
+        currentAuthor: syncUserIdInput,
+        restrictAuthor: syncUserIdInput,
+      });
       
       await refreshAll();
       Toast.clear();
@@ -947,9 +959,37 @@ function SettingsPage() {
           <div className="settings-card__row" style={{ cursor: 'default' }}>
             <span className="settings-card__icon">☁️</span>
             <div className="settings-card__content">
-              <div className="settings-card__label">团队同步凭证</div>
+              <div className="settings-card__label">多用户工作区</div>
               <div className="settings-card__desc">
-                输入您的花名代号以及团队同步暗号；新交易和导入记录会自动标记当前提交人。
+                当前：{workspaceLabel}。个人工作区用于记录和编辑；团队工作区用于查看所有成员镜像数据。
+              </div>
+            </div>
+          </div>
+          <div className="settings-card__input-row settings-card__input-row--stacked">
+            <Selector
+              options={[
+                { label: '个人工作区', value: 'personal' },
+                { label: '团队工作区', value: 'team' },
+              ]}
+              value={[workspaceScope]}
+              onChange={async (value) => {
+                const nextScope = value[0] || 'personal';
+                setWorkspaceScope(nextScope);
+                await refreshAll();
+                Toast.show({
+                  icon: 'success',
+                  content: nextScope === 'team' ? '已切换到团队工作区' : '已切换到个人工作区',
+                });
+              }}
+            />
+          </div>
+          <div className="settings-card__divider" />
+          <div className="settings-card__row" style={{ cursor: 'default' }}>
+            <span className="settings-card__icon">🔐</span>
+            <div className="settings-card__content">
+              <div className="settings-card__label">同步身份与暗号</div>
+              <div className="settings-card__desc">
+                新交易和导入记录会自动标记当前花名；发布团队时只提交此花名下的个人记录。
               </div>
             </div>
           </div>
@@ -998,7 +1038,7 @@ function SettingsPage() {
             <span className="settings-card__icon">🚀</span>
             <div className="settings-card__content">
               <div className="settings-card__label">备份我的云端数据</div>
-              <div className="settings-card__desc">只保存到您的个人云端备份，不进入团队空间</div>
+              <div className="settings-card__desc">只保存当前花名的个人工作区数据，不进入团队空间</div>
             </div>
             <span className="settings-card__arrow">›</span>
           </div>
@@ -1008,7 +1048,7 @@ function SettingsPage() {
             <span className="settings-card__icon">🤝</span>
             <div className="settings-card__content">
               <div className="settings-card__label">同步到团队空间</div>
-              <div className="settings-card__desc">以当前花名提交数据，供团队成员合并查看</div>
+              <div className="settings-card__desc">只发布当前花名的个人交易，供团队成员聚合查看</div>
             </div>
             <span className="settings-card__arrow">›</span>
           </div>
@@ -1018,7 +1058,7 @@ function SettingsPage() {
             <span className="settings-card__icon">🔄</span>
             <div className="settings-card__content">
               <div className="settings-card__label">恢复我的云端数据</div>
-              <div className="settings-card__desc">仅拉取我自己的个人备份并合并到本地</div>
+              <div className="settings-card__desc">仅拉取我自己的个人备份并合并到个人工作区</div>
             </div>
             <span className="settings-card__arrow">›</span>
           </div>
@@ -1028,7 +1068,7 @@ function SettingsPage() {
             <span className="settings-card__icon">📥</span>
             <div className="settings-card__content">
               <div className="settings-card__label">拉取团队空间数据</div>
-              <div className="settings-card__desc">拉取团队成员提交的数据并在本地无损合并</div>
+              <div className="settings-card__desc">刷新团队镜像数据，不覆盖个人工作区</div>
             </div>
             <span className="settings-card__arrow">›</span>
           </div>

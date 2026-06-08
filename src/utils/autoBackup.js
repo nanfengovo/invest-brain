@@ -68,7 +68,11 @@ export async function triggerAutoBackup() {
         // Run cloud backup in background without blocking
         setTimeout(async () => {
           try {
-            const dbData = await db.exportDBJSON();
+            const dbData = await db.exportTradeWorkspaceDump({
+              author: syncUserId,
+              scope: 'personal',
+              targetScope: 'personal',
+            });
             await fetch('/api/sync-upload', {
               method: 'POST',
               headers: {
@@ -159,4 +163,3 @@ export async function hasBackup() {
     return { exists: false, timestamp: null };
   }
 }
-

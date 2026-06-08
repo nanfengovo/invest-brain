@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { PullToRefresh, Popup } from 'antd-mobile';
 import { useTradeStore } from '../stores/useTradeStore';
+import { useAppStore } from '../stores/useAppStore';
 import TradeForm from '../components/Trade/TradeForm';
 import TradeCard from '../components/Trade/TradeCard';
 import TradeFilter from '../components/Trade/TradeFilter';
@@ -25,10 +26,12 @@ export default function TradesPage() {
 
   const { trades, tradesLoading, refreshTrades, refreshHoldings } =
     useTradeStore();
+  const workspaceScope = useAppStore((s) => s.workspaceScope);
+  const isTeamWorkspace = workspaceScope === 'team';
 
   useEffect(() => {
     refreshTrades();
-  }, [refreshTrades]);
+  }, [refreshTrades, workspaceScope]);
 
   const handleRefresh = async () => {
     await refreshTrades();
@@ -42,6 +45,7 @@ export default function TradesPage() {
   };
 
   const handleEditTrade = (trade) => {
+    if (isTeamWorkspace || trade.workspace_scope === 'team') return;
     setEditingTrade(trade);
     setShowForm(true);
   };
@@ -79,8 +83,8 @@ export default function TradesPage() {
       return (
         <EmptyState
           icon="📈"
-          title="还没有交易记录"
-          subtitle="点击右下角按钮开始记录"
+          title={isTeamWorkspace ? '团队空间暂无交易' : '还没有交易记录'}
+          subtitle={isTeamWorkspace ? '请先在设置中拉取团队空间数据' : '点击右下角按钮开始记录'}
         />
       );
     }
@@ -141,7 +145,7 @@ export default function TradesPage() {
         <div className="trades-page__header-left">
           <h1 className="trades-page__title">交易记录</h1>
           <p className="trades-page__subtitle">
-            共 {filteredTrades.length} 笔交易
+            {isTeamWorkspace ? '团队镜像' : '我的工作区'} · 共 {filteredTrades.length} 笔交易
             {trades.length !== filteredTrades.length && <span style={{color: 'var(--color-primary)'}}> (已过滤)</span>}
           </p>
         </div>
@@ -156,16 +160,18 @@ export default function TradesPage() {
       </PullToRefresh>
 
       {/* ── FAB ── */}
-      <button
-        className="action-fab"
-        onClick={() => {
-          setEditingTrade(null);
-          setShowForm(true);
-        }}
-        aria-label="添加交易"
-      >
-        +
-      </button>
+      {!isTeamWorkspace && (
+        <button
+          className="action-fab"
+          onClick={() => {
+            setEditingTrade(null);
+            setShowForm(true);
+          }}
+          aria-label="添加交易"
+        >
+          +
+        </button>
+      )}
 
       {/* ── Trade Filter Popup ── */}
       <Popup

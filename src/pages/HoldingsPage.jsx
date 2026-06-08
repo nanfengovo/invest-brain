@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTradeStore } from '../stores/useTradeStore';
+import { useAppStore } from '../stores/useAppStore';
 import { db } from '../db/database';
 import EmptyState from '../components/common/EmptyState';
 import { parseDateTime } from '../utils/time';
@@ -36,6 +37,8 @@ const TYPE_LABELS = {
 export default function HoldingsPage() {
   const { holdings, summary, holdingsLoading, refreshHoldings } =
     useTradeStore();
+  const workspaceScope = useAppStore((s) => s.workspaceScope);
+  const isTeamWorkspace = workspaceScope === 'team';
 
   const [expandedId, setExpandedId] = useState(null);
   const [expandedTrades, setExpandedTrades] = useState([]);
@@ -57,14 +60,21 @@ export default function HoldingsPage() {
   );
 
   useEffect(() => {
-    refreshHoldings(activeAuthor);
-  }, [activeAuthor, refreshHoldings]);
+    setSelectedAuthor('');
+    setAuthorSearch('');
+    setExpandedId(null);
+    setExpandedTrades([]);
+  }, [workspaceScope]);
+
+  useEffect(() => {
+    refreshHoldings(activeAuthor, workspaceScope);
+  }, [activeAuthor, refreshHoldings, workspaceScope]);
 
   useEffect(() => {
     let cancelled = false;
     async function loadAuthors() {
       try {
-        const rows = await db.getTradeAuthors();
+        const rows = await db.getTradeAuthors(workspaceScope);
         if (!cancelled) {
           setAuthors(rows.map((row) => row.author).filter(Boolean));
         }
@@ -76,7 +86,7 @@ export default function HoldingsPage() {
     return () => {
       cancelled = true;
     };
-  }, [holdings.length]);
+  }, [holdings.length, workspaceScope]);
 
   const handleToggle = useCallback(
     async (assetId, broker, groupAuthor) => {
@@ -90,7 +100,7 @@ export default function HoldingsPage() {
       setExpandedId(key);
       setTradesLoading(true);
       try {
-        const trades = await db.getTradesByAssetAndBroker(assetId, broker, queryAuthor);
+        const trades = await db.getTradesByAssetAndBroker(assetId, broker, queryAuthor, workspaceScope);
         setExpandedTrades(trades);
       } catch (err) {
         console.error('Failed to load trades for asset:', err);
@@ -99,7 +109,7 @@ export default function HoldingsPage() {
         setTradesLoading(false);
       }
     },
-    [activeAuthor, expandedId]
+    [activeAuthor, expandedId, workspaceScope]
   );
 
   const handleViewModeChange = (nextMode) => {
@@ -125,7 +135,7 @@ export default function HoldingsPage() {
         <div className="holdings-page__header">
           <h1 className="holdings-page__title">持仓总览</h1>
           <p className="holdings-page__subtitle">
-            基于交易记录自动计算
+            {isTeamWorkspace ? '团队镜像数据聚合计算' : '基于我的交易记录自动计算'}
           </p>
         </div>
       </div>
@@ -134,7 +144,11 @@ export default function HoldingsPage() {
       <div className="holdings-page__section">
         <div className="holdings-page__summary glass-card">
           <div className="holdings-page__summary-label">
-            {selectedAuthor ? `${selectedAuthor} 的持仓` : '团队投资组合'}
+            {selectedAuthor
+              ? `${selectedAuthor} 的持仓`
+              : isTeamWorkspace
+                ? '团队投资组合'
+                : '我的持仓'}
           </div>
 
           <div className="holdings-page__summary-grid">
@@ -400,8 +414,8 @@ export default function HoldingsPage() {
         ) : (
           <EmptyState
             icon="📊"
-            title="暂无持仓"
-            subtitle="开始录入交易记录后自动生成"
+            title={isTeamWorkspace ? '团队空间暂无持仓' : '暂无持仓'}
+            subtitle={isTeamWorkspace ? '请先在设置中拉取团队空间数据' : '开始录入交易记录后自动生成'}
           />
         )}
       </div>

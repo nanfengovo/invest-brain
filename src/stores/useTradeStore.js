@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 import { db } from '../db/database';
 import { triggerAutoBackup } from '../utils/autoBackup';
+import { useAppStore } from './useAppStore';
+
+const getWorkspaceScope = () => useAppStore.getState().workspaceScope || 'personal';
 
 export const useTradeStore = create((set, get) => ({
   // Trade data
@@ -24,7 +27,7 @@ export const useTradeStore = create((set, get) => ({
   refreshTrades: async () => {
     set({ tradesLoading: true });
     try {
-      const trades = await db.getTrades(2000);
+      const trades = await db.getTrades(2000, 0, getWorkspaceScope());
       set({ trades, tradesLoading: false });
     } catch (err) {
       console.error('Failed to load trades:', err);
@@ -88,12 +91,12 @@ export const useTradeStore = create((set, get) => ({
   // Holdings actions
   // ==========================================
 
-  refreshHoldings: async (author = null) => {
+  refreshHoldings: async (author = null, scope = getWorkspaceScope()) => {
     set({ holdingsLoading: true });
     try {
       const [holdings, summary, stats] = await Promise.all([
-        db.getHoldings(author),
-        db.getPortfolioSummary(author),
+        db.getHoldings(author, scope),
+        db.getPortfolioSummary(author, scope),
         db.getStats(),
       ]);
       set({ holdings, summary, stats, holdingsLoading: false });
@@ -116,9 +119,9 @@ export const useTradeStore = create((set, get) => ({
     }
   },
 
-  getHoldings: async (author = null) => {
+  getHoldings: async (author = null, scope = getWorkspaceScope()) => {
     try {
-      const holdings = await db.getHoldings(author);
+      const holdings = await db.getHoldings(author, scope);
       set({ holdings });
       return { success: true, data: holdings };
     } catch (err) {

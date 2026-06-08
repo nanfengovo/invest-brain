@@ -72,12 +72,23 @@ const TRADE_TIME_SECONDS_SQL = `CASE
 END`;
 
 const TRADE_AUTHOR_SQL = `COALESCE(NULLIF(TRIM(t.author), ''), '未标记')`;
+const TRADE_WORKSPACE_SQL = `COALESCE(NULLIF(TRIM(t.workspace_scope), ''), 'personal')`;
 
 function appendAuthorFilter(sql, params, author) {
   const normalizedAuthor = String(author || '').trim();
   if (!normalizedAuthor) return sql;
   params.push(normalizedAuthor);
   return `${sql} AND ${TRADE_AUTHOR_SQL} = ?`;
+}
+
+function normalizeWorkspaceScope(scope) {
+  return scope === 'team' ? 'team' : 'personal';
+}
+
+function appendWorkspaceFilter(sql, params, scope = 'personal') {
+  const normalizedScope = normalizeWorkspaceScope(scope);
+  params.push(normalizedScope);
+  return `${sql} AND ${TRADE_WORKSPACE_SQL} = ?`;
 }
 
 /**
@@ -224,9 +235,9 @@ export const db = {
   /**
    * Import database from backup or merge external data
    */
-  async importDB(data, merge = false) {
+  async importDB(data, merge = false, options = {}) {
     if (!isReady) throw new Error('Database not initialized');
-    return sendMessage('import', { data, merge });
+    return sendMessage('import', { data, merge, options });
   },
 
   // ==========================================
@@ -298,20 +309,25 @@ export const db = {
   // Trade operations
   // ==========================================
 
-  async getTrades(limit = 1000, offset = 0) {
+  async getTrades(limit = 1000, offset = 0, scope = 'personal') {
+    const params = [];
+    let sql = `SELECT t.*, a.symbol, a.name as asset_name, a.type as asset_type, a.sector as asset_sector,
+                     COALESCE(t.underlying_symbol, a.underlying_symbol) as underlying_symbol,
+                     COALESCE(t.strike_price, a.strike_price) as strike_price,
+                     COALESCE(t.expiry_date, a.expiry_date) as expiry_date,
+                     COALESCE(t.option_type, a.option_type) as option_type,
+                     d.title as decision_title, t.broker
+              FROM trades t
+              LEFT JOIN assets a ON t.asset_id = a.id
+              LEFT JOIN decisions d ON t.decision_id = d.id
+              WHERE 1 = 1`;
+    sql = appendWorkspaceFilter(sql, params, scope);
+    sql += ` ORDER BY ${TRADE_TIME_SECONDS_SQL} DESC
+             LIMIT ? OFFSET ?`;
+    params.push(limit, offset);
     return this.query(
-      `SELECT t.*, a.symbol, a.name as asset_name, a.type as asset_type, a.sector as asset_sector,
-              COALESCE(t.underlying_symbol, a.underlying_symbol) as underlying_symbol,
-              COALESCE(t.strike_price, a.strike_price) as strike_price,
-              COALESCE(t.expiry_date, a.expiry_date) as expiry_date,
-              COALESCE(t.option_type, a.option_type) as option_type,
-              d.title as decision_title, t.broker
-       FROM trades t
-       LEFT JOIN assets a ON t.asset_id = a.id
-       LEFT JOIN decisions d ON t.decision_id = d.id
-       ORDER BY ${TRADE_TIME_SECONDS_SQL} DESC
-       LIMIT ? OFFSET ?`,
-      [limit, offset]
+      sql,
+      params
     );
   },
 
@@ -333,19 +349,19 @@ export const db = {
   },
 
   async addTrade(trade) {
-    const { id, asset_id, decision_id, direction, quantity, price, fee, account, trade_time, note, broker, info_id, underlying_symbol, strike_price, expiry_date, option_type, contract_symbol, author } = trade;
+    const { id, asset_id, decision_id, direction, quantity, price, fee, account, trade_time, note, broker, info_id, underlying_symbol, strike_price, expiry_date, option_type, contract_symbol, author, workspace_scope, source_author, source_scope, origin_id, sync_status } = trade;
     return this.exec(
-      `INSERT INTO trades (id, asset_id, decision_id, info_id, direction, quantity, price, fee, account, trade_time, note, broker, underlying_symbol, strike_price, expiry_date, option_type, contract_symbol, author)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, asset_id, decision_id || null, info_id || null, direction, quantity, price, fee || 0, account || null, trade_time, note || null, broker || null, underlying_symbol || null, strike_price || null, expiry_date || null, option_type || null, contract_symbol || null, author || null]
+      `INSERT INTO trades (id, asset_id, decision_id, info_id, direction, quantity, price, fee, account, trade_time, note, broker, underlying_symbol, strike_price, expiry_date, option_type, contract_symbol, author, workspace_scope, source_author, source_scope, origin_id, sync_status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, asset_id, decision_id || null, info_id || null, direction, quantity, price, fee || 0, account || null, trade_time, note || null, broker || null, underlying_symbol || null, strike_price || null, expiry_date || null, option_type || null, contract_symbol || null, author || null, workspace_scope || 'personal', source_author || author || null, source_scope || workspace_scope || 'personal', origin_id || id, sync_status || 'local']
     );
   },
 
   async updateTrade(trade) {
-    const { id, asset_id, decision_id, direction, quantity, price, fee, account, trade_time, note, broker, info_id, underlying_symbol, strike_price, expiry_date, option_type, contract_symbol, author } = trade;
+    const { id, asset_id, decision_id, direction, quantity, price, fee, account, trade_time, note, broker, info_id, underlying_symbol, strike_price, expiry_date, option_type, contract_symbol, author, workspace_scope, source_author, source_scope, origin_id, sync_status } = trade;
     return this.exec(
-      `UPDATE trades SET asset_id = ?, decision_id = ?, info_id = ?, direction = ?, quantity = ?, price = ?, fee = ?, account = ?, trade_time = ?, note = ?, broker = ?, underlying_symbol = ?, strike_price = ?, expiry_date = ?, option_type = ?, contract_symbol = ?, author = ? WHERE id = ?`,
-      [asset_id, decision_id || null, info_id || null, direction, quantity, price, fee || 0, account || null, trade_time, note || null, broker || null, underlying_symbol || null, strike_price || null, expiry_date || null, option_type || null, contract_symbol || null, author || null, id]
+      `UPDATE trades SET asset_id = ?, decision_id = ?, info_id = ?, direction = ?, quantity = ?, price = ?, fee = ?, account = ?, trade_time = ?, note = ?, broker = ?, underlying_symbol = ?, strike_price = ?, expiry_date = ?, option_type = ?, contract_symbol = ?, author = ?, workspace_scope = ?, source_author = ?, source_scope = ?, origin_id = ?, sync_status = ? WHERE id = ?`,
+      [asset_id, decision_id || null, info_id || null, direction, quantity, price, fee || 0, account || null, trade_time, note || null, broker || null, underlying_symbol || null, strike_price || null, expiry_date || null, option_type || null, contract_symbol || null, author || null, workspace_scope || 'personal', source_author || author || null, source_scope || workspace_scope || 'personal', origin_id || id, sync_status || 'local', id]
     );
   },
 
@@ -353,7 +369,7 @@ export const db = {
     return this.exec('DELETE FROM trades WHERE id = ?', [id]);
   },
 
-  async getTradesByAssetAndBroker(assetId, broker = null, author = null) {
+  async getTradesByAssetAndBroker(assetId, broker = null, author = null, scope = 'personal') {
     let sql = `SELECT t.*, d.title as decision_title
                FROM trades t
                LEFT JOIN decisions d ON t.decision_id = d.id
@@ -365,6 +381,7 @@ export const db = {
     } else {
       sql += ` AND (t.broker IS NULL OR t.broker = '')`;
     }
+    sql = appendWorkspaceFilter(sql, params, scope);
     sql = appendAuthorFilter(sql, params, author);
     sql += ` ORDER BY ${TRADE_TIME_SECONDS_SQL} DESC`;
 
@@ -529,11 +546,16 @@ export const db = {
   // Holdings & P&L calculations
   // ==========================================
 
-  async getTradeAuthors() {
-    return this.query(
-      `SELECT DISTINCT ${TRADE_AUTHOR_SQL} as author
+  async getTradeAuthors(scope = 'personal') {
+    const params = [];
+    let sql = `SELECT DISTINCT ${TRADE_AUTHOR_SQL} as author
        FROM trades t
-       ORDER BY author`
+       WHERE 1 = 1`;
+    sql = appendWorkspaceFilter(sql, params, scope);
+    sql += ` ORDER BY author`;
+    return this.query(
+      sql,
+      params
     );
   },
 
@@ -548,7 +570,14 @@ export const db = {
     );
   },
 
-  async getHoldings(author = null) {
+  async clearTradeWorkspace(scope = 'team') {
+    return this.exec(
+      `DELETE FROM trades WHERE COALESCE(NULLIF(TRIM(workspace_scope), ''), 'personal') = ?`,
+      [normalizeWorkspaceScope(scope)]
+    );
+  },
+
+  async getHoldings(author = null, scope = 'personal') {
     let sql = `SELECT
         ${TRADE_AUTHOR_SQL} as author,
         a.id as asset_id,
@@ -579,6 +608,7 @@ export const db = {
        JOIN assets a ON t.asset_id = a.id
        WHERE 1 = 1`;
     const params = [];
+    sql = appendWorkspaceFilter(sql, params, scope);
     sql = appendAuthorFilter(sql, params, author);
     sql += `
        GROUP BY a.id, t.broker, ${TRADE_AUTHOR_SQL}
@@ -591,7 +621,7 @@ export const db = {
     );
   },
 
-  async getPortfolioSummary(author = null) {
+  async getPortfolioSummary(author = null, scope = 'personal') {
     let sql = `SELECT
         t.*,
         a.symbol,
@@ -604,12 +634,51 @@ export const db = {
        LEFT JOIN assets a ON t.asset_id = a.id
        WHERE 1 = 1`;
     const params = [];
+    sql = appendWorkspaceFilter(sql, params, scope);
     sql = appendAuthorFilter(sql, params, author);
     const trades = await this.query(
       sql,
       params
     );
     return buildTradePortfolioSummary(trades);
+  },
+
+  async exportTradeWorkspaceDump({ author = null, scope = 'personal', targetScope = 'personal' } = {}) {
+    const normalizedScope = normalizeWorkspaceScope(scope);
+    const rows = await this.query(
+      `SELECT name FROM sqlite_master
+        WHERE type='table'
+          AND name NOT LIKE 'sqlite_%'
+          AND name != '_migrations'
+        ORDER BY name`
+    );
+    const tables = {};
+    for (const table of rows) {
+      if (table.name === 'trades') {
+        let sql = `SELECT * FROM trades t WHERE 1 = 1`;
+        const params = [];
+        sql = appendWorkspaceFilter(sql, params, normalizedScope);
+        sql = appendAuthorFilter(sql, params, author);
+        const trades = await this.query(sql, params);
+        tables.trades = trades.map((trade) => ({
+          ...trade,
+          workspace_scope: targetScope,
+          source_scope: targetScope,
+          source_author: trade.source_author || trade.author || author || '未标记',
+          origin_id: trade.origin_id || trade.id,
+          sync_status: 'synced',
+        }));
+      } else {
+        tables[table.name] = await this.query(`SELECT * FROM ${table.name}`);
+      }
+    }
+
+    return {
+      version: Date.now(),
+      workspaceScope: targetScope,
+      author: author || null,
+      tables,
+    };
   },
 
   async getRealizedPnL() {

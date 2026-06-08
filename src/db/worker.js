@@ -90,6 +90,65 @@ function querySQL(sql, params = []) {
   }
 }
 
+function getTableColumns(tableName) {
+  const result = querySQL(`PRAGMA table_info(${tableName})`);
+  if (!result.success) return new Set();
+  return new Set(result.data.map((column) => column.name));
+}
+
+function normalizeImportedDump(dump, options = {}) {
+  if (!dump?.tables?.trades || !Array.isArray(dump.tables.trades)) return dump;
+
+  const {
+    workspaceScope = null,
+    sourceScope = null,
+    currentAuthor = null,
+    restrictAuthor = null,
+    teamMirror = false,
+    syncStatus = null,
+  } = options || {};
+
+  const normalizedAuthor = String(currentAuthor || '').trim();
+  const authorFilter = String(restrictAuthor || '').trim();
+
+  const trades = dump.tables.trades
+    .filter((row) => {
+      if (!authorFilter) return true;
+      return String(row?.author || row?.source_author || '').trim() === authorFilter;
+    })
+    .map((row) => {
+      const author = String(row?.author || row?.source_author || normalizedAuthor || '未标记').trim() || '未标记';
+      const originId = String(row?.origin_id || row?.id || '').trim();
+      const next = {
+        ...row,
+        author,
+        source_author: String(row?.source_author || author).trim() || author,
+        workspace_scope: workspaceScope || row?.workspace_scope || 'personal',
+        source_scope: sourceScope || row?.source_scope || workspaceScope || 'personal',
+        origin_id: originId || row?.id,
+        sync_status: syncStatus || row?.sync_status || 'local',
+      };
+
+      if (teamMirror && originId) {
+        next.id = `team:${next.source_author}:${originId}`;
+        next.workspace_scope = 'team';
+        next.source_scope = row?.source_scope || 'team';
+        next.origin_id = originId;
+        next.sync_status = 'synced';
+      }
+
+      return next;
+    });
+
+  return {
+    ...dump,
+    tables: {
+      ...dump.tables,
+      trades,
+    },
+  };
+}
+
 /**
  * Execute multiple SQL statements in a transaction
  */
@@ -149,9 +208,10 @@ function exportDatabase() {
  * @param {string|object} jsonData 
  * @param {boolean} merge - If true, uses INSERT OR REPLACE and skips DELETE
  */
-function importDatabase(jsonData, merge = false) {
+function importDatabase(jsonData, merge = false, options = {}) {
   try {
-    const dump = typeof jsonData === 'string' ? JSON.parse(jsonData) : jsonData;
+    const rawDump = typeof jsonData === 'string' ? JSON.parse(jsonData) : jsonData;
+    const dump = normalizeImportedDump(rawDump, options);
     db.exec('BEGIN TRANSACTION');
 
     if (!merge) {
@@ -176,12 +236,18 @@ function importDatabase(jsonData, merge = false) {
     // Insert data
     for (const [tableName, rows] of Object.entries(dump.tables)) {
       if (!Array.isArray(rows) || rows.length === 0) continue;
+      const tableColumns = getTableColumns(tableName);
       const columns = Array.from(
         rows.reduce((set, row) => {
-          Object.keys(row || {}).forEach((column) => set.add(column));
+          Object.keys(row || {}).forEach((column) => {
+            if (!tableColumns.size || tableColumns.has(column)) {
+              set.add(column);
+            }
+          });
           return set;
         }, new Set())
       );
+      if (columns.length === 0) continue;
       const placeholders = columns.map(() => '?').join(',');
       
       const insertCmd = merge ? 'INSERT OR REPLACE' : 'INSERT';
@@ -232,7 +298,7 @@ self.onmessage = async function (e) {
       result = exportDatabase();
       break;
     case 'import':
-      result = importDatabase(payload.data, payload.merge || false);
+      result = importDatabase(payload.data, payload.merge || false, payload.options || {});
       break;
     default:
       result = { success: false, error: `Unknown message type: ${type}` };

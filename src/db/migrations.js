@@ -241,6 +241,26 @@ export const MIGRATIONS = [
       `ALTER TABLE trades ADD COLUMN author TEXT`,
       `CREATE INDEX IF NOT EXISTS idx_trades_author ON trades(author)`
     ]
+  },
+  {
+    version: 10,
+    description: 'Phase 10: Workspace-scoped trade sync metadata',
+    statements: [
+      `ALTER TABLE trades ADD COLUMN workspace_scope TEXT DEFAULT 'personal'`,
+      `ALTER TABLE trades ADD COLUMN source_author TEXT`,
+      `ALTER TABLE trades ADD COLUMN source_scope TEXT DEFAULT 'personal'`,
+      `ALTER TABLE trades ADD COLUMN origin_id TEXT`,
+      `ALTER TABLE trades ADD COLUMN sync_status TEXT DEFAULT 'local'`,
+      `UPDATE trades
+          SET workspace_scope = COALESCE(NULLIF(TRIM(workspace_scope), ''), 'personal'),
+              source_author = COALESCE(NULLIF(TRIM(source_author), ''), COALESCE(NULLIF(TRIM(author), ''), '未标记')),
+              source_scope = COALESCE(NULLIF(TRIM(source_scope), ''), 'personal'),
+              origin_id = COALESCE(NULLIF(TRIM(origin_id), ''), id),
+              sync_status = COALESCE(NULLIF(TRIM(sync_status), ''), 'local')`,
+      `CREATE INDEX IF NOT EXISTS idx_trades_workspace_scope ON trades(workspace_scope)`,
+      `CREATE INDEX IF NOT EXISTS idx_trades_source_author ON trades(source_author)`,
+      `CREATE INDEX IF NOT EXISTS idx_trades_origin ON trades(origin_id, workspace_scope)`
+    ]
   }
 ];
 

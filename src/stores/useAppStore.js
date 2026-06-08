@@ -4,6 +4,7 @@ import { db } from '../db/database';
 const MARKET_WATCHLIST_KEY = 'ib_market_watchlist';
 const SYNC_USER_ID_KEY = 'invest_sync_user_id';
 const SYNC_SECRET_KEY = 'invest_sync_secret';
+const WORKSPACE_SCOPE_KEY = 'ib_workspace_scope';
 const DEFAULT_NOTIFICATION_CONFIG = {
   emailEnabled: false,
   emailApiKey: '',
@@ -89,8 +90,14 @@ export const useAppStore = create((set, get) => ({
   // Cloud Sync state
   syncUserId: '',
   syncSecret: '',
+  workspaceScope: localStorage.getItem(WORKSPACE_SCOPE_KEY) === 'team' ? 'team' : 'personal',
   setSyncUserId: (id) => set({ syncUserId: id }),
   setSyncSecret: (secret) => set({ syncSecret: secret }),
+  setWorkspaceScope: (scope) => {
+    const nextScope = scope === 'team' ? 'team' : 'personal';
+    localStorage.setItem(WORKSPACE_SCOPE_KEY, nextScope);
+    set({ workspaceScope: nextScope });
+  },
   loadSyncConfig: async () => {
     try {
       const userId = await db.getSetting('sync_user_id') || localStorage.getItem(SYNC_USER_ID_KEY);

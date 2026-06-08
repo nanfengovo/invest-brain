@@ -41,11 +41,13 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: '缺少用户代号或同步数据' });
     }
 
+    const normalizedData = normalizeSyncDump(data, userId, scope);
+
     const keyPrefix = scope === 'team' ? 'team_sync_data' : 'sync_data';
     const timePrefix = scope === 'team' ? 'team_sync_time' : 'sync_time';
     const key = `${keyPrefix}:${userId}`;
     const timeKey = `${timePrefix}:${userId}`;
-    const stringifiedData = JSON.stringify(data);
+    const stringifiedData = JSON.stringify(normalizedData);
 
     await redis.set(key, stringifiedData);
     await redis.set(timeKey, Date.now().toString());
@@ -66,4 +68,33 @@ export default async function handler(req, res) {
   } finally {
     if (redis) await redis.close();
   }
+}
+
+function normalizeSyncDump(data, userId, scope) {
+  if (!data?.tables?.trades || !Array.isArray(data.tables.trades)) return data;
+  const normalizedUserId = String(userId || '').trim();
+  const trades = data.tables.trades
+    .filter((trade) => {
+      const author = String(trade?.author || trade?.source_author || '').trim();
+      return !normalizedUserId || author === normalizedUserId;
+    })
+    .map((trade) => ({
+      ...trade,
+      author: String(trade.author || normalizedUserId || '未标记').trim() || '未标记',
+      source_author: String(trade.source_author || trade.author || normalizedUserId || '未标记').trim() || '未标记',
+      workspace_scope: scope,
+      source_scope: scope,
+      origin_id: trade.origin_id || trade.id,
+      sync_status: 'synced',
+    }));
+
+  return {
+    ...data,
+    workspaceScope: scope,
+    author: normalizedUserId,
+    tables: {
+      ...data.tables,
+      trades,
+    },
+  };
 }

@@ -11,11 +11,12 @@ import { resolveInformationReaderKind } from '../utils/informationReaderKind';
 import { detectVideoPlatform } from '../utils/videoPlatforms';
 import { getSyncStatusMeta, isTeamMirrorRecord } from '../utils/syncStatus';
 import { sharePoster } from '../utils/sharePoster';
-import { buildAiRequestBody, buildAiRequestHeaders, getAiUsageLabel } from '../utils/aiProviders';
+import { getAiUsageLabel } from '../utils/aiProviders';
 import {
   getCachedInformationTranslation,
   saveInformationTranslation,
   shouldAutoTranslateText,
+  translateTextToChineseInChunks,
   translateTextToChinese,
 } from '../utils/informationAutoTranslation';
 import LoadingSpinner from '../components/common/LoadingSpinner';
@@ -49,8 +50,6 @@ const TYPE_OPTIONS = [
   { label: '图表/图片', value: 'IMAGE' },
   { label: '书籍/研报', value: 'BOOK' },
 ];
-
-const BUILTIN_AI_API_BASE_URL = 'https://invest-brain.vercel.app';
 
 const SectorIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="1em" height="1em">
@@ -180,18 +179,6 @@ function cleanContentForTranslation(content = '') {
     .replace(/^作者:\s*$/gim, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
-}
-
-function getSummarizeApiUrl(hasLocalApiKey) {
-  if (hasLocalApiKey) return '/api/summarize';
-  if (typeof window === 'undefined') return '/api/summarize';
-
-  const localHosts = new Set(['localhost', '127.0.0.1', '::1']);
-  if (localHosts.has(window.location.hostname)) {
-    return `${BUILTIN_AI_API_BASE_URL}/api/summarize`;
-  }
-
-  return '/api/summarize';
 }
 
 function getLabeledUrl(content = '', label) {
@@ -665,6 +652,8 @@ export default function InformationDetail() {
   const [translationLoading, setTranslationLoading] = useState(false);
   const [autoTitleTranslation, setAutoTitleTranslation] = useState('');
   const [autoTranslationStatus, setAutoTranslationStatus] = useState('');
+  const [autoReaderTranslationStatus, setAutoReaderTranslationStatus] = useState('');
+  const [autoReaderTranslationProgress, setAutoReaderTranslationProgress] = useState(null);
   const [readerMode, setReaderMode] = useState('original');
   const [actionSheetVisible, setActionSheetVisible] = useState(false);
   const autoTranslationRequestRef = useRef('');
@@ -733,6 +722,8 @@ export default function InformationDetail() {
     setTranslationModel('');
     setAutoTitleTranslation('');
     setAutoTranslationStatus('');
+    setAutoReaderTranslationStatus('');
+    setAutoReaderTranslationProgress(null);
     autoTranslationRequestRef.current = '';
     setReaderMode('original');
   }, [id]);
@@ -984,12 +975,33 @@ export default function InformationDetail() {
       setReaderMode('translated');
     }
     if ((!needsTitleTranslation || cached?.title) && (!needsContentTranslation || cached?.content)) {
+      setAutoTranslationStatus(cached?.title ? 'ready' : '');
+      setAutoReaderTranslationStatus(cached?.content ? 'ready' : '');
+      setAutoReaderTranslationProgress(null);
       return undefined;
     }
 
     const controller = new AbortController();
     let cancelled = false;
-    setAutoTranslationStatus('translating');
+    let readerWatchdogId = null;
+    const clearReaderWatchdog = () => {
+      if (readerWatchdogId) {
+        window.clearTimeout(readerWatchdogId);
+        readerWatchdogId = null;
+      }
+    };
+    const armReaderWatchdog = () => {
+      clearReaderWatchdog();
+      readerWatchdogId = window.setTimeout(() => {
+        if (cancelled) return;
+        controller.abort();
+        setAutoReaderTranslationStatus('failed');
+        setAutoReaderTranslationProgress(null);
+      }, 22000);
+    };
+    setAutoTranslationStatus(needsTitleTranslation && !cached?.title ? 'translating' : (cached?.title ? 'ready' : ''));
+    setAutoReaderTranslationStatus(needsContentTranslation && !cached?.content ? 'translating' : (cached?.content ? 'ready' : ''));
+    setAutoReaderTranslationProgress(needsContentTranslation && !cached?.content ? { completed: 0, total: 0 } : null);
 
     const run = async () => {
       let translatedTitle = cached?.title || '';
@@ -1017,31 +1029,41 @@ export default function InformationDetail() {
               translatedTitle,
               modelLabel,
             });
-            setAutoTranslationStatus(needsContentTranslation ? 'translating' : 'ready');
+            setAutoTranslationStatus('ready');
           }
         }
       } catch {
         if (cancelled || controller.signal.aborted) return;
-        setAutoTranslationStatus(needsContentTranslation ? 'translating' : 'failed');
+        setAutoTranslationStatus('failed');
       }
 
       try {
         if (needsContentTranslation && !translatedContent) {
-          const contentResult = await translateTextToChinese({
+          armReaderWatchdog();
+          const contentResult = await translateTextToChineseInChunks({
             text: translationSourceContent,
             title: translatedTitle || info.title,
             geminiApiKey,
             nvidiaApiKey,
             aiProviderConfig,
             signal: controller.signal,
-            timeoutMs: 60000,
+            chunkTimeoutMs: 18000,
+            onProgress: (progress) => {
+              if (!cancelled) {
+                setAutoReaderTranslationProgress(progress);
+                if (progress.completed > 0) armReaderWatchdog();
+              }
+            },
           });
+          clearReaderWatchdog();
           translatedContent = contentResult.translatedText;
           modelLabel = contentResult.modelLabel || modelLabel;
           if (!cancelled && translatedContent) {
             setTranslationText(translatedContent);
             setTranslationModel(modelLabel);
             setReaderMode('translated');
+            setAutoReaderTranslationStatus('ready');
+            setAutoReaderTranslationProgress(null);
           }
         }
 
@@ -1054,16 +1076,22 @@ export default function InformationDetail() {
             modelLabel,
           });
           setAutoTranslationStatus(translatedTitle || translatedContent ? 'ready' : '');
+          setAutoReaderTranslationStatus(translatedContent ? 'ready' : '');
+          setAutoReaderTranslationProgress(null);
         }
       } catch {
+        clearReaderWatchdog();
         if (cancelled || controller.signal.aborted) return;
         setAutoTranslationStatus(translatedTitle ? 'ready' : 'failed');
+        setAutoReaderTranslationStatus('failed');
+        setAutoReaderTranslationProgress(null);
       }
     };
 
     run();
     return () => {
       cancelled = true;
+      clearReaderWatchdog();
       controller.abort();
     };
   }, [
@@ -1092,33 +1120,31 @@ export default function InformationDetail() {
     }
 
     setTranslationLoading(true);
-    const estimatedChunkCount = Math.max(1, Math.ceil(translationSourceContent.length / 7000));
-    const toast = Toast.show({
+    const estimatedChunkCount = Math.max(1, Math.ceil(translationSourceContent.length / 2800));
+    let toast = Toast.show({
       icon: 'loading',
       content: estimatedChunkCount > 1 ? '正在分段翻译中文...' : '正在翻译成中文...',
       duration: 0,
     });
 
     try {
-      const localGeminiKey = String(geminiApiKey || '').trim();
-      const localNvidiaKey = String(nvidiaApiKey || '').trim();
-      const headers = buildAiRequestHeaders({ geminiApiKey: localGeminiKey, nvidiaApiKey: localNvidiaKey });
-
-      const response = await fetch(getSummarizeApiUrl(Boolean(localGeminiKey || localNvidiaKey)), {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(buildAiRequestBody(aiProviderConfig, {
-          mode: 'translate',
-          title: info?.title || '',
-          text: translationSourceContent,
-          sourceLanguage: 'auto',
-        })),
+      let lastProgressText = '';
+      const result = await translateTextToChineseInChunks({
+        text: translationSourceContent,
+        title: autoTitleTranslation || info?.title || '',
+        geminiApiKey,
+        nvidiaApiKey,
+        aiProviderConfig,
+        chunkTimeoutMs: 45000,
+        onProgress: ({ completed, total }) => {
+          if (total <= 1) return;
+          const nextProgressText = `正在分段翻译中文... ${completed}/${total}`;
+          if (nextProgressText === lastProgressText) return;
+          lastProgressText = nextProgressText;
+          toast.close();
+          toast = Toast.show({ icon: 'loading', content: nextProgressText, duration: 0 });
+        },
       });
-
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(result.error || `HTTP ${response.status}`);
-      }
 
       const nextTranslationText = String(result.translatedText || '').trim();
       if (!nextTranslationText) {
@@ -1127,11 +1153,11 @@ export default function InformationDetail() {
 
       toast.close();
       setTranslationText(nextTranslationText);
-      const modelLabel = getAiUsageLabel(result);
+      const modelLabel = result.modelLabel || getAiUsageLabel(result);
       setTranslationModel(modelLabel || result.model || '');
       setReaderMode('translated');
-      const chunkCount = Number(result.chunk_count || 1);
-      const translatedChunks = Number(result.translated_chunks || chunkCount);
+      const chunkCount = Number(result.chunkCount || result.chunk_count || 1);
+      const translatedChunks = Number(result.translatedChunks || result.translated_chunks || chunkCount);
       const completionText = chunkCount > 1
         ? `分段翻译完成 · ${translatedChunks}/${chunkCount} 段`
         : '翻译完成';
@@ -1583,6 +1609,19 @@ export default function InformationDetail() {
               </span>
               {validUrl && <small>{extractDomain(validUrl)}</small>}
               {isTranslatedMode && translationModel && <small>翻译模型 {translationModel}</small>}
+              {autoReaderTranslationStatus === 'translating' && (
+                <small className="info-detail__reader-translation-status">
+                  自动翻译正文
+                  {autoReaderTranslationProgress?.total
+                    ? ` ${autoReaderTranslationProgress.completed}/${autoReaderTranslationProgress.total}`
+                    : ''}
+                </small>
+              )}
+              {autoReaderTranslationStatus === 'failed' && !isTranslatedMode && (
+                <small className="info-detail__reader-translation-status info-detail__reader-translation-status--failed">
+                  自动翻译失败，可手动重试
+                </small>
+              )}
             </div>
             <div className="info-detail__reader-actions">
               {isTranslatedMode && <span className="info-detail__reader-mode-badge">中文</span>}

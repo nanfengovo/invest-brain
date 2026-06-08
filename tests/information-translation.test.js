@@ -26,15 +26,21 @@ test('information detail reader exposes Chinese and original toggles', () => {
   assert.match(source, /getCachedInformationTranslation/);
   assert.match(source, /saveInformationTranslation/);
   assert.match(source, /translateTextToChinese/);
+  assert.match(source, /translateTextToChineseInChunks/);
+  assert.match(source, /autoReaderTranslationProgress/);
   assert.match(source, /setReaderMode\('translated'\)/);
   assert.match(source, /中文翻译/);
   assert.match(source, />原文</);
   assert.match(source, /'翻译中文'/);
-  assert.match(source, /mode: 'translate'/);
   assert.match(source, /readerContent=\{activeReaderContent\}/);
-  assert.match(source, /getSummarizeApiUrl\(Boolean\(localGeminiKey \|\| localNvidiaKey\)\)/);
-  assert.match(source, /BUILTIN_AI_API_BASE_URL/);
-  assert.match(source, /localHosts\.has\(window\.location\.hostname\)/);
+  assert.match(source, /正在分段翻译中文\.\.\. \$\{completed\}\/\$\{total\}/);
+  assert.match(source, /自动翻译正文/);
+  assert.match(source, /自动翻译失败，可手动重试/);
+  assert.match(source, /chunkTimeoutMs: 18000/);
+  assert.match(source, /armReaderWatchdog/);
+  assert.match(source, /22000/);
+  assert.doesNotMatch(source, /getSummarizeApiUrl\(Boolean\(localGeminiKey \|\| localNvidiaKey\)\)/);
+  assert.doesNotMatch(source, /const BUILTIN_AI_API_BASE_URL/);
 });
 
 test('information translation cleans source scaffold and reports failures clearly', () => {
@@ -75,7 +81,14 @@ test('information list auto-translates non-Chinese titles with local cache', () 
   assert.match(css, /info-row__translation-state/);
   assert.match(util, /ib_information_translation_cache_v1/);
   assert.match(util, /BUILTIN_AI_API_BASE_URL/);
+  assert.match(util, /splitInformationTranslationChunks/);
+  assert.match(util, /translateTextToChineseInChunks/);
+  assert.match(util, /TRANSLATION_CHUNK_CHARS = 2800/);
+  assert.match(util, /MAX_CLIENT_TRANSLATION_CHUNKS/);
+  assert.match(util, /翻译请求超时，请稍后重试/);
+  assert.match(util, /Promise\.race/);
   assert.match(util, /localHosts\.has\(window\.location\.hostname\)/);
+  assert.match(util, /mode: 'translate'/);
   assert.match(util, /buildAiRequestBody/);
   assert.match(util, /buildAiRequestHeaders/);
 });

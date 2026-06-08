@@ -1112,6 +1112,25 @@
   white-space: nowrap;
 }
 
+.info-detail__reader-heading .info-detail__reader-translation-status {
+  align-self: flex-start;
+  max-width: 100%;
+  margin-top: 6px;
+  padding: 3px 8px;
+  border: 1px solid rgba(34, 211, 238, 0.28);
+  border-radius: 999px;
+  background: rgba(34, 211, 238, 0.1);
+  color: #7dd3fc;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.info-detail__reader-heading .info-detail__reader-translation-status--failed {
+  border-color: rgba(251, 113, 133, 0.32);
+  background: rgba(251, 113, 133, 0.1);
+  color: #fda4af;
+}
+
 .info-detail__reader-actions {
   display: flex;
   flex: 1 1 248px;

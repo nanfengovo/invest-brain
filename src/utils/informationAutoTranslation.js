@@ -3,6 +3,8 @@ import { buildAiRequestBody, buildAiRequestHeaders, getAiUsageLabel } from './ai
 const BUILTIN_AI_API_BASE_URL = 'https://invest-brain.vercel.app';
 const CACHE_KEY = 'ib_information_translation_cache_v1';
 const MAX_CACHE_ITEMS = 160;
+const TRANSLATION_CHUNK_CHARS = 2800;
+const MAX_CLIENT_TRANSLATION_CHUNKS = 24;
 
 function normalizeText(value = '') {
   return String(value || '').replace(/\s+/g, ' ').trim();
@@ -16,6 +18,54 @@ function hashText(value = '') {
     hash = Math.imul(hash, 16777619);
   }
   return (hash >>> 0).toString(36);
+}
+
+function normalizePromptText(value = '') {
+  return String(value || '')
+    .replace(/\s+\n/g, '\n')
+    .replace(/\n{4,}/g, '\n\n\n')
+    .trim();
+}
+
+export function splitInformationTranslationChunks(text = '', limit = TRANSLATION_CHUNK_CHARS) {
+  const normalized = normalizePromptText(text);
+  if (!normalized) return [];
+  if (normalized.length <= limit) return [normalized];
+
+  const paragraphs = normalized.split(/\n{2,}/);
+  const chunks = [];
+  let current = '';
+
+  const pushCurrent = () => {
+    const value = current.trim();
+    if (value) chunks.push(value);
+    current = '';
+  };
+
+  for (const paragraph of paragraphs) {
+    const block = paragraph.trim();
+    if (!block) continue;
+
+    if (block.length > limit) {
+      pushCurrent();
+      for (let start = 0; start < block.length; start += limit) {
+        const slice = block.slice(start, start + limit).trim();
+        if (slice) chunks.push(slice);
+      }
+      continue;
+    }
+
+    const next = current ? `${current}\n\n${block}` : block;
+    if (next.length > limit) {
+      pushCurrent();
+      current = block;
+    } else {
+      current = next;
+    }
+  }
+
+  pushCurrent();
+  return chunks;
 }
 
 function readCache() {
@@ -121,6 +171,7 @@ export async function translateTextToChinese({
 
   const requestController = new AbortController();
   let timeoutId = null;
+  let timedOut = false;
   const abortRequest = () => {
     if (!requestController.signal.aborted) requestController.abort();
   };
@@ -129,16 +180,13 @@ export async function translateTextToChinese({
     if (signal.aborted) abortRequest();
     else signal.addEventListener('abort', abortRequest, { once: true });
   }
-  if (timeoutMs > 0) {
-    timeoutId = setTimeout(abortRequest, timeoutMs);
-  }
 
   const localGeminiKey = String(geminiApiKey || '').trim();
   const localNvidiaKey = String(nvidiaApiKey || '').trim();
   const headers = buildAiRequestHeaders({ geminiApiKey: localGeminiKey, nvidiaApiKey: localNvidiaKey });
   let result;
   try {
-    const response = await fetch(getSummarizeApiUrl(Boolean(localGeminiKey || localNvidiaKey)), {
+    const fetchPromise = fetch(getSummarizeApiUrl(Boolean(localGeminiKey || localNvidiaKey)), {
       method: 'POST',
       headers,
       signal: requestController.signal,
@@ -149,11 +197,28 @@ export async function translateTextToChinese({
         sourceLanguage: 'auto',
       })),
     });
+    const response = timeoutMs > 0
+      ? await Promise.race([
+        fetchPromise,
+        new Promise((_, reject) => {
+          timeoutId = setTimeout(() => {
+            timedOut = true;
+            abortRequest();
+            reject(new Error('翻译请求超时，请稍后重试'));
+          }, timeoutMs);
+        }),
+      ])
+      : await fetchPromise;
 
     result = await response.json().catch(() => ({}));
     if (!response.ok) {
       throw new Error(result.error || `HTTP ${response.status}`);
     }
+  } catch (error) {
+    if (timedOut) {
+      throw new Error('翻译请求超时，请稍后重试');
+    }
+    throw error;
   } finally {
     if (timeoutId) clearTimeout(timeoutId);
     if (signal) signal.removeEventListener?.('abort', abortRequest);
@@ -163,5 +228,76 @@ export async function translateTextToChinese({
     translatedText: String(result.translatedText || '').trim(),
     modelLabel: getAiUsageLabel(result) || result.model || '',
     raw: result,
+  };
+}
+
+export async function translateTextToChineseInChunks({
+  text,
+  title = '',
+  geminiApiKey = '',
+  nvidiaApiKey = '',
+  aiProviderConfig,
+  signal,
+  chunkTimeoutMs = 45000,
+  onProgress,
+} = {}) {
+  const chunks = splitInformationTranslationChunks(text);
+  if (chunks.length === 0) return { translatedText: '', modelLabel: '', chunkCount: 0, translatedChunks: 0 };
+  if (chunks.length > MAX_CLIENT_TRANSLATION_CHUNKS) {
+    throw new Error(`正文太长，请先拆成多条情报后再翻译（当前 ${chunks.length} 段，最多 ${MAX_CLIENT_TRANSLATION_CHUNKS} 段）`);
+  }
+
+  onProgress?.({ completed: 0, total: chunks.length });
+
+  if (chunks.length === 1) {
+    const result = await translateTextToChinese({
+      text: chunks[0],
+      title,
+      geminiApiKey,
+      nvidiaApiKey,
+      aiProviderConfig,
+      signal,
+      timeoutMs: chunkTimeoutMs,
+    });
+    onProgress?.({ completed: result.translatedText ? 1 : 0, total: 1 });
+    return {
+      ...result,
+      chunkCount: 1,
+      translatedChunks: result.translatedText ? 1 : 0,
+    };
+  }
+
+  const translatedChunks = [];
+  let modelLabel = '';
+
+  for (let index = 0; index < chunks.length; index += 1) {
+    if (signal?.aborted) {
+      throw new DOMException('翻译已取消', 'AbortError');
+    }
+
+    const result = await translateTextToChinese({
+      text: chunks[index],
+      title: chunks.length > 1 ? `${title || '情报正文'}（第 ${index + 1}/${chunks.length} 段）` : title,
+      geminiApiKey,
+      nvidiaApiKey,
+      aiProviderConfig,
+      signal,
+      timeoutMs: chunkTimeoutMs,
+    });
+
+    if (!result.translatedText) {
+      throw new Error(`第 ${index + 1}/${chunks.length} 段没有返回翻译正文，请稍后重试`);
+    }
+
+    translatedChunks.push(result.translatedText);
+    modelLabel = result.modelLabel || modelLabel;
+    onProgress?.({ completed: translatedChunks.length, total: chunks.length });
+  }
+
+  return {
+    translatedText: translatedChunks.join('\n\n').trim(),
+    modelLabel,
+    chunkCount: chunks.length,
+    translatedChunks: translatedChunks.length,
   };
 }

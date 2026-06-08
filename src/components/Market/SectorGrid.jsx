@@ -29,6 +29,7 @@ export default function SectorGrid({ items, colorConvention, refreshing = false 
         const isUpRaw = (item.pctChange || 0) > 0;
         const isNeutral = !hasData || item.pctChange === 0;
         const toneClass = getToneClass(item.pctChange, colorConvention);
+        const directionClass = isNeutral ? 'market-change--flat' : (isUpRaw ? 'market-change--up' : 'market-change--down');
         const sign = isUpRaw ? '+' : '';
         const pctFormatted = hasData ? `${sign}${item.pctChange.toFixed(2)}%` : '--';
         const flashClass = item.movement ? `market-flash--${item.movement}` : '';
@@ -49,7 +50,7 @@ export default function SectorGrid({ items, colorConvention, refreshing = false 
             </div>
             <div className="market-sector-row__quote">
               <span className="market-sector-row__price">{formatNumber(item.price)}</span>
-              <span className={`market-sector-row__change ${toneClass}`}>
+              <span className={`market-sector-row__change ${toneClass} ${directionClass}`}>
                 <span>{isUpRaw ? '▲' : (isNeutral ? '' : '▼')}</span>
                 <span>{pctFormatted}</span>
               </span>

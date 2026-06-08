@@ -962,6 +962,26 @@
   color: rgba(200, 212, 231, 0.52);
 }
 
+.market-change--up,
+.market-change--down {
+  position: relative;
+  border-radius: 8px;
+  transform: translateZ(0);
+  will-change: transform, filter, text-shadow, background-color;
+}
+
+.market-change--up {
+  animation: market-change-rise-pulse 460ms cubic-bezier(0.2, 1, 0.22, 1) infinite;
+}
+
+.market-change--down {
+  animation: market-change-fall-pulse 460ms cubic-bezier(0.2, 1, 0.22, 1) infinite;
+}
+
+.market-change--flat {
+  animation: none;
+}
+
 .market-flash--up {
   animation: market-row-flash-up 1.1s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -1006,13 +1026,30 @@
   animation: market-number-pop-down 720ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.market-live-row .market-sector-row__price,
 .market-live-row .market-sector-row__change,
-.market-live-row .market-watchlist-row__price,
-.market-live-row .market-watchlist-row__change {
+.market-live-row .market-watchlist-row__change,
+.market-live-row .market-watchlist-row__extended {
   animation: market-live-number-tick 620ms ease-in-out infinite;
   animation-delay: calc(var(--market-row-index, 0) * 43ms);
-  will-change: filter, text-shadow;
+}
+
+.market-live-row .market-change--up,
+.market-live-row .market-change--down {
+  animation-delay:
+    calc(var(--market-row-index, 0) * 37ms),
+    calc(var(--market-row-index, 0) * 43ms);
+}
+
+.market-live-row .market-change--up {
+  animation:
+    market-change-rise-pulse 460ms cubic-bezier(0.2, 1, 0.22, 1) infinite,
+    market-live-number-tick 620ms ease-in-out infinite;
+}
+
+.market-live-row .market-change--down {
+  animation:
+    market-change-fall-pulse 460ms cubic-bezier(0.2, 1, 0.22, 1) infinite,
+    market-live-number-tick 620ms ease-in-out infinite;
 }
 
 .market-board--refreshing::before {
@@ -1069,6 +1106,46 @@
   100% {
     opacity: 0;
     transform: translate3d(86%, 0, 0);
+  }
+}
+
+@keyframes market-change-rise-pulse {
+  0%,
+  100% {
+    background-color: rgba(var(--market-flash-up-rgb), 0);
+    filter: brightness(1);
+    text-shadow: 0 0 0 rgba(var(--market-flash-up-rgb), 0);
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  36% {
+    background-color: rgba(var(--market-flash-up-rgb), 0.13);
+    filter: brightness(1.26) saturate(1.18);
+    text-shadow: 0 -1px 13px rgba(var(--market-flash-up-rgb), 0.62);
+    transform: translate3d(0, -2px, 0) scale(1.075);
+  }
+  62% {
+    background-color: rgba(var(--market-flash-up-rgb), 0.06);
+    transform: translate3d(0, 1px, 0) scale(0.99);
+  }
+}
+
+@keyframes market-change-fall-pulse {
+  0%,
+  100% {
+    background-color: rgba(var(--market-flash-down-rgb), 0);
+    filter: brightness(1);
+    text-shadow: 0 0 0 rgba(var(--market-flash-down-rgb), 0);
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  36% {
+    background-color: rgba(var(--market-flash-down-rgb), 0.13);
+    filter: brightness(1.24) saturate(1.18);
+    text-shadow: 0 1px 13px rgba(var(--market-flash-down-rgb), 0.62);
+    transform: translate3d(0, 2px, 0) scale(1.075);
+  }
+  62% {
+    background-color: rgba(var(--market-flash-down-rgb), 0.06);
+    transform: translate3d(0, -1px, 0) scale(0.99);
   }
 }
 
@@ -1194,6 +1271,8 @@
   .market-board--refreshing::before,
   .market-live-board::after,
   .market-live-row::before,
+  .market-change--up,
+  .market-change--down,
   .market-flash--up,
   .market-flash--down,
   .market-flash--up::after,
@@ -1210,10 +1289,9 @@
   .market-flash--down .market-watchlist-row__change,
   .market-flash--down .market-index-card__price,
   .market-flash--down .market-index-card__change,
-  .market-live-row .market-sector-row__price,
   .market-live-row .market-sector-row__change,
-  .market-live-row .market-watchlist-row__price,
-  .market-live-row .market-watchlist-row__change {
+  .market-live-row .market-watchlist-row__change,
+  .market-live-row .market-watchlist-row__extended {
     animation: none;
   }
 }

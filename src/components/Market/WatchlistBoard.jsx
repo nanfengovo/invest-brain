@@ -40,6 +40,11 @@ const getDirectionIcon = (value) => {
   return value > 0 ? '▲' : '▼';
 };
 
+const getDirectionClass = (value) => {
+  if (value === null || value === undefined || value === 0) return 'market-change--flat';
+  return value > 0 ? 'market-change--up' : 'market-change--down';
+};
+
 export default function WatchlistBoard({ items, colorConvention, onRemove, refreshing = false }) {
   const navigate = useNavigate();
 
@@ -60,6 +65,8 @@ export default function WatchlistBoard({ items, colorConvention, onRemove, refre
         const isNeutral = item.pctChange === null || item.pctChange === undefined || item.pctChange === 0;
         const toneClass = getToneClass(item.pctChange, colorConvention);
         const extendedToneClass = getToneClass(item.extendedMarket?.pctChange, colorConvention);
+        const directionClass = getDirectionClass(item.pctChange);
+        const extendedDirectionClass = getDirectionClass(item.extendedMarket?.pctChange);
         const pctFormatted = formatChange(item.pctChange);
         const flashClass = item.movement ? `market-flash--${item.movement}` : '';
 
@@ -91,12 +98,12 @@ export default function WatchlistBoard({ items, colorConvention, onRemove, refre
               <div className="market-watchlist-row__price">
                 {formatNumber(hasPrice ? item.price : null)}
               </div>
-              <div className={`market-watchlist-row__change ${toneClass}`}>
+              <div className={`market-watchlist-row__change ${toneClass} ${directionClass}`}>
                 <span>{isUpRaw ? '▲' : (isNeutral ? '' : '▼')}</span>
                 <span>{pctFormatted}</span>
               </div>
               {item.extendedMarket && (
-                <div className={`market-watchlist-row__extended ${extendedToneClass}`}>
+                <div className={`market-watchlist-row__extended ${extendedToneClass} ${extendedDirectionClass}`}>
                   <span>{item.extendedMarket.label}</span>
                   <span>{formatNumber(item.extendedMarket.price)}</span>
                   <span>{getDirectionIcon(item.extendedMarket.pctChange)} {formatChange(item.extendedMarket.pctChange)}</span>

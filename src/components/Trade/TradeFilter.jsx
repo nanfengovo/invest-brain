@@ -69,6 +69,7 @@ export default function TradeFilter({
               { label: '未卖出', value: 'OPEN_ONLY' },
               { label: '部分卖出', value: 'PARTIAL' },
               { label: '已闭环', value: 'CLOSED' },
+              { label: '到期归零', value: 'EXPIRED_WORTHLESS' },
               { label: '缺少买入', value: 'ORPHAN_SELL' },
             ]}
             value={[lifecycle]}

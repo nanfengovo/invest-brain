@@ -305,6 +305,7 @@ function SettingsPage() {
               expiry_date: trade.expiry_date || null,
               underlying_symbol: trade.underlying_symbol || trade.symbol || null,
               option_type: trade.option_type || null,
+              multiplier: trade.multiplier || (trade.asset_type === 'OPTION' ? 100 : 1),
             });
             await db.addTrade({
               ...trade,

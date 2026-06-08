@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import { v4 as uuidv4 } from 'uuid';
 import { toIsoDateTime } from './time';
+import { buildOptionAssetId, normalizeOptionTrade } from './optionsMarket';
 
 /**
  * Parse an Excel or CSV file and convert it to trade records
@@ -74,25 +75,41 @@ export async function parseTradesFile(file) {
           const hasStrikeValue = mappings.strike >= 0 && row[mappings.strike] !== null && row[mappings.strike] !== undefined && row[mappings.strike] !== '';
           const isOption = /期权|OPTION|CALL|PUT|认购|认沽/.test(assetTypeCell) || /CALL|PUT/.test(contractCell) || hasStrikeValue;
           const optionTypeCell = mappings.optionType >= 0 ? String(row[mappings.optionType] || '').toUpperCase() : contractCell;
-          const optionType = isOption
+          const rawOptionType = isOption
             ? (/PUT|认沽/.test(optionTypeCell) ? 'PUT' : 'CALL')
             : null;
-          const expiryDate = isOption && mappings.expiry >= 0
+          const rawExpiryDate = isOption && mappings.expiry >= 0
             ? parseDateCell(row[mappings.expiry])?.toISOString().slice(0, 10)
             : null;
-          const strikePrice = isOption && mappings.strike >= 0
+          const rawStrikePrice = isOption && mappings.strike >= 0
             ? Math.abs(parseFloat(row[mappings.strike]) || 0)
             : null;
           const symbol = String(row[mappings.symbol]).trim().toUpperCase();
+          const normalizedOption = isOption ? normalizeOptionTrade({
+            symbol,
+            contract_symbol: contractCell,
+            option_type: rawOptionType,
+            expiry_date: rawExpiryDate,
+            strike_price: rawStrikePrice,
+          }) : null;
+          const optionType = normalizedOption?.option_type || rawOptionType;
+          const expiryDate = normalizedOption?.expiry_date || rawExpiryDate;
+          const strikePrice = normalizedOption?.strike_price || rawStrikePrice;
           const assetId = isOption
-            ? `${symbol}_${expiryDate || ''}_${strikePrice || ''}_${optionType || 'CALL'}`
-            : `STOCK_${symbol}`;
+            ? (normalizedOption?.asset_id || buildOptionAssetId({
+                underlying: symbol,
+                expiration: expiryDate,
+                strike: strikePrice,
+                optionType,
+                contractSymbol: contractCell,
+              }))
+            : symbol;
 
           // Build trade object
           const trade = {
             id: uuidv4(),
             asset_id: assetId,
-            symbol,
+            symbol: normalizedOption?.underlying || symbol,
             asset_name: row[mappings.name] ? String(row[mappings.name]).trim() : '',
             asset_type: isOption ? 'OPTION' : 'STOCK',
             direction,
@@ -102,13 +119,12 @@ export async function parseTradesFile(file) {
             account: row[mappings.account] ? String(row[mappings.account]).trim() : '导入记录',
             trade_time: toIsoDateTime(tradeTime),
             note: '从表格导入',
-            underlying_symbol: isOption ? symbol : null,
+            underlying_symbol: isOption ? (normalizedOption?.underlying || symbol) : null,
             strike_price: strikePrice,
             expiry_date: expiryDate,
             option_type: optionType,
-            contract_symbol: isOption
-              ? (contractCell || `${symbol} ${expiryDate || ''} ${optionType || 'CALL'} ${strikePrice || ''}`.trim())
-              : null
+            contract_symbol: isOption ? (normalizedOption?.contract_symbol || contractCell || null) : null,
+            multiplier: isOption ? (normalizedOption?.multiplier || 100) : 1,
           };
 
           if (trade.quantity > 0 && trade.price > 0) {

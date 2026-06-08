@@ -60,7 +60,13 @@ export default function TradesPage() {
   const filteredTrades = useMemo(() => {
     const annotatedTrades = annotateTradesWithLifecycle(trades);
     return annotatedTrades.filter(t => {
-      if (filters.symbol && !t.symbol.toLowerCase().includes(filters.symbol.toLowerCase())) return false;
+      const symbolHaystack = [
+        t.symbol,
+        t.underlying_symbol,
+        t.contract_symbol,
+        t.option_display?.title,
+      ].filter(Boolean).join(' ').toLowerCase();
+      if (filters.symbol && !symbolHaystack.includes(filters.symbol.toLowerCase())) return false;
       if (filters.sector !== 'ALL' && t.asset_sector !== filters.sector) return false;
       if (filters.direction !== 'ALL' && t.direction !== filters.direction) return false;
       if (filters.lifecycle !== 'ALL' && t.lifecycle?.status !== filters.lifecycle) return false;
@@ -116,7 +122,7 @@ export default function TradesPage() {
       if (filters.groupBy === 'DATE' || filters.groupBy === 'DAY' || filters.groupBy === 'WEEK' || filters.groupBy === 'MONTH') {
         key = toDateGroupKey(t.trade_time, filters.groupBy === 'DATE' ? 'DAY' : filters.groupBy);
       } else if (filters.groupBy === 'ASSET') {
-        key = t.symbol || '未知标的';
+        key = t.option_display?.title || t.underlying_symbol || t.symbol || '未知标的';
       }
       if (!groups[key]) groups[key] = [];
       groups[key].push(t);

@@ -4,7 +4,13 @@ import { useAppStore } from '../stores/useAppStore';
 import { db } from '../db/database';
 import EmptyState from '../components/common/EmptyState';
 import { parseDateTime } from '../utils/time';
-import { getTradeMultiplier, getTradeQuantityUnit } from '../utils/tradeLifecycle';
+import {
+  getOptionExpirationLabel,
+  getOptionExpirationRisk,
+  getTradeMultiplier,
+  getTradeOptionDisplay,
+  getTradeQuantityUnit,
+} from '../utils/tradeLifecycle';
 import './HoldingsPage.css';
 
 const formatCurrency = (num) => {
@@ -268,11 +274,30 @@ export default function HoldingsPage() {
         ) : holdings.length > 0 ? (
           <div className="holdings-page__list">
             {holdings.map((holding, idx) => {
+              const isOption = String(holding.type || '').toUpperCase() === 'OPTION';
+              const optionDisplay = isOption ? getTradeOptionDisplay({
+                asset_type: 'OPTION',
+                symbol: holding.symbol,
+                underlying_symbol: holding.underlying_symbol,
+                strike_price: holding.strike_price,
+                expiry_date: holding.expiry_date,
+                option_type: holding.option_type,
+                multiplier: holding.multiplier,
+              }) : null;
+              const optionExpirationLabel = isOption ? getOptionExpirationLabel({
+                asset_type: 'OPTION',
+                symbol: holding.symbol,
+                underlying_symbol: holding.underlying_symbol,
+                strike_price: holding.strike_price,
+                expiry_date: holding.expiry_date,
+                option_type: holding.option_type,
+              }) : '';
+              const optionExpirationRisk = isOption ? getOptionExpirationRisk(holding.expiry_date) : null;
               const holdingKey = `${holding.asset_id}-${holding.broker || ''}-${holding.author || '未标记'}`;
               const positionValue =
                 (Number(holding.total_quantity) || 0) *
                 (Number(holding.avg_cost) || 0) *
-                getTradeMultiplier({ asset_type: holding.type });
+                getTradeMultiplier({ asset_type: holding.type, multiplier: holding.multiplier });
               const isExpanded = expandedId === holdingKey;
               const quantityUnit = getTradeQuantityUnit({
                 asset_type: holding.type,
@@ -294,7 +319,7 @@ export default function HoldingsPage() {
                     <div className="holdings-page__card-left">
                       <div className="holdings-page__symbol-row">
                         <span className="holdings-page__symbol">
-                          {holding.symbol}
+                          {isOption && optionDisplay?.title ? optionDisplay.title : holding.symbol}
                         </span>
                         <span
                           className={`holdings-page__type-badge holdings-page__type-badge--${(
@@ -305,9 +330,14 @@ export default function HoldingsPage() {
                         </span>
                       </div>
                       <div className="holdings-page__name-row">
-                        <span className="holdings-page__name">
-                          {holding.name || holding.symbol}
+                        <span className={`holdings-page__name ${isOption ? `holdings-page__name--option holdings-page__name--option-${optionExpirationRisk?.tone || 'unknown'}` : ''}`}>
+                          {isOption ? optionExpirationLabel : (holding.name || holding.symbol)}
                         </span>
+                        {isOption && optionDisplay?.optionType && (
+                          <span className={`holdings-page__option-badge holdings-page__option-badge--${optionDisplay.optionType.toLowerCase()}`}>
+                            {optionDisplay.optionType}
+                          </span>
+                        )}
                         {holding.broker && (
                           <span className="holdings-page__broker-badge">
                             🏦 {holding.broker}

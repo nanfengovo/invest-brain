@@ -334,11 +334,29 @@ export const db = {
         d.confidence,
         t.asset_id,
         a.symbol as asset_symbol,
-        a.sector as asset_sector
+        a.sector as asset_sector,
+        a.type as asset_type,
+        COALESCE(t.underlying_symbol, a.underlying_symbol, a.symbol) as underlying_symbol,
+        COALESCE(t.strike_price, a.strike_price) as strike_price,
+        COALESCE(t.expiry_date, a.expiry_date) as expiry_date,
+        COALESCE(t.option_type, a.option_type) as option_type,
+        COALESCE(t.multiplier, a.multiplier, CASE WHEN a.type = 'OPTION' THEN 100 ELSE 1 END) as multiplier,
+        t.contract_symbol,
+        t.lifecycle_status,
+        t.closed_reason
       FROM reviews r
       JOIN decisions d ON r.decision_id = d.id
       LEFT JOIN (
-        SELECT decision_id, MIN(asset_id) as asset_id
+        SELECT decision_id,
+               MIN(asset_id) as asset_id,
+               MIN(underlying_symbol) as underlying_symbol,
+               MIN(strike_price) as strike_price,
+               MIN(expiry_date) as expiry_date,
+               MIN(option_type) as option_type,
+               MIN(multiplier) as multiplier,
+               MIN(contract_symbol) as contract_symbol,
+               MIN(lifecycle_status) as lifecycle_status,
+               MIN(closed_reason) as closed_reason
         FROM trades
         WHERE decision_id IS NOT NULL
         GROUP BY decision_id
@@ -360,11 +378,11 @@ export const db = {
   },
 
   async upsertAsset(asset) {
-    const { id, symbol, name, type, sector, strike_price, expiry_date, underlying_symbol, option_type } = asset;
+    const { id, symbol, name, type, sector, strike_price, expiry_date, underlying_symbol, option_type, multiplier } = asset;
     return this.exec(
-      `INSERT OR REPLACE INTO assets (id, symbol, name, type, sector, strike_price, expiry_date, underlying_symbol, option_type, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM assets WHERE id = ?), unixepoch()), unixepoch())`,
-      [id, symbol, name || '', type || 'STOCK', sector || null, strike_price || null, expiry_date || null, underlying_symbol || null, option_type || null, id]
+      `INSERT OR REPLACE INTO assets (id, symbol, name, type, sector, strike_price, expiry_date, underlying_symbol, option_type, multiplier, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM assets WHERE id = ?), unixepoch()), unixepoch())`,
+      [id, symbol, name || '', type || 'STOCK', sector || null, strike_price || null, expiry_date || null, underlying_symbol || null, option_type || null, multiplier || (type === 'OPTION' ? 100 : 1), id]
     );
   },
 
@@ -379,6 +397,7 @@ export const db = {
                      COALESCE(t.strike_price, a.strike_price) as strike_price,
                      COALESCE(t.expiry_date, a.expiry_date) as expiry_date,
                      COALESCE(t.option_type, a.option_type) as option_type,
+                     COALESCE(t.multiplier, a.multiplier, CASE WHEN a.type = 'OPTION' THEN 100 ELSE 1 END) as multiplier,
                      d.title as decision_title, t.broker
               FROM trades t
               LEFT JOIN assets a ON t.asset_id = a.id
@@ -401,6 +420,7 @@ export const db = {
               COALESCE(t.strike_price, a.strike_price) as strike_price,
               COALESCE(t.expiry_date, a.expiry_date) as expiry_date,
               COALESCE(t.option_type, a.option_type) as option_type,
+              COALESCE(t.multiplier, a.multiplier, CASE WHEN a.type = 'OPTION' THEN 100 ELSE 1 END) as multiplier,
               d.title as decision_title
        FROM trades t
        LEFT JOIN assets a ON t.asset_id = a.id
@@ -412,24 +432,42 @@ export const db = {
   },
 
   async addTrade(trade) {
-    const { id, asset_id, decision_id, direction, quantity, price, fee, account, trade_time, note, broker, info_id, underlying_symbol, strike_price, expiry_date, option_type, contract_symbol, author, workspace_scope, source_author, source_scope, origin_id, sync_status } = trade;
+    const { id, asset_id, decision_id, direction, quantity, price, fee, account, trade_time, note, broker, info_id, underlying_symbol, strike_price, expiry_date, option_type, contract_symbol, multiplier, lifecycle_status, closed_reason, exercised_stock_trade_id, author, workspace_scope, source_author, source_scope, origin_id, sync_status } = trade;
     return this.exec(
-      `INSERT INTO trades (id, asset_id, decision_id, info_id, direction, quantity, price, fee, account, trade_time, note, broker, underlying_symbol, strike_price, expiry_date, option_type, contract_symbol, author, workspace_scope, source_author, source_scope, origin_id, sync_status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, asset_id, decision_id || null, info_id || null, direction, quantity, price, fee || 0, account || null, trade_time, note || null, broker || null, underlying_symbol || null, strike_price || null, expiry_date || null, option_type || null, contract_symbol || null, author || null, workspace_scope || 'personal', source_author || author || null, source_scope || workspace_scope || 'personal', origin_id || id, sync_status || 'local']
+      `INSERT INTO trades (id, asset_id, decision_id, info_id, direction, quantity, price, fee, account, trade_time, note, broker, underlying_symbol, strike_price, expiry_date, option_type, contract_symbol, multiplier, lifecycle_status, closed_reason, exercised_stock_trade_id, author, workspace_scope, source_author, source_scope, origin_id, sync_status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, asset_id, decision_id || null, info_id || null, direction, quantity, price, fee || 0, account || null, trade_time, note || null, broker || null, underlying_symbol || null, strike_price || null, expiry_date || null, option_type || null, contract_symbol || null, multiplier || (option_type ? 100 : 1), lifecycle_status || 'ACTIVE', closed_reason || null, exercised_stock_trade_id || null, author || null, workspace_scope || 'personal', source_author || author || null, source_scope || workspace_scope || 'personal', origin_id || id, sync_status || 'local']
     );
   },
 
   async updateTrade(trade) {
-    const { id, asset_id, decision_id, direction, quantity, price, fee, account, trade_time, note, broker, info_id, underlying_symbol, strike_price, expiry_date, option_type, contract_symbol, author, workspace_scope, source_author, source_scope, origin_id, sync_status } = trade;
+    const { id, asset_id, decision_id, direction, quantity, price, fee, account, trade_time, note, broker, info_id, underlying_symbol, strike_price, expiry_date, option_type, contract_symbol, multiplier, lifecycle_status, closed_reason, exercised_stock_trade_id, author, workspace_scope, source_author, source_scope, origin_id, sync_status } = trade;
     return this.exec(
-      `UPDATE trades SET asset_id = ?, decision_id = ?, info_id = ?, direction = ?, quantity = ?, price = ?, fee = ?, account = ?, trade_time = ?, note = ?, broker = ?, underlying_symbol = ?, strike_price = ?, expiry_date = ?, option_type = ?, contract_symbol = ?, author = ?, workspace_scope = ?, source_author = ?, source_scope = ?, origin_id = ?, sync_status = ? WHERE id = ?`,
-      [asset_id, decision_id || null, info_id || null, direction, quantity, price, fee || 0, account || null, trade_time, note || null, broker || null, underlying_symbol || null, strike_price || null, expiry_date || null, option_type || null, contract_symbol || null, author || null, workspace_scope || 'personal', source_author || author || null, source_scope || workspace_scope || 'personal', origin_id || id, sync_status || 'local', id]
+      `UPDATE trades SET asset_id = ?, decision_id = ?, info_id = ?, direction = ?, quantity = ?, price = ?, fee = ?, account = ?, trade_time = ?, note = ?, broker = ?, underlying_symbol = ?, strike_price = ?, expiry_date = ?, option_type = ?, contract_symbol = ?, multiplier = ?, lifecycle_status = ?, closed_reason = ?, exercised_stock_trade_id = ?, author = ?, workspace_scope = ?, source_author = ?, source_scope = ?, origin_id = ?, sync_status = ? WHERE id = ?`,
+      [asset_id, decision_id || null, info_id || null, direction, quantity, price, fee || 0, account || null, trade_time, note || null, broker || null, underlying_symbol || null, strike_price || null, expiry_date || null, option_type || null, contract_symbol || null, multiplier || (option_type ? 100 : 1), lifecycle_status || 'ACTIVE', closed_reason || null, exercised_stock_trade_id || null, author || null, workspace_scope || 'personal', source_author || author || null, source_scope || workspace_scope || 'personal', origin_id || id, sync_status || 'local', id]
     );
   },
 
   async deleteTrade(id) {
     return this.exec('DELETE FROM trades WHERE id = ?', [id]);
+  },
+
+  async markExpiredOptionTrades(scope = 'personal') {
+    const params = [normalizeWorkspaceScope(scope)];
+    return this.exec(
+      `UPDATE trades
+          SET lifecycle_status = 'EXPIRED_WORTHLESS',
+              closed_reason = 'EXPIRED_WORTHLESS',
+              sync_status = CASE WHEN sync_status = 'mirror' THEN sync_status ELSE 'local' END,
+              updated_at = unixepoch()
+        WHERE COALESCE(NULLIF(TRIM(workspace_scope), ''), 'personal') = ?
+          AND expiry_date IS NOT NULL
+          AND date(expiry_date) < date('now')
+          AND (option_type IS NOT NULL OR strike_price IS NOT NULL OR contract_symbol IS NOT NULL)
+          AND direction IN ('BUY', 'OPEN')
+          AND COALESCE(lifecycle_status, 'ACTIVE') NOT IN ('EXPIRED_WORTHLESS', 'EXERCISED', 'ASSIGNED', 'CLOSED_TRADED')`,
+      params
+    );
   },
 
   async getTradesByAssetAndBroker(assetId, broker = null, author = null, scope = 'personal') {
@@ -745,6 +783,11 @@ export const db = {
         a.name,
         a.type,
         a.sector,
+        COALESCE(a.underlying_symbol, a.symbol) as underlying_symbol,
+        a.strike_price,
+        a.expiry_date,
+        a.option_type,
+        COALESCE(a.multiplier, CASE WHEN a.type = 'OPTION' THEN 100 ELSE 1 END) as multiplier,
         t.broker,
         SUM(CASE
           WHEN t.direction IN ('BUY', 'OPEN') THEN t.quantity
@@ -766,7 +809,8 @@ export const db = {
         MAX(${TRADE_TIME_SECONDS_SQL}) as last_trade
        FROM trades t
        JOIN assets a ON t.asset_id = a.id
-       WHERE 1 = 1`;
+       WHERE 1 = 1
+         AND COALESCE(t.lifecycle_status, 'ACTIVE') != 'EXPIRED_WORTHLESS'`;
     const params = [];
     sql = appendWorkspaceFilter(sql, params, scope);
     sql = appendAuthorFilter(sql, params, author);
@@ -789,7 +833,8 @@ export const db = {
         COALESCE(t.underlying_symbol, a.underlying_symbol) as underlying_symbol,
         COALESCE(t.strike_price, a.strike_price) as strike_price,
         COALESCE(t.expiry_date, a.expiry_date) as expiry_date,
-        COALESCE(t.option_type, a.option_type) as option_type
+        COALESCE(t.option_type, a.option_type) as option_type,
+        COALESCE(t.multiplier, a.multiplier, CASE WHEN a.type = 'OPTION' THEN 100 ELSE 1 END) as multiplier
        FROM trades t
        LEFT JOIN assets a ON t.asset_id = a.id
        WHERE 1 = 1`;

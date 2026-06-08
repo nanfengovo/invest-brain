@@ -108,6 +108,84 @@
   white-space: nowrap;
 }
 
+.trade-card__asset-name--option {
+  color: var(--option-exp-color, #93c5fd);
+  background: var(--option-exp-bg, transparent);
+  border: 1px solid var(--option-exp-border, transparent);
+  border-radius: var(--radius-full);
+  padding: 2px 7px;
+  flex-basis: 100%;
+  max-width: 100%;
+}
+
+.trade-card__asset-name--option-calm {
+  --option-exp-color: #93c5fd;
+  --option-exp-bg: rgba(96, 165, 250, 0.08);
+  --option-exp-border: rgba(96, 165, 250, 0.16);
+}
+
+.trade-card__asset-name--option-cool {
+  --option-exp-color: #67e8f9;
+  --option-exp-bg: rgba(103, 232, 249, 0.09);
+  --option-exp-border: rgba(103, 232, 249, 0.18);
+}
+
+.trade-card__asset-name--option-warm {
+  --option-exp-color: #facc15;
+  --option-exp-bg: rgba(250, 204, 21, 0.11);
+  --option-exp-border: rgba(250, 204, 21, 0.24);
+}
+
+.trade-card__asset-name--option-hot {
+  --option-exp-color: #fb923c;
+  --option-exp-bg: rgba(251, 146, 60, 0.13);
+  --option-exp-border: rgba(251, 146, 60, 0.3);
+}
+
+.trade-card__asset-name--option-endgame {
+  --option-exp-color: #fb7185;
+  --option-exp-bg: rgba(251, 113, 133, 0.15);
+  --option-exp-border: rgba(251, 113, 133, 0.36);
+}
+
+.trade-card__asset-name--option-zero-dte {
+  --option-exp-color: #fff7ed;
+  --option-exp-bg: linear-gradient(135deg, rgba(239, 68, 68, 0.88), rgba(251, 146, 60, 0.68));
+  --option-exp-border: rgba(254, 226, 226, 0.5);
+  box-shadow: 0 0 18px rgba(239, 68, 68, 0.24);
+}
+
+.trade-card__asset-name--option-expired {
+  --option-exp-color: #fda4af;
+  --option-exp-bg: rgba(127, 29, 29, 0.28);
+  --option-exp-border: rgba(248, 113, 113, 0.34);
+}
+
+.trade-card__option-type {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 2px 6px;
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.trade-card__option-type--call {
+  color: #60a5fa;
+  background: rgba(96, 165, 250, 0.13);
+  border: 1px solid rgba(96, 165, 250, 0.32);
+}
+
+.trade-card__option-type--put {
+  color: #c084fc;
+  background: rgba(192, 132, 252, 0.13);
+  border: 1px solid rgba(192, 132, 252, 0.32);
+}
+
 .trade-card__lifecycle {
   display: inline-flex;
   align-items: center;
@@ -149,6 +227,12 @@
   color: var(--color-loss);
   background: rgba(255, 77, 106, 0.12);
   border: 1px solid rgba(255, 77, 106, 0.32);
+}
+
+.trade-card__lifecycle--expired {
+  color: #fb7185;
+  background: rgba(251, 113, 133, 0.13);
+  border: 1px solid rgba(251, 113, 133, 0.34);
 }
 
 .trade-card__author-tag {
@@ -385,6 +469,17 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.trade-card--compact .trade-card__asset-name--option {
+  flex-basis: auto;
+  max-width: 160px;
+}
+
+.trade-card--compact .trade-card__option-type {
+  min-height: 16px;
+  padding: 2px 5px;
+  font-size: 9px;
 }
 
 .trade-card--compact .trade-card__lifecycle {

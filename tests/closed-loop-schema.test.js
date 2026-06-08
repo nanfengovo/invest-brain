@@ -40,12 +40,12 @@ test('closed-loop schema keeps the forward funnel tables', () => {
   assertTableHasColumns('informations', ['id', 'title', 'type', 'url', 'content', 'asset_id', 'status']);
   assertTableHasColumns('viewpoints', ['id', 'info_id', 'content', 'status', 'version', 'author', 'quote', 'target_type']);
   assertTableHasColumns('decisions', ['id', 'title', 'content', 'confidence', 'sentiment', 'status', 'asset_id', 'priority']);
-  assertTableHasColumns('trades', ['id', 'asset_id', 'decision_id', 'info_id', 'direction', 'quantity', 'price', 'underlying_symbol', 'strike_price', 'expiry_date', 'option_type', 'contract_symbol', 'author']);
+  assertTableHasColumns('trades', ['id', 'asset_id', 'decision_id', 'info_id', 'direction', 'quantity', 'price', 'underlying_symbol', 'strike_price', 'expiry_date', 'option_type', 'contract_symbol', 'multiplier', 'lifecycle_status', 'closed_reason', 'exercised_stock_trade_id', 'author']);
   assertTableHasColumns('reviews', ['id', 'decision_id', 'review_content', 'is_successful', 'lessons', 'result_pnl']);
   assertTableHasColumns('information_asset_links', ['info_id', 'asset_id', 'position', 'created_at']);
   assertTableHasColumns('information_sector_links', ['info_id', 'sector', 'position', 'created_at']);
   assertTableHasColumns('price_alerts', ['id', 'symbol', 'asset_id', 'asset_type', 'condition', 'target_price', 'status', 'channels', 'triggered_at']);
-  assertTableHasColumns('assets', ['underlying_symbol', 'option_type']);
+  assertTableHasColumns('assets', ['underlying_symbol', 'option_type', 'multiplier']);
 });
 
 test('trades and reviews remain traceable back to decisions and information', () => {
@@ -73,6 +73,8 @@ test('discipline and lifecycle checks have indexed status fields', () => {
   assert.match(allSql, /CREATE INDEX IF NOT EXISTS idx_price_alerts_status ON price_alerts\(status\)/i);
   assert.match(allSql, /CREATE INDEX IF NOT EXISTS idx_trades_underlying ON trades\(underlying_symbol\)/i);
   assert.match(allSql, /CREATE INDEX IF NOT EXISTS idx_trades_author ON trades\(author\)/i);
+  assert.match(allSql, /CREATE INDEX IF NOT EXISTS idx_trades_lifecycle_status ON trades\(lifecycle_status\)/i);
+  assert.match(allSql, /CREATE INDEX IF NOT EXISTS idx_trades_expiry ON trades\(expiry_date\)/i);
 });
 
 test('price alerts remain active after trigger timestamps are recorded', () => {

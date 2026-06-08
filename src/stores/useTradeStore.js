@@ -37,6 +37,7 @@ export const useTradeStore = create((set, get) => ({
   refreshTrades: async () => {
     set({ tradesLoading: true });
     try {
+      await db.markExpiredOptionTrades(getWorkspaceScope());
       const trades = await db.getTrades(2000, 0, getWorkspaceScope());
       set({ trades, tradesLoading: false });
     } catch (err) {
@@ -58,6 +59,7 @@ export const useTradeStore = create((set, get) => ({
         expiry_date: trade.expiry_date || null,
         underlying_symbol: trade.underlying_symbol || trade.symbol || null,
         option_type: trade.option_type || null,
+        multiplier: trade.multiplier || (trade.asset_type === 'OPTION' ? 100 : 1),
       });
 
       await db.addTrade(trade);
@@ -104,6 +106,7 @@ export const useTradeStore = create((set, get) => ({
   refreshHoldings: async (author = null, scope = getWorkspaceScope()) => {
     set({ holdingsLoading: true });
     try {
+      await db.markExpiredOptionTrades(scope);
       const [holdings, summary, stats] = await Promise.all([
         db.getHoldings(author, scope),
         db.getPortfolioSummary(author, scope),
@@ -367,6 +370,7 @@ export const useTradeStore = create((set, get) => ({
     try {
       const now = Date.now();
       const startTimestamp = days === 'all' ? 0 : now - days * 24 * 60 * 60 * 1000;
+      await db.markExpiredOptionTrades(getWorkspaceScope());
       const data = await db.getClosedLoopData(startTimestamp, now);
       return { success: true, data };
     } catch (err) {
@@ -380,6 +384,7 @@ export const useTradeStore = create((set, get) => ({
   // ==========================================
 
   refreshAll: async () => {
+    await db.markExpiredOptionTrades(getWorkspaceScope());
     await Promise.all([
       get().refreshTrades(),
       get().refreshHoldings(),

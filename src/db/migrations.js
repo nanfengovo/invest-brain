@@ -331,6 +331,31 @@ export const MIGRATIONS = [
       `CREATE INDEX IF NOT EXISTS idx_viewpoints_origin ON viewpoints(origin_id, workspace_scope)`,
       `CREATE INDEX IF NOT EXISTS idx_viewpoints_team_visible ON viewpoints(team_visible)`
     ]
+  },
+  {
+    version: 12,
+    description: 'Phase 12: Option lifecycle status and contract multiplier',
+    statements: [
+      `ALTER TABLE assets ADD COLUMN multiplier REAL DEFAULT 1`,
+      `ALTER TABLE trades ADD COLUMN multiplier REAL DEFAULT 1`,
+      `ALTER TABLE trades ADD COLUMN lifecycle_status TEXT DEFAULT 'ACTIVE'`,
+      `ALTER TABLE trades ADD COLUMN closed_reason TEXT`,
+      `ALTER TABLE trades ADD COLUMN exercised_stock_trade_id TEXT`,
+      `UPDATE assets
+          SET multiplier = CASE
+            WHEN type = 'OPTION' AND (multiplier IS NULL OR multiplier <= 1) THEN 100
+            ELSE COALESCE(multiplier, 1)
+          END`,
+      `UPDATE trades
+          SET multiplier = CASE
+            WHEN (option_type IS NOT NULL OR strike_price IS NOT NULL OR expiry_date IS NOT NULL OR contract_symbol IS NOT NULL)
+              AND (multiplier IS NULL OR multiplier <= 1) THEN 100
+            ELSE COALESCE(multiplier, 1)
+          END`,
+      `CREATE INDEX IF NOT EXISTS idx_trades_lifecycle_status ON trades(lifecycle_status)`,
+      `CREATE INDEX IF NOT EXISTS idx_trades_expiry ON trades(expiry_date)`,
+      `CREATE INDEX IF NOT EXISTS idx_assets_multiplier ON assets(multiplier)`
+    ]
   }
 ];
 

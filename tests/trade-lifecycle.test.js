@@ -6,6 +6,9 @@ import {
   getOrphanSellLifecycleItems,
   getTradeAssetDisplay,
   getTradeQuantityUnit,
+  getTradeOptionDisplay,
+  getOptionExpirationLabel,
+  getOptionExpirationRisk,
 } from '../src/utils/tradeLifecycle.js';
 
 test('formats option labels from broker contract text', () => {
@@ -230,4 +233,49 @@ test('flags sell trades without matching buys', () => {
 
   assert.equal(sell.lifecycle.status, 'ORPHAN_SELL');
   assert.equal(getOrphanSellLifecycleItems([sell]).length, 1);
+});
+
+test('marks expired open option contracts as worthless and realizes full loss', () => {
+  const [buy] = annotateTradesWithLifecycle([
+    {
+      id: 'b1',
+      symbol: 'NVDA',
+      asset_type: 'OPTION',
+      contract_symbol: 'NVDA260618C00100000',
+      direction: 'BUY',
+      quantity: 2,
+      price: 1.25,
+      multiplier: 100,
+    },
+  ], { now: new Date('2026-06-20T09:30:00') });
+
+  assert.equal(buy.lifecycle.status, 'EXPIRED_WORTHLESS');
+  assert.equal(buy.lifecycle.closedReason, 'EXPIRED_WORTHLESS');
+  assert.equal(buy.lifecycle.expiredQty, 2);
+  assert.equal(buy.lifecycle.realizedPnl, -250);
+});
+
+test('formats option display title and expiration countdown', () => {
+  const trade = {
+    symbol: 'NVDA',
+    asset_type: 'OPTION',
+    contract_symbol: 'NVDA260618C00100000',
+  };
+
+  assert.deepEqual(getTradeOptionDisplay(trade), {
+    underlying: 'NVDA',
+    expiration: '2026-06-18',
+    compactExpiration: '260618',
+    strike: '100',
+    optionType: 'CALL',
+    title: 'NVDA 100C',
+    contractSymbol: 'NVDA260618C00100000',
+  });
+  assert.equal(getOptionExpirationLabel(trade, new Date('2026-06-06T12:00:00')), 'EXP: 2026-06-18 · 剩余 12 天');
+  assert.deepEqual(getOptionExpirationRisk('2026-06-18', new Date('2026-06-18T09:30:00')), {
+    days: 0,
+    tone: 'zero-dte',
+    label: '0DTE 今日到期',
+    shortLabel: '0DTE',
+  });
 });

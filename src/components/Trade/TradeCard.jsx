@@ -87,6 +87,14 @@ function getLifecycleBadge(lifecycle, directionType) {
           type: lifecycle.realizedPnl >= 0 ? 'closed-profit' : 'closed-loss',
         };
   }
+  if (lifecycle.status === 'EXPIRED_WORTHLESS') {
+    return directionType === 'buy'
+      ? {
+          label: `到期归零 ${formatLifecyclePnl(lifecycle.realizedPnl)}`,
+          type: 'expired',
+        }
+      : null;
+  }
   return directionType === 'sell'
     ? {
         label: `已实现 ${formatLifecyclePnl(lifecycle.realizedPnl)}`,
@@ -112,6 +120,11 @@ export default function TradeCard({ trade, index = 0, onEdit, compactMode = fals
   const displaySymbol = getTradeSymbolDisplay(trade);
   const assetDisplay = getTradeAssetDisplay(trade);
   const quantityUnit = getTradeQuantityUnit(trade);
+  const optionDisplay = trade.option_display || null;
+  const optionTitle = optionDisplay?.title || '';
+  const optionType = optionDisplay?.optionType || trade.option_type || '';
+  const expirationTone = trade.option_expiration_risk?.tone || 'unknown';
+  const isOption = String(trade.asset_type || '').toUpperCase() === 'OPTION' || !!optionDisplay;
   const lifecycleBadge = getLifecycleBadge(trade.lifecycle, dir.type);
   const authorLabel = String(trade.author || '').trim() || '未标记';
   const syncMeta = getSyncStatusMeta(trade);
@@ -119,8 +132,8 @@ export default function TradeCard({ trade, index = 0, onEdit, compactMode = fals
   const total = useMemo(() => {
     const qty = parseFloat(trade.quantity) || 0;
     const price = parseFloat(trade.price) || 0;
-    return qty * price;
-  }, [trade.quantity, trade.price]);
+    return qty * price * (Number(trade.multiplier) || (isOption ? 100 : 1));
+  }, [isOption, trade.multiplier, trade.quantity, trade.price]);
 
   const animationDelay = useMemo(() => `${Math.min(index * 0.05, 0.5)}s`, [index]);
 
@@ -190,8 +203,17 @@ export default function TradeCard({ trade, index = 0, onEdit, compactMode = fals
               {dir.label}
             </span>
             <div className="trade-card__info">
-              <div className="trade-card__symbol">{displaySymbol}</div>
-              {assetDisplay && (
+              <div className="trade-card__symbol">{isOption && optionTitle ? optionTitle : displaySymbol}</div>
+              {isOption && optionType && (
+                <span className={`trade-card__option-type trade-card__option-type--${optionType.toLowerCase()}`}>
+                  {optionType}
+                </span>
+              )}
+              {isOption && trade.option_expiration_label ? (
+                <div className={`trade-card__asset-name trade-card__asset-name--option trade-card__asset-name--option-${expirationTone}`}>
+                  {trade.option_expiration_label}
+                </div>
+              ) : assetDisplay && (
                 <div className="trade-card__asset-name">{assetDisplay}</div>
               )}
               {lifecycleBadge && (

@@ -420,6 +420,58 @@
   max-width: 130px;
 }
 
+.holdings-page__name--option {
+  color: var(--holding-option-exp-color, var(--color-text-secondary));
+  background: var(--holding-option-exp-bg, transparent);
+  border: 1px solid var(--holding-option-exp-border, transparent);
+  border-radius: var(--radius-full);
+  padding: 2px 7px;
+  max-width: 190px;
+}
+
+.holdings-page__name--option-calm {
+  --holding-option-exp-color: #93c5fd;
+  --holding-option-exp-bg: rgba(96, 165, 250, 0.08);
+  --holding-option-exp-border: rgba(96, 165, 250, 0.16);
+}
+
+.holdings-page__name--option-cool {
+  --holding-option-exp-color: #67e8f9;
+  --holding-option-exp-bg: rgba(103, 232, 249, 0.09);
+  --holding-option-exp-border: rgba(103, 232, 249, 0.18);
+}
+
+.holdings-page__name--option-warm {
+  --holding-option-exp-color: #facc15;
+  --holding-option-exp-bg: rgba(250, 204, 21, 0.11);
+  --holding-option-exp-border: rgba(250, 204, 21, 0.24);
+}
+
+.holdings-page__name--option-hot {
+  --holding-option-exp-color: #fb923c;
+  --holding-option-exp-bg: rgba(251, 146, 60, 0.13);
+  --holding-option-exp-border: rgba(251, 146, 60, 0.3);
+}
+
+.holdings-page__name--option-endgame {
+  --holding-option-exp-color: #fb7185;
+  --holding-option-exp-bg: rgba(251, 113, 133, 0.15);
+  --holding-option-exp-border: rgba(251, 113, 133, 0.36);
+}
+
+.holdings-page__name--option-zero-dte {
+  --holding-option-exp-color: #fff7ed;
+  --holding-option-exp-bg: linear-gradient(135deg, rgba(239, 68, 68, 0.88), rgba(251, 146, 60, 0.68));
+  --holding-option-exp-border: rgba(254, 226, 226, 0.5);
+  box-shadow: 0 0 18px rgba(239, 68, 68, 0.24);
+}
+
+.holdings-page__name--option-expired {
+  --holding-option-exp-color: #fda4af;
+  --holding-option-exp-bg: rgba(127, 29, 29, 0.28);
+  --holding-option-exp-border: rgba(248, 113, 113, 0.34);
+}
+
 .holdings-page__broker-badge {
   display: inline-flex;
   align-items: center;
@@ -445,6 +497,29 @@
   color: #fbbf24;
   border: 1px solid rgba(245, 158, 11, 0.2);
   white-space: nowrap;
+}
+
+.holdings-page__option-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.holdings-page__option-badge--call {
+  color: #60a5fa;
+  background: rgba(96, 165, 250, 0.12);
+  border: 1px solid rgba(96, 165, 250, 0.3);
+}
+
+.holdings-page__option-badge--put {
+  color: #c084fc;
+  background: rgba(192, 132, 252, 0.12);
+  border: 1px solid rgba(192, 132, 252, 0.3);
 }
 
 .holdings-page__sector {

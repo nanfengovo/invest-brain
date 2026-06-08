@@ -16,6 +16,11 @@ import { parseTradeImage } from '../../utils/ocrWorker';
 import { recommendDecisionForTrade, attachDecisionRecommendations } from '../../utils/decisionMatcher';
 import { parseDateTime } from '../../utils/time';
 import {
+  buildOptionAssetId,
+  buildOCCContractSymbol,
+  normalizeOptionTrade,
+} from '../../utils/optionsMarket';
+import {
   getOrphanSellLifecycleItems,
 } from '../../utils/tradeLifecycle';
 import './TradeForm.css';
@@ -61,6 +66,7 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
   const [saving, setSaving] = useState(false);
   const [assetType, setAssetType] = useState(['STOCK']);
   const [optionType, setOptionType] = useState(['CALL']);
+  const [contractSymbol, setContractSymbol] = useState('');
   const [decisionPickerVisible, setDecisionPickerVisible] = useState(false);
   const [tradeTime, setTradeTime] = useState(new Date());
   const [expiryDate, setExpiryDate] = useState(null);
@@ -107,11 +113,14 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
         fee: initialData.fee?.toString() || '0',
         account: initialData.account || '',
         note: initialData.note || '',
+        contract_symbol: initialData.contract_symbol || '',
         strike_price: initialData.strike_price?.toString() || '',
+        multiplier: initialData.multiplier?.toString() || (initialData.asset_type === 'OPTION' ? '100' : '1'),
         direction: initialData.direction ? [initialData.direction] : ['BUY'],
       });
       setAssetType([initialData.asset_type || 'STOCK']);
       setOptionType([initialData.option_type || 'CALL']);
+      setContractSymbol(initialData.contract_symbol || '');
       setSelectedDecision(initialData.decision_id || null);
       setSelectedInfo(initialData.info_id || null);
       if (initialData.trade_time) {
@@ -169,12 +178,15 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
     if (data.price) updates.price = data.price.toString();
     if (data.quantity) updates.quantity = data.quantity.toString();
     if (data.strike_price) updates.strike_price = data.strike_price.toString();
+    if (data.contract_symbol) updates.contract_symbol = data.contract_symbol.toString();
+    if (data.multiplier) updates.multiplier = data.multiplier.toString();
     if (data.fee) updates.fee = data.fee.toString();
     if (data.broker) updates.account = data.broker;
 
     if (data.asset_type === 'OPTION') {
       setAssetType(['OPTION']);
       setOptionType([data.option_type || 'CALL']);
+      setContractSymbol(data.contract_symbol || '');
       if (data.expiry_date) setExpiryDate(new Date(data.expiry_date + 'T00:00:00'));
     } else if (data.asset_type === 'ETF') {
       setAssetType(['ETF']);
@@ -284,6 +296,32 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
 
   const isOption = assetType[0] === 'OPTION';
 
+  const applyOptionContract = (value) => {
+    const parsed = normalizeOptionTrade({
+      contract_symbol: value,
+      symbol: form.getFieldValue('symbol'),
+    });
+    setContractSymbol(value || '');
+    if (!parsed) return;
+
+    setAssetType(['OPTION']);
+    setOptionType([parsed.option_type]);
+    setExpiryDate(new Date(`${parsed.expiry_date}T00:00:00`));
+    form.setFieldsValue({
+      symbol: parsed.underlying,
+      contract_symbol: parsed.contract_symbol,
+      strike_price: String(parsed.strike_price),
+      multiplier: String(parsed.multiplier),
+    });
+    setFormDraft((prev) => ({
+      ...prev,
+      symbol: parsed.underlying,
+      contract_symbol: parsed.contract_symbol,
+      strike_price: String(parsed.strike_price),
+      multiplier: String(parsed.multiplier),
+    }));
+  };
+
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
@@ -292,23 +330,45 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
       const symbol = (values.symbol || '').toUpperCase().trim();
       const direction = values.direction?.[0];
       const type = assetType[0];
+      const optionContract = isOption
+        ? normalizeOptionTrade({
+            contract_symbol: values.contract_symbol || contractSymbol,
+            underlying_symbol: symbol,
+            expiry_date: expiryDate ? expiryDate.toISOString().slice(0, 10) : null,
+            option_type: optionType[0],
+            strike_price: values.strike_price,
+            multiplier: values.multiplier,
+          })
+        : null;
 
       // Build asset_id: symbol for stocks, symbol_strike_expiry for options
-      let assetId = symbol;
-      if (isOption && values.strike_price) {
-        const expStr = expiryDate
-          ? expiryDate.toISOString().slice(0, 10)
-          : '';
-        assetId = `${symbol}_${expStr}_${values.strike_price}_${optionType[0]}`;
-      }
-      const contractSymbol = isOption
-        ? `${symbol} ${expiryDate ? expiryDate.toISOString().slice(0, 10) : ''} ${optionType[0]} ${values.strike_price || ''}`.trim()
+      const assetId = isOption && optionContract
+        ? optionContract.asset_id
+        : symbol;
+      const finalContractSymbol = isOption && optionContract
+        ? optionContract.contract_symbol
+        : isOption
+          ? buildOCCContractSymbol({
+              underlying: symbol,
+              expiration: expiryDate ? expiryDate.toISOString().slice(0, 10) : '',
+              optionType: optionType[0],
+              strike: values.strike_price,
+            }) || `${symbol} ${expiryDate ? expiryDate.toISOString().slice(0, 10) : ''} ${optionType[0]} ${values.strike_price || ''}`.trim()
+          : null;
+      const finalOptionAssetId = isOption
+        ? (optionContract?.asset_id || buildOptionAssetId({
+            underlying: symbol,
+            expiration: expiryDate ? expiryDate.toISOString().slice(0, 10) : '',
+            optionType: optionType[0],
+            strike: values.strike_price,
+            contractSymbol: finalContractSymbol,
+          }))
         : null;
 
       const trade = {
         id: initialData ? initialData.id : crypto.randomUUID(),
-        asset_id: assetId,
-        symbol,
+        asset_id: finalOptionAssetId || assetId,
+        symbol: optionContract?.underlying || symbol,
         asset_name: values.asset_name || '',
         asset_type: type,
         direction,
@@ -321,11 +381,15 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
         trade_time: tradeTime.toISOString(),
         note: values.note || '',
         // Option-specific
-        underlying_symbol: isOption ? symbol : null,
-        strike_price: isOption ? parseFloat(values.strike_price || '0') : null,
-        expiry_date: isOption && expiryDate ? expiryDate.toISOString().slice(0, 10) : null,
-        option_type: isOption ? optionType[0] : null,
-        contract_symbol: contractSymbol,
+        underlying_symbol: isOption ? (optionContract?.underlying || symbol) : null,
+        strike_price: isOption ? (optionContract?.strike_price || parseFloat(values.strike_price || '0')) : null,
+        expiry_date: isOption ? (optionContract?.expiry_date || (expiryDate ? expiryDate.toISOString().slice(0, 10) : null)) : null,
+        option_type: isOption ? (optionContract?.option_type || optionType[0]) : null,
+        contract_symbol: finalContractSymbol,
+        multiplier: isOption ? (optionContract?.multiplier || parseFloat(values.multiplier || '100') || 100) : 1,
+        lifecycle_status: initialData?.lifecycle_status || 'ACTIVE',
+        closed_reason: initialData?.closed_reason || null,
+        exercised_stock_trade_id: initialData?.exercised_stock_trade_id || null,
         author: initialData ? (initialData.author || currentAuthor) : currentAuthor,
       };
 
@@ -446,6 +510,7 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
           initialValues={{
             fee: '0',
             direction: ['BUY'],
+            multiplier: '100',
           }}
           onValuesChange={(changed, allValues) => {
             setFormDraft(allValues);
@@ -510,7 +575,12 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
               options={ASSET_TYPE_OPTIONS}
               value={assetType}
               onChange={(val) => {
-                if (val.length > 0) setAssetType(val);
+                if (val.length > 0) {
+                  setAssetType(val);
+                  if (val[0] === 'OPTION' && !form.getFieldValue('multiplier')) {
+                    form.setFieldsValue({ multiplier: '100' });
+                  }
+                }
               }}
             />
           </Form.Item>
@@ -577,6 +647,18 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
               <div className="trade-form__section-title">期权信息</div>
 
               <Form.Item
+                name="contract_symbol"
+                label="合约码"
+                className="trade-form__symbol-input"
+              >
+                <Input
+                  placeholder="粘贴 OCC: NVDA260618C00100000"
+                  clearable
+                  onChange={applyOptionContract}
+                />
+              </Form.Item>
+
+              <Form.Item
                 name="strike_price"
                 label="行权价"
                 className="trade-form__number-input"
@@ -618,6 +700,19 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
                   max="2030-12-31"
                 />
               </div>
+
+              <Form.Item
+                name="multiplier"
+                label="合约乘数"
+                className="trade-form__number-input"
+              >
+                <Input
+                  type="number"
+                  placeholder="100"
+                  inputMode="decimal"
+                  clearable
+                />
+              </Form.Item>
             </div>
           )}
 
@@ -795,37 +890,37 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
                   if (!symbol) continue; // 必须有股票代码
 
                   const isOption = t.asset_type === 'OPTION';
-                  let assetId = symbol;
-                  const normalizedOptionType = t.option_type || 'CALL';
-
-                  if (isOption && t.strike_price) {
-                    let expStr = '';
-                    if (t.expiry_date) {
-                      try {
-                        expStr = new Date(t.expiry_date).toISOString().slice(0, 10);
-                      } catch {
-                        expStr = String(t.expiry_date);
-                      }
-                    }
-                    assetId = `${symbol}_${expStr}_${t.strike_price}_${normalizedOptionType}`;
-                  }
+                  const normalizedOption = isOption ? normalizeOptionTrade({
+                    ...t,
+                    underlying_symbol: t.underlying_symbol || symbol,
+                  }) : null;
+                  const assetId = isOption
+                    ? (normalizedOption?.asset_id || buildOptionAssetId({
+                        underlying: symbol,
+                        expiration: t.expiry_date,
+                        optionType: t.option_type || 'CALL',
+                        strike: t.strike_price,
+                        contractSymbol: t.contract_symbol,
+                      }))
+                    : symbol;
 
                   const tradeToSave = {
                     ...t,
                     id: crypto.randomUUID(),
                     asset_id: assetId,
-                    symbol: symbol,
+                    symbol: normalizedOption?.underlying || symbol,
                     direction: t.direction || 'BUY', // 默认作为买入记录（如持仓图无交易方向）
                     quantity: parseFloat(t.quantity || 0),
                     price: parseFloat(t.price || 0),
                     fee: parseFloat(t.fee || 0),
                     trade_time: t.trade_time || new Date().toISOString(),
                     broker: t.broker || null,
-                    underlying_symbol: isOption ? symbol : null,
-                    option_type: isOption ? normalizedOptionType : null,
-                    contract_symbol: isOption
-                      ? `${symbol} ${t.expiry_date || ''} ${normalizedOptionType} ${t.strike_price || ''}`.trim()
-                      : null,
+                    underlying_symbol: isOption ? (normalizedOption?.underlying || symbol) : null,
+                    strike_price: isOption ? (normalizedOption?.strike_price || t.strike_price || null) : null,
+                    expiry_date: isOption ? (normalizedOption?.expiry_date || t.expiry_date || null) : null,
+                    option_type: isOption ? (normalizedOption?.option_type || t.option_type || 'CALL') : null,
+                    contract_symbol: isOption ? (normalizedOption?.contract_symbol || t.contract_symbol || null) : null,
+                    multiplier: isOption ? (normalizedOption?.multiplier || t.multiplier || 100) : 1,
                     author: t.author || currentAuthor,
                   };
 

@@ -921,10 +921,11 @@ export default function InformationDetail() {
         headers['x-gemini-api-key'] = geminiApiKey;
       }
 
-      const response = await fetch('/api/translate', {
+      const response = await fetch('/api/summarize', {
         method: 'POST',
         headers,
         body: JSON.stringify({
+          mode: 'translate',
           title: info?.title || '',
           text: cleanContent,
           sourceLanguage: 'auto',

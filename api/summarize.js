@@ -22,6 +22,7 @@ const DEFAULT_GEMINI_MODELS = [
 const MAX_READER_CHARS = 9000;
 const MAX_RETURN_CONTENT_CHARS = 3500;
 const MAX_USER_CONTENT_CHARS = 9000;
+const MAX_TRANSLATE_CHARS = 12000;
 
 function uniqueValues(values) {
   return [...new Set(values.map(v => String(v || '').trim()).filter(Boolean))];
@@ -433,7 +434,7 @@ function cleanGeneratedTitle(title) {
     .slice(0, 60);
 }
 
-async function callGeminiWithModelPool({ apiKey, models, parts, maxOutputTokens = 700 }) {
+async function callGeminiWithModelPool({ apiKey, models, parts, maxOutputTokens = 700, responseMimeType = 'application/json' }) {
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   let lastError = null;
 
@@ -451,7 +452,7 @@ async function callGeminiWithModelPool({ apiKey, models, parts, maxOutputTokens 
             generationConfig: {
               temperature: 0.2,
               maxOutputTokens,
-              responseMimeType: 'application/json',
+              responseMimeType,
             },
           }),
           signal: AbortSignal.timeout(45000),
@@ -494,6 +495,53 @@ async function callGeminiWithModelPool({ apiKey, models, parts, maxOutputTokens 
   throw new Error(details);
 }
 
+async function handleTranslateMode({ req, res, apiKey }) {
+  if (!apiKey) {
+    return res.status(401).json({ error: '请先在设置页面配置 Gemini API Key' });
+  }
+
+  const { text, title = '', sourceLanguage = 'auto' } = req.body || {};
+  const sourceText = truncateText(text, MAX_TRANSLATE_CHARS);
+  if (!sourceText) {
+    return res.status(400).json({ error: '没有可翻译的正文' });
+  }
+
+  const prompt = `你是投资情报翻译助手。请把下面的材料翻译成简体中文。
+
+要求：
+1. 保留 Markdown 段落、标题、列表、引用等结构。
+2. 股票代码、公司名、产品名、技术名可以保留英文或常用中文译名。
+3. 不要总结、不要删减观点、不要添加原文没有的信息。
+4. 如果原文中有链接或代码块，请保留。
+5. 只输出翻译后的中文正文，不要解释。
+
+标题：${title || '无'}
+来源语言：${sourceLanguage}
+
+原文：
+${sourceText}`;
+
+  const models = getGeminiModelPool(
+    process.env.GEMINI_TRANSLATE_MODELS,
+    process.env.GEMINI_MODELS,
+    process.env.GEMINI_MODEL,
+  );
+  const { rawResponse, model } = await callGeminiWithModelPool({
+    apiKey,
+    models,
+    parts: [{ text: prompt }],
+    maxOutputTokens: 8192,
+    responseMimeType: 'text/plain',
+  });
+
+  return res.status(200).json({
+    success: true,
+    translatedText: rawResponse,
+    model,
+    truncated: String(text || '').length > sourceText.length,
+  });
+}
+
 export default async function handler(req, res) {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -510,7 +558,11 @@ export default async function handler(req, res) {
 
   try {
     const apiKey = req.headers['x-gemini-api-key'] || process.env.GEMINI_API_KEY;
-    const { url, content, image, mimeType = 'image/png' } = req.body;
+    const { url, content, image, mimeType = 'image/png', mode } = req.body;
+
+    if (mode === 'translate') {
+      return await handleTranslateMode({ req, res, apiKey });
+    }
 
     if (!url && !content && !image) {
       return res.status(400).json({ error: 'Please provide either url, content, or image.' });

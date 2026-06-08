@@ -68,6 +68,106 @@ function cleanMarkdownForPrompt(markdown) {
 
 const URL_PATTERN = /https?:\/\/[^\s)"'<>]+/g;
 
+function getYouTubeId(url) {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\./, '');
+    if (host === 'youtu.be') return parsed.pathname.split('/').filter(Boolean)[0] || null;
+    if (!host.endsWith('youtube.com')) return null;
+    const watchId = parsed.searchParams.get('v');
+    if (watchId) return watchId;
+    const [kind, id] = parsed.pathname.split('/').filter(Boolean);
+    if (['embed', 'shorts', 'live'].includes(kind) && id) return id;
+  } catch { /* ignore */ }
+  return null;
+}
+
+function getBilibiliId(url) {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    const match = parsed.pathname.match(/\/video\/(BV[\w]+)/i);
+    return match ? match[1] : null;
+  } catch { /* ignore */ }
+  return null;
+}
+
+function getVimeoId(url) {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    if (!parsed.hostname.replace(/^www\./, '').endsWith('vimeo.com')) return null;
+    return parsed.pathname.split('/').filter(Boolean).find((part) => /^\d+$/.test(part)) || null;
+  } catch { /* ignore */ }
+  return null;
+}
+
+function buildYouTubeEmbedUrl(videoId) {
+  if (!videoId) return null;
+  const params = new URLSearchParams({
+    rel: '0',
+    modestbranding: '1',
+    playsinline: '1',
+    vq: 'hd1080',
+  });
+  return `https://www.youtube.com/embed/${videoId}?${params.toString()}`;
+}
+
+function buildBilibiliEmbedUrl(bvid) {
+  if (!bvid) return null;
+  const params = new URLSearchParams({
+    bvid,
+    high_quality: '1',
+    danmaku: '0',
+    autoplay: '0',
+  });
+  return `https://player.bilibili.com/player.html?${params.toString()}`;
+}
+
+function buildVimeoEmbedUrl(videoId) {
+  if (!videoId) return null;
+  const params = new URLSearchParams({
+    dnt: '1',
+    quality: '1080p',
+  });
+  return `https://player.vimeo.com/video/${videoId}?${params.toString()}`;
+}
+
+function detectVideoPlatform(url) {
+  const youtubeId = getYouTubeId(url);
+  if (youtubeId) {
+    return {
+      platform: 'youtube',
+      provider: 'YouTube',
+      videoId: youtubeId,
+      embedUrl: buildYouTubeEmbedUrl(youtubeId),
+    };
+  }
+
+  const bilibiliId = getBilibiliId(url);
+  if (bilibiliId) {
+    return {
+      platform: 'bilibili',
+      provider: 'Bilibili',
+      videoId: bilibiliId,
+      embedUrl: buildBilibiliEmbedUrl(bilibiliId),
+    };
+  }
+
+  const vimeoId = getVimeoId(url);
+  if (vimeoId) {
+    return {
+      platform: 'vimeo',
+      provider: 'Vimeo',
+      videoId: vimeoId,
+      embedUrl: buildVimeoEmbedUrl(vimeoId),
+    };
+  }
+
+  return null;
+}
+
 function extractUrls(text = '') {
   return [...new Set(String(text || '').match(URL_PATTERN) || [])]
     .map((url) => url.replace(/[，。；;,.]+$/g, ''));
@@ -75,7 +175,8 @@ function extractUrls(text = '') {
 
 function isVideoUrl(url = '') {
   return /\.(mp4|webm|ogg|mov|m3u8)(\?|#|$)/i.test(url)
-    || /video\.twimg\.com\/.+\.(mp4|m3u8)(\?|#|$)/i.test(url);
+    || /video\.twimg\.com\/.+\.(mp4|m3u8)(\?|#|$)/i.test(url)
+    || Boolean(detectVideoPlatform(url));
 }
 
 function isImageUrl(url = '') {
@@ -147,9 +248,14 @@ function buildParsedInformation({
   mimeType,
 }) {
   const inferredMedia = buildMediaFromValues(url, content, media?.videoUrl, media?.thumbnailUrl);
+  const videoPlatform = detectVideoPlatform(url);
   const mergedMedia = {
     videos: uniqueValues([...(inferredMedia.videos || []), media?.videoUrl]),
     images: uniqueValues([...(inferredMedia.images || []), media?.thumbnailUrl]),
+    platform: videoPlatform?.platform || media?.platform || null,
+    provider: videoPlatform?.provider || media?.provider || null,
+    videoId: videoPlatform?.videoId || media?.videoId || null,
+    embedUrl: videoPlatform?.embedUrl || media?.embedUrl || null,
   };
   mergedMedia.primaryVideo = mergedMedia.videos[0] || null;
   mergedMedia.primaryImage = mergedMedia.images[0] || null;
@@ -227,6 +333,32 @@ async function resolveTwitterMediaViaApi(url) {
 
 function buildJinaReaderUrl(url) {
   return `https://r.jina.ai/${url}`;
+}
+
+function deriveTitleFromContent(content = '') {
+  const text = String(content || '');
+  const titleMatch = text.match(/^Title:\s*(.+)$/im);
+  if (titleMatch?.[1]) return titleMatch[1].trim();
+
+  const headingMatch = text.match(/^#{1,2}\s+(.+)$/m);
+  if (headingMatch?.[1]) return headingMatch[1].trim();
+
+  const firstUsefulLine = text
+    .split('\n')
+    .map((line) => line.trim())
+    .find((line) => line && !/^Markdown Content:/i.test(line));
+  return firstUsefulLine || '';
+}
+
+function buildFallbackTitle({ url, content, media, pageTitle }) {
+  const contentTitle = deriveTitleFromContent(content);
+  const title = pageTitle || contentTitle;
+  if (title) return cleanGeneratedTitle(title);
+
+  if (media?.provider) return `${media.provider} 视频材料`;
+
+  const domain = detectDomain(url);
+  return domain ? `${domain} 链接材料` : '未命名情报';
 }
 
 async function fetchReaderMarkdown(url) {
@@ -376,16 +508,16 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const apiKey = req.headers['x-gemini-api-key'] || process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({ error: 'Gemini API Key is not configured. Please add one in Vercel or locally in settings.' });
-  }
-
   try {
+    const apiKey = req.headers['x-gemini-api-key'] || process.env.GEMINI_API_KEY;
     const { url, content, image, mimeType = 'image/png' } = req.body;
 
     if (!url && !content && !image) {
       return res.status(400).json({ error: 'Please provide either url, content, or image.' });
+    }
+
+    if (!apiKey && image && !url && !content) {
+      return res.status(500).json({ error: '图片解析需要配置 Gemini API Key。也可以先手动填写标题和正文。' });
     }
 
     let summaryPromptText = '';
@@ -393,6 +525,7 @@ export default async function handler(req, res) {
     let extractedContent = null;
     let extractedAuthor = null;
     let extractedSummary = null;
+    let extractedPageTitle = null;
     let contentSource = null;
     let extractedMedia = null;
 
@@ -417,6 +550,19 @@ export default async function handler(req, res) {
 
       // Special handling for X/Twitter: use public oEmbed API as author/text fallback.
       const isTwitter = ['x.com', 'twitter.com'].some(d => urlHost === d || urlHost.endsWith('.' + d));
+      const videoPlatform = detectVideoPlatform(url);
+
+      if (videoPlatform) {
+        pageDetails += `视频平台: ${videoPlatform.provider}\n视频ID: ${videoPlatform.videoId}\n内嵌播放地址: ${videoPlatform.embedUrl}\n`;
+        extractedMedia = {
+          ...(extractedMedia || {}),
+          platform: videoPlatform.platform,
+          provider: videoPlatform.provider,
+          videoId: videoPlatform.videoId,
+          embedUrl: videoPlatform.embedUrl,
+        };
+        contentSource = contentSource || `${videoPlatform.platform}-embed`;
+      }
       
       if (isTwitter) {
         try {
@@ -478,6 +624,7 @@ export default async function handler(req, res) {
             const ogTitleMatch = htmlText.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i) ||
                                  htmlText.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i);
             const ogTitle = ogTitleMatch ? decodeHtmlEntities(ogTitleMatch[1]).trim() : '';
+            extractedPageTitle = ogTitle || rawTitle || extractedPageTitle;
 
             const descMatch = htmlText.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i) ||
                               htmlText.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i);
@@ -545,7 +692,7 @@ export default async function handler(req, res) {
 1. 全部输出简体中文，股票代码、公司名、产品名、平台名可保留英文。
 2. 标题严格控制在 30 个汉字以内，必须概括核心事实或观点，不要只翻译网页标题。
 3. 摘要控制在 100 个汉字以内，说明文章/帖子真正讲了什么，以及它和投资情报的关系。
-4. 如果正文不足，只能写“内容不足，需人工补充正文”，不要根据 URL、域名或常识猜测。
+4. 如果是视频链接，可以基于平台、网页标题、描述和用户摘录生成标题；如果是普通文章且正文不足，只能写“内容不足，需人工补充正文”，不要根据 URL、域名或常识猜测。
 5. 只输出 JSON，不要 Markdown，不要解释。
 
 JSON 格式：
@@ -574,24 +721,35 @@ JSON 格式：
     let generatedTitle = '';
     let modelUsed = '';
 
-    try {
-      const { rawResponse, model } = await callGeminiWithModelPool({
-        apiKey,
-        models: summarizeModels,
-        parts,
-      });
-      modelUsed = model;
-      const parsed = parseStructuredSummary(rawResponse);
-      generatedTitle = parsed.title;
-      extractedSummary = parsed.summary ? parsed.summary.slice(0, 100) : extractedSummary;
-    } catch (err) {
-      return res.status(502).json({
-        error: 'Gemini API error (All summary models failed)',
-        details: err.message,
-      });
+    if (apiKey) {
+      try {
+        const { rawResponse, model } = await callGeminiWithModelPool({
+          apiKey,
+          models: summarizeModels,
+          parts,
+        });
+        modelUsed = model;
+        const parsed = parseStructuredSummary(rawResponse);
+        generatedTitle = parsed.title;
+        extractedSummary = parsed.summary ? parsed.summary.slice(0, 100) : extractedSummary;
+      } catch (err) {
+        console.warn('[Summarize API] Gemini failed, falling back to deterministic link parsing:', err.message);
+        if (!extractedContent && !extractedMedia && image) {
+          return res.status(502).json({
+            error: 'Gemini API error (All summary models failed)',
+            details: err.message,
+          });
+        }
+      }
     }
 
-    const cleanTitle = cleanGeneratedTitle(generatedTitle);
+    const cleanTitle = cleanGeneratedTitle(generatedTitle)
+      || buildFallbackTitle({
+        url,
+        content: extractedContent || content,
+        media: extractedMedia,
+        pageTitle: extractedPageTitle,
+      });
 
     // For Twitter posts, generate summary from tweet text if not already set
     if (!extractedSummary && extractedContent) {

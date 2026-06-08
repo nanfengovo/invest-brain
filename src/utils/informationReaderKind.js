@@ -11,10 +11,10 @@ export function resolveInformationReaderKind({
   isVideoInfo,
   resolvedImageUrl,
   resolvedVideoUrl,
+  videoEmbedUrl,
   twitterPostId,
   validUrl,
-  youtubeId,
-  bilibiliId,
+  videoPlatform,
 }) {
   const hasContent = Boolean(String(cleanContent || '').trim());
   const isArticleInfo = infoType === 'ARTICLE';
@@ -22,7 +22,7 @@ export function resolveInformationReaderKind({
   if (isPdf || isRemotePdf) return 'pdf';
   if (isEpub || isRemoteEpub) return 'epub';
   if (isArticleInfo && hasContent) return isHtmlContent ? 'html' : 'markdown';
-  if ((isVideoInfo || !hasContent) && (youtubeId || bilibiliId || resolvedVideoUrl)) return 'video';
+  if ((isVideoInfo || !hasContent) && (videoEmbedUrl || videoPlatform || resolvedVideoUrl)) return 'video';
   if ((isImageInfo || !hasContent) && (resolvedImageUrl || (fileUrl && isImageInfo))) return 'image';
   if (twitterPostId) return 'xpost';
   if (isHtmlContent) return 'html';

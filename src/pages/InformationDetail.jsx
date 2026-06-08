@@ -8,6 +8,7 @@ import { useAppStore } from '../stores/useAppStore';
 import { getFileUrlFromOPFS } from '../utils/opfsUtils';
 import { findMediaUrls } from '../utils/mediaResolver';
 import { resolveInformationReaderKind } from '../utils/informationReaderKind';
+import { detectVideoPlatform } from '../utils/videoPlatforms';
 import { getSyncStatusMeta, isTeamMirrorRecord } from '../utils/syncStatus';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import AssetLogo from '../components/common/AssetLogo';
@@ -90,29 +91,6 @@ function extractDomain(url) {
   }
 }
 
-function getYouTubeId(url) {
-  if (!url) return null;
-  try {
-    const u = new URL(url);
-    if (u.hostname.includes('youtube.com')) {
-      return u.searchParams.get('v') || u.pathname.split('/embed/')[1] || null;
-    }
-    if (u.hostname === 'youtu.be') {
-      return u.pathname.slice(1) || null;
-    }
-  } catch { /* ignore */ }
-  return null;
-}
-
-function getBilibiliId(url) {
-  if (!url) return null;
-  try {
-    const match = url.match(/bilibili\.com\/video\/(BV[\w]+)/i);
-    return match ? match[1] : null;
-  } catch { /* ignore */ }
-  return null;
-}
-
 function isTwitterUrl(url) {
   if (!url) return false;
   try {
@@ -160,7 +138,15 @@ function stripSourceScaffold(content = '') {
   return String(content || '')
     .replace(/^Title:\s*.*$/gim, '')
     .replace(/^Markdown Content:\s*/gim, '')
+    .replace(/^视频嵌入:\s*\S+$/gim, '')
+    .replace(/^视频地址:\s*\S+$/gim, '')
+    .replace(/^封面地址:\s*\S+$/gim, '')
     .trim();
+}
+
+function getLabeledUrl(content = '', label) {
+  const pattern = new RegExp(`^${label}:\\s*(https?:\\/\\/\\S+)`, 'im');
+  return String(content || '').match(pattern)?.[1] || null;
 }
 
 function getReaderLabel(kind) {
@@ -440,8 +426,7 @@ function InformationReader({
   kind,
   sourceUrl,
   validUrl,
-  youtubeId,
-  bilibiliId,
+  videoEmbedUrl,
   resolvedVideoUrl,
   resolvedImageUrl,
   cleanContent,
@@ -506,24 +491,13 @@ function InformationReader({
   }
 
   if (kind === 'video') {
-    if (youtubeId) {
+    if (videoEmbedUrl) {
       return (
         <div className="info-detail__embed-player">
           <iframe
-            src={`https://www.youtube.com/embed/${youtubeId}`}
-            title="YouTube player"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
-          />
-        </div>
-      );
-    }
-    if (bilibiliId) {
-      return (
-        <div className="info-detail__embed-player">
-          <iframe
-            src={`https://player.bilibili.com/player.html?bvid=${bilibiliId}&high_quality=1&danmaku=0`}
-            title="Bilibili player"
+            src={videoEmbedUrl}
+            title={`${title} 播放器`}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             allowFullScreen
             scrolling="no"
           />
@@ -831,8 +805,8 @@ export default function InformationDetail() {
   const realUrlMatch = info?.url?.match(/(https?:\/\/[^\s]+)/);
   const validUrl = realUrlMatch ? realUrlMatch[1] : null;
 
-  const youtubeId = useMemo(() => validUrl ? getYouTubeId(validUrl) : null, [validUrl]);
-  const bilibiliId = useMemo(() => validUrl ? getBilibiliId(validUrl) : null, [validUrl]);
+  const labeledVideoEmbedUrl = useMemo(() => getLabeledUrl(displayContent, '视频嵌入'), [displayContent]);
+  const videoPlatform = useMemo(() => validUrl ? detectVideoPlatform(validUrl) : null, [validUrl]);
   const twitterPostId = useMemo(() => validUrl ? getTwitterPostId(validUrl) : null, [validUrl]);
   const isDirectVideo = useMemo(() => validUrl ? isDirectVideoUrl(validUrl) : false, [validUrl]);
   const isDirectImage = useMemo(() => validUrl ? isDirectImageUrl(validUrl) : false, [validUrl]);
@@ -860,8 +834,9 @@ export default function InformationDetail() {
   const isHtmlContent = useMemo(() => looksLikeHtml(cleanContent), [cleanContent]);
   const twitterFallbackText = useMemo(() => getTwitterFallbackText(displayContent, info?.title), [displayContent, info?.title]);
   const embeddedMedia = useMemo(() => findMediaUrls(info?.url, displayContent), [displayContent, info?.url]);
-  const resolvedVideoUrl = embeddedMedia.videos[0] || (isDirectVideo ? validUrl : null);
+  const resolvedVideoUrl = getLabeledUrl(displayContent, '视频地址') || embeddedMedia.videos[0] || (isDirectVideo ? validUrl : null);
   const resolvedImageUrl = embeddedMedia.images[0] || (isDirectImage ? validUrl : null);
+  const videoEmbedUrl = labeledVideoEmbedUrl || videoPlatform?.embedUrl || null;
   const readerKind = useMemo(() => {
     return resolveInformationReaderKind({
       infoType: info?.type,
@@ -876,10 +851,10 @@ export default function InformationDetail() {
       isVideoInfo,
       resolvedImageUrl,
       resolvedVideoUrl,
+      videoEmbedUrl,
       twitterPostId,
       validUrl,
-      youtubeId,
-      bilibiliId,
+      videoPlatform,
     });
   }, [
     cleanContent,
@@ -894,10 +869,10 @@ export default function InformationDetail() {
     info?.type,
     resolvedImageUrl,
     resolvedVideoUrl,
+    videoEmbedUrl,
     twitterPostId,
     validUrl,
-    youtubeId,
-    bilibiliId,
+    videoPlatform,
   ]);
   const readerSourceUrl = fileUrl || validUrl;
   const hasInlineSource = readerKind !== 'webpage' && readerKind !== 'empty';
@@ -1320,8 +1295,7 @@ export default function InformationDetail() {
             kind={readerKind}
             sourceUrl={readerSourceUrl}
             validUrl={validUrl}
-            youtubeId={youtubeId}
-            bilibiliId={bilibiliId}
+            videoEmbedUrl={videoEmbedUrl}
             resolvedVideoUrl={resolvedVideoUrl}
             resolvedImageUrl={resolvedImageUrl}
             cleanContent={cleanContent}

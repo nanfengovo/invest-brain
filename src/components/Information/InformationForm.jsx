@@ -34,7 +34,11 @@ function appendUniqueBlock(current, next) {
 
 function mediaLinesFromParsed(parsed) {
   const lines = [];
-  if (parsed?.media?.primaryVideo) lines.push(`视频地址: ${parsed.media.primaryVideo}`);
+  if (parsed?.media?.embedUrl) lines.push(`视频嵌入: ${parsed.media.embedUrl}`);
+  if (parsed?.media?.provider) lines.push(`视频平台: ${parsed.media.provider}`);
+  if (parsed?.media?.primaryVideo && parsed.media.primaryVideo !== parsed?.media?.embedUrl) {
+    lines.push(`视频地址: ${parsed.media.primaryVideo}`);
+  }
   if (parsed?.media?.primaryImage) lines.push(`封面地址: ${parsed.media.primaryImage}`);
   return lines.join('\n');
 }
@@ -174,10 +178,12 @@ export default function InformationForm({ onClose }) {
         if (parsed.type) updates.type = [parsed.type];
 
         const parsedContent = parsed.content || result.content;
-        if (parsedContent) {
+        const mediaLines = mediaLinesFromParsed(parsed);
+        if (parsedContent || mediaLines) {
           const authorLine = parsed.source?.author || result.author;
-          let newContentText = authorLine ? `作者: ${authorLine}\n${parsedContent}` : parsedContent;
-          const mediaLines = mediaLinesFromParsed(parsed);
+          let newContentText = parsedContent
+            ? (authorLine ? `作者: ${authorLine}\n${parsedContent}` : parsedContent)
+            : (result.summary ? `摘要: ${result.summary}` : '');
           if (mediaLines) newContentText += `\n${mediaLines}`;
           updates.content = appendUniqueBlock(form.getFieldValue('content'), newContentText);
         }

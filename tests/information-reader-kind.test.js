@@ -35,3 +35,15 @@ test('HTML article records prefer the in-app HTML reader', () => {
 
   assert.equal(kind, 'html');
 });
+
+test('video records with platform embeds use the in-app video reader', () => {
+  const kind = resolveInformationReaderKind({
+    infoType: 'VIDEO',
+    cleanContent: '',
+    videoEmbedUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ?vq=hd1080',
+    videoPlatform: { platform: 'youtube' },
+    validUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+  });
+
+  assert.equal(kind, 'video');
+});

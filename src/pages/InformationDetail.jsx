@@ -11,7 +11,7 @@ import { resolveInformationReaderKind } from '../utils/informationReaderKind';
 import { detectVideoPlatform } from '../utils/videoPlatforms';
 import { getSyncStatusMeta, isTeamMirrorRecord } from '../utils/syncStatus';
 import { sharePoster } from '../utils/sharePoster';
-import { getAiUsageLabel } from '../utils/aiProviders';
+import { compactAiUsageLabel, getAiUsageLabel, getModelDisplayName } from '../utils/aiProviders';
 import {
   getCachedInformationTranslation,
   saveInformationTranslation,
@@ -652,6 +652,7 @@ export default function InformationDetail() {
   const [translationLoading, setTranslationLoading] = useState(false);
   const [autoTitleTranslation, setAutoTitleTranslation] = useState('');
   const [autoTranslationStatus, setAutoTranslationStatus] = useState('');
+  const [autoTranslationModel, setAutoTranslationModel] = useState('');
   const [autoReaderTranslationStatus, setAutoReaderTranslationStatus] = useState('');
   const [autoReaderTranslationProgress, setAutoReaderTranslationProgress] = useState(null);
   const [readerMode, setReaderMode] = useState('original');
@@ -722,6 +723,7 @@ export default function InformationDetail() {
     setTranslationModel('');
     setAutoTitleTranslation('');
     setAutoTranslationStatus('');
+    setAutoTranslationModel('');
     setAutoReaderTranslationStatus('');
     setAutoReaderTranslationProgress(null);
     autoTranslationRequestRef.current = '';
@@ -947,6 +949,11 @@ export default function InformationDetail() {
   const isTranslatedMode = readerMode === 'translated' && Boolean(translationText);
   const activeReaderContent = isTranslatedMode ? translationText : cleanContent;
   const displayTitle = autoTitleTranslation || info?.title || '';
+  const configuredTranslationModel = useMemo(() => {
+    const modelName = getModelDisplayName(aiProviderConfig?.textModel);
+    return modelName || (aiProviderConfig?.provider === 'gemini' ? 'Gemini' : 'NVIDIA');
+  }, [aiProviderConfig?.provider, aiProviderConfig?.textModel]);
+  const autoTranslationModelLabel = compactAiUsageLabel(autoTranslationModel || configuredTranslationModel);
 
   useEffect(() => {
     if (!info) return undefined;
@@ -968,6 +975,7 @@ export default function InformationDetail() {
     });
     if (needsTitleTranslation && cached?.title) {
       setAutoTitleTranslation(cached.title);
+      setAutoTranslationModel(cached.modelLabel || '');
     }
     if (needsContentTranslation && cached?.content) {
       setTranslationText(cached.content);
@@ -1000,6 +1008,7 @@ export default function InformationDetail() {
       }, 22000);
     };
     setAutoTranslationStatus(needsTitleTranslation && !cached?.title ? 'translating' : (cached?.title ? 'ready' : ''));
+    setAutoTranslationModel(cached?.modelLabel || '');
     setAutoReaderTranslationStatus(needsContentTranslation && !cached?.content ? 'translating' : (cached?.content ? 'ready' : ''));
     setAutoReaderTranslationProgress(needsContentTranslation && !cached?.content ? { completed: 0, total: 0 } : null);
 
@@ -1023,6 +1032,7 @@ export default function InformationDetail() {
           modelLabel = titleResult.modelLabel || modelLabel;
           if (!cancelled && translatedTitle) {
             setAutoTitleTranslation(translatedTitle);
+            setAutoTranslationModel(modelLabel);
             saveInformationTranslation(info, {
               title: info.title,
               content: translationSourceContent,
@@ -1096,6 +1106,7 @@ export default function InformationDetail() {
     };
   }, [
     aiProviderConfig,
+    configuredTranslationModel,
     canTranslateReader,
     geminiApiKey,
     info,
@@ -1412,8 +1423,16 @@ export default function InformationDetail() {
         <div className="info-detail__header">
           <h1 className="info-detail__title">
             {displayTitle}
-            {autoTranslationStatus === 'translating' && <span className="info-detail__translation-state"> 自动翻译中</span>}
-            {autoTranslationStatus === 'ready' && <span className="info-detail__translation-state info-detail__translation-state--ready"> 中文</span>}
+            {autoTranslationStatus === 'translating' && (
+              <span className="info-detail__translation-state" title={autoTranslationModelLabel}>
+                自动翻译中{autoTranslationModelLabel ? ` · ${autoTranslationModelLabel}` : ''}
+              </span>
+            )}
+            {autoTranslationStatus === 'ready' && (
+              <span className="info-detail__translation-state info-detail__translation-state--ready" title={autoTranslationModelLabel}>
+                中文{autoTranslationModelLabel ? ` · ${autoTranslationModelLabel}` : ''}
+              </span>
+            )}
           </h1>
           <div className="info-detail__sync-row">
             <span className={`info-detail__sync-badge ${infoSyncMeta.className}`}>{infoSyncMeta.label}</span>

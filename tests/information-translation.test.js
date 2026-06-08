@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 test('summarize api translate mode keeps markdown structure and Chinese output instruction', () => {
   const source = readFileSync(new URL('../api/summarize.js', import.meta.url), 'utf8');
+  const aiProviders = readFileSync(new URL('../src/utils/aiProviders.js', import.meta.url), 'utf8');
 
   assert.match(source, /mode === 'translate'/);
   assert.match(source, /splitTranslateChunks/);
@@ -14,13 +15,22 @@ test('summarize api translate mode keeps markdown structure and Chinese output i
   assert.match(source, /x-gemini-api-key/);
   assert.match(source, /x-nvidia-api-key/);
   assert.match(source, /请先在设置页面配置 Gemini API Key 或 NVIDIA API Key/);
+  assert.match(aiProviders, /compactAiUsageLabel/);
+  assert.match(aiProviders, /startsWith\(provider\.toLowerCase\(\)\)/);
+  assert.match(aiProviders, /replace\(\/\^\(\[\^\/·\]\+\?\)/);
+  assert.match(aiProviders, /\$1 · /);
 });
 
 test('information detail reader exposes Chinese and original toggles', () => {
   const source = readFileSync(new URL('../src/pages/InformationDetail.jsx', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../src/pages/InformationDetail.css', import.meta.url), 'utf8');
 
   assert.match(source, /handleTranslateReader/);
   assert.match(source, /autoTitleTranslation/);
+  assert.match(source, /autoTranslationModel/);
+  assert.match(source, /autoTranslationModelLabel/);
+  assert.match(source, /compactAiUsageLabel/);
+  assert.match(source, /getModelDisplayName/);
   assert.match(source, /displayTitle/);
   assert.match(source, /shouldAutoTranslateText/);
   assert.match(source, /getCachedInformationTranslation/);
@@ -35,12 +45,16 @@ test('information detail reader exposes Chinese and original toggles', () => {
   assert.match(source, /readerContent=\{activeReaderContent\}/);
   assert.match(source, /正在分段翻译中文\.\.\. \$\{completed\}\/\$\{total\}/);
   assert.match(source, /自动翻译正文/);
+  assert.match(source, /自动翻译中\{autoTranslationModelLabel/);
+  assert.match(source, /中文\{autoTranslationModelLabel/);
   assert.match(source, /自动翻译失败，可手动重试/);
   assert.match(source, /chunkTimeoutMs: 18000/);
   assert.match(source, /armReaderWatchdog/);
   assert.match(source, /22000/);
   assert.doesNotMatch(source, /getSummarizeApiUrl\(Boolean\(localGeminiKey \|\| localNvidiaKey\)\)/);
   assert.doesNotMatch(source, /const BUILTIN_AI_API_BASE_URL/);
+  assert.match(css, /max-width: min\(100%, 260px\)/);
+  assert.match(css, /text-overflow: ellipsis/);
 });
 
 test('information translation cleans source scaffold and reports failures clearly', () => {

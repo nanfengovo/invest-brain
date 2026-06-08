@@ -128,9 +128,21 @@ export function getProviderDisplayName(provider) {
   return provider || '';
 }
 
+export function compactAiUsageLabel(label = '') {
+  return String(label || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^([^/·]+?)\s*\/\s*\1\s*·\s*/i, '$1 · ');
+}
+
 export function getAiUsageLabel(meta = {}) {
   const provider = getProviderDisplayName(meta.provider);
   const model = getModelDisplayName(meta.model_used || meta.model || meta.modelUsed);
-  if (provider && model) return `${provider} / ${model}`;
-  return model || provider || '';
+  if (provider && model) {
+    const label = model.toLowerCase().startsWith(provider.toLowerCase())
+      ? model
+      : `${provider} / ${model}`;
+    return compactAiUsageLabel(label);
+  }
+  return compactAiUsageLabel(model || provider || '');
 }

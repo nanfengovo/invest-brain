@@ -3,14 +3,7 @@ import { useTradeStore } from '../stores/useTradeStore';
 import { useAppStore } from '../stores/useAppStore';
 import { db } from '../db/database';
 import EmptyState from '../components/common/EmptyState';
-import { parseDateTime } from '../utils/time';
-import {
-  getOptionExpirationLabel,
-  getOptionExpirationRisk,
-  getTradeMultiplier,
-  getTradeOptionDisplay,
-  getTradeQuantityUnit,
-} from '../utils/tradeLifecycle';
+import HoldingCard from '../components/Holdings/HoldingCard';
 import './HoldingsPage.css';
 
 const formatCurrency = (num) => {
@@ -19,25 +12,6 @@ const formatCurrency = (num) => {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
-};
-
-const formatDate = (dateStr) => {
-  if (!dateStr) return '—';
-  const d = parseDateTime(dateStr);
-  if (!d) return '—';
-  return d.toLocaleDateString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-};
-
-const TYPE_LABELS = {
-  STOCK: '股票',
-  OPTION: '期权',
-  ETF: 'ETF',
-  CRYPTO: '加密',
-  FUND: '基金',
 };
 
 export default function HoldingsPage() {
@@ -274,170 +248,21 @@ export default function HoldingsPage() {
         ) : holdings.length > 0 ? (
           <div className="holdings-page__list">
             {holdings.map((holding, idx) => {
-              const isOption = String(holding.type || '').toUpperCase() === 'OPTION';
-              const optionDisplay = isOption ? getTradeOptionDisplay({
-                asset_type: 'OPTION',
-                symbol: holding.symbol,
-                underlying_symbol: holding.underlying_symbol,
-                strike_price: holding.strike_price,
-                expiry_date: holding.expiry_date,
-                option_type: holding.option_type,
-                multiplier: holding.multiplier,
-              }) : null;
-              const optionExpirationLabel = isOption ? getOptionExpirationLabel({
-                asset_type: 'OPTION',
-                symbol: holding.symbol,
-                underlying_symbol: holding.underlying_symbol,
-                strike_price: holding.strike_price,
-                expiry_date: holding.expiry_date,
-                option_type: holding.option_type,
-              }) : '';
-              const optionExpirationRisk = isOption ? getOptionExpirationRisk(holding.expiry_date) : null;
               const holdingKey = `${holding.asset_id}-${holding.broker || ''}-${holding.author || '未标记'}`;
-              const positionValue =
-                (Number(holding.total_quantity) || 0) *
-                (Number(holding.avg_cost) || 0) *
-                getTradeMultiplier({ asset_type: holding.type, multiplier: holding.multiplier });
               const isExpanded = expandedId === holdingKey;
-              const quantityUnit = getTradeQuantityUnit({
-                asset_type: holding.type,
-              });
 
               return (
-                <div
+                <HoldingCard
                   key={holdingKey}
-                  className={`holdings-page__card glass-card ${
-                    isExpanded ? 'holdings-page__card--expanded' : ''
-                  } ${viewMode === 'compact' ? 'holdings-page__card--compact' : ''}`}
-                  style={{ animationDelay: `${idx * 60}ms` }}
-                >
-                  {/* Card Main Content */}
-                  <div
-                    className="holdings-page__card-main"
-                    onClick={() => handleToggle(holding.asset_id, holding.broker, holding.author)}
-                  >
-                    <div className="holdings-page__card-left">
-                      <div className="holdings-page__symbol-row">
-                        <span className="holdings-page__symbol">
-                          {isOption && optionDisplay?.title ? optionDisplay.title : holding.symbol}
-                        </span>
-                        <span
-                          className={`holdings-page__type-badge holdings-page__type-badge--${(
-                            holding.type || 'STOCK'
-                          ).toLowerCase()}`}
-                        >
-                          {TYPE_LABELS[holding.type] || holding.type || 'STOCK'}
-                        </span>
-                      </div>
-                      <div className="holdings-page__name-row">
-                        <span className={`holdings-page__name ${isOption ? `holdings-page__name--option holdings-page__name--option-${optionExpirationRisk?.tone || 'unknown'}` : ''}`}>
-                          {isOption ? optionExpirationLabel : (holding.name || holding.symbol)}
-                        </span>
-                        {isOption && optionDisplay?.optionType && (
-                          <span className={`holdings-page__option-badge holdings-page__option-badge--${optionDisplay.optionType.toLowerCase()}`}>
-                            {optionDisplay.optionType}
-                          </span>
-                        )}
-                        {holding.broker && (
-                          <span className="holdings-page__broker-badge">
-                            🏦 {holding.broker}
-                          </span>
-                        )}
-                        {holding.author && !selectedAuthor && (
-                          <span className="holdings-page__author-badge">
-                            {holding.author}
-                          </span>
-                        )}
-                      </div>
-                      {holding.sector && (
-                        <div className="holdings-page__sector">
-                          {holding.sector}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="holdings-page__card-right">
-                      <div className="holdings-page__position-value text-mono">
-                        ${formatCurrency(positionValue)}
-                      </div>
-                      <div className="holdings-page__quantity text-mono">
-                        {Number(holding.total_quantity).toLocaleString()} {quantityUnit}
-                      </div>
-                      <div className="holdings-page__avg-cost text-mono">
-                        均价 ${formatCurrency(holding.avg_cost)}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Card Footer — trade count & last trade */}
-                  <div className="holdings-page__card-footer">
-                    <span className="holdings-page__trade-count">
-                      {holding.trade_count} 笔交易
-                    </span>
-                    <span className="holdings-page__last-trade">
-                      最近 {formatDate(holding.last_trade)}
-                    </span>
-                    <span
-                      className={`holdings-page__expand-icon ${
-                        isExpanded ? 'holdings-page__expand-icon--open' : ''
-                      }`}
-                    >
-                      ▾
-                    </span>
-                  </div>
-
-                  {/* Expanded Trades List */}
-                  {isExpanded && (
-                    <div className="holdings-page__trades-list">
-                      {tradesLoading ? (
-                        <div className="holdings-page__trades-loading">
-                          加载中…
-                        </div>
-                      ) : expandedTrades.length > 0 ? (
-                        expandedTrades.map((trade) => {
-                          const isBuy =
-                            trade.direction === 'BUY' ||
-                            trade.direction === 'OPEN';
-                          const tradeUnit = getTradeQuantityUnit({
-                            ...trade,
-                            asset_type: trade.asset_type || holding.type,
-                          });
-                          return (
-                            <div
-                              key={trade.id}
-                              className="holdings-page__trade-item"
-                            >
-                              <div className="holdings-page__trade-left">
-                                <span
-                                  className={`holdings-page__trade-direction holdings-page__trade-direction--${
-                                    isBuy ? 'buy' : 'sell'
-                                  }`}
-                                >
-                                  {isBuy ? '买入' : '卖出'}
-                                </span>
-                                <span className="holdings-page__trade-date">
-                                  {formatDate(trade.trade_time)}
-                                </span>
-                              </div>
-                              <div className="holdings-page__trade-right">
-                                <span className="holdings-page__trade-qty text-mono">
-                                  {Number(trade.quantity).toLocaleString()} {tradeUnit} ×
-                                </span>
-                                <span className="holdings-page__trade-price text-mono">
-                                  ${formatCurrency(trade.price)}
-                                </span>
-                              </div>
-                            </div>
-                          );
-                        })
-                      ) : (
-                        <div className="holdings-page__trades-empty">
-                          暂无交易记录
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
+                  holding={holding}
+                  index={idx}
+                  viewMode={viewMode}
+                  isExpanded={isExpanded}
+                  selectedAuthor={selectedAuthor}
+                  expandedTrades={isExpanded ? expandedTrades : []}
+                  tradesLoading={tradesLoading}
+                  onToggle={handleToggle}
+                />
               );
             })}
           </div>

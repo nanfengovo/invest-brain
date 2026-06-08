@@ -1,0 +1,491 @@
+/* ============================================================
+   HoldingCard — Unified position card
+   ============================================================ */
+
+@keyframes holdingCardSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.holding-card {
+  padding: 0;
+  overflow: hidden;
+  animation: holdingCardSlideUp 0.4s ease both;
+  transition:
+    border-color var(--transition-normal),
+    box-shadow var(--transition-normal);
+}
+
+.holding-card--expanded {
+  border-color: var(--color-border-light);
+  box-shadow: var(--shadow-lg), 0 0 20px var(--color-accent-glow);
+}
+
+.holding-card__main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 92px;
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.holding-card__main:active {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.holding-card__left {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.holding-card__title-row,
+.holding-card__meta-row,
+.holding-card__tag-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.holding-card__title-row {
+  gap: 7px;
+  min-height: 22px;
+}
+
+.holding-card__meta-row {
+  min-height: 22px;
+}
+
+.holding-card__meta-row--empty::before {
+  content: '';
+  display: block;
+  height: 1px;
+}
+
+.holding-card__tag-row {
+  gap: 6px;
+  row-gap: 4px;
+  flex-wrap: wrap;
+  min-height: 18px;
+}
+
+.holding-card__symbol {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-primary);
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  line-height: 1.25;
+}
+
+.holding-card__type-badge,
+.holding-card__option-badge,
+.holding-card__broker-badge,
+.holding-card__author-badge,
+.holding-card__sector-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  white-space: nowrap;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.holding-card__type-badge {
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.holding-card__type-badge--stock {
+  background: var(--color-accent-bg);
+  color: var(--color-accent-light);
+  border: 1px solid rgba(99, 102, 241, 0.22);
+}
+
+.holding-card__type-badge--option {
+  background: rgba(245, 158, 11, 0.13);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.holding-card__type-badge--etf {
+  background: var(--color-profit-bg);
+  color: var(--color-profit);
+  border: 1px solid rgba(0, 212, 170, 0.22);
+}
+
+.holding-card__type-badge--crypto,
+.holding-card__type-badge--fund {
+  background: rgba(168, 85, 247, 0.12);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.24);
+}
+
+.holding-card__name,
+.holding-card__expiration {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.holding-card__expiration {
+  color: var(--holding-option-exp-color, #93c5fd);
+  background: var(--holding-option-exp-bg, rgba(96, 165, 250, 0.08));
+  border: 1px solid var(--holding-option-exp-border, rgba(96, 165, 250, 0.16));
+  border-radius: var(--radius-full);
+  padding: 3px 8px;
+}
+
+.holding-card__expiration--calm {
+  --holding-option-exp-color: #93c5fd;
+  --holding-option-exp-bg: rgba(96, 165, 250, 0.08);
+  --holding-option-exp-border: rgba(96, 165, 250, 0.16);
+}
+
+.holding-card__expiration--cool {
+  --holding-option-exp-color: #67e8f9;
+  --holding-option-exp-bg: rgba(103, 232, 249, 0.09);
+  --holding-option-exp-border: rgba(103, 232, 249, 0.18);
+}
+
+.holding-card__expiration--warm {
+  --holding-option-exp-color: #facc15;
+  --holding-option-exp-bg: rgba(250, 204, 21, 0.11);
+  --holding-option-exp-border: rgba(250, 204, 21, 0.24);
+}
+
+.holding-card__expiration--hot {
+  --holding-option-exp-color: #fb923c;
+  --holding-option-exp-bg: rgba(251, 146, 60, 0.13);
+  --holding-option-exp-border: rgba(251, 146, 60, 0.3);
+}
+
+.holding-card__expiration--endgame {
+  --holding-option-exp-color: #fb7185;
+  --holding-option-exp-bg: rgba(251, 113, 133, 0.15);
+  --holding-option-exp-border: rgba(251, 113, 133, 0.36);
+}
+
+.holding-card__expiration--zero-dte {
+  --holding-option-exp-color: #fff7ed;
+  --holding-option-exp-bg: linear-gradient(135deg, rgba(239, 68, 68, 0.88), rgba(251, 146, 60, 0.68));
+  --holding-option-exp-border: rgba(254, 226, 226, 0.5);
+  box-shadow: 0 0 18px rgba(239, 68, 68, 0.24);
+}
+
+.holding-card__expiration--expired {
+  --holding-option-exp-color: #fda4af;
+  --holding-option-exp-bg: rgba(127, 29, 29, 0.28);
+  --holding-option-exp-border: rgba(248, 113, 113, 0.34);
+}
+
+.holding-card__option-badge {
+  padding: 2px 6px;
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.holding-card__option-badge--call {
+  color: #60a5fa;
+  background: rgba(96, 165, 250, 0.12);
+  border: 1px solid rgba(96, 165, 250, 0.3);
+}
+
+.holding-card__option-badge--put {
+  color: #c084fc;
+  background: rgba(192, 132, 252, 0.12);
+  border: 1px solid rgba(192, 132, 252, 0.3);
+}
+
+.holding-card__broker-badge {
+  gap: 2px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  color: #22d3ee;
+  background: rgba(6, 182, 212, 0.1);
+  border: 1px solid rgba(6, 182, 212, 0.22);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.holding-card__author-badge,
+.holding-card__sector-badge {
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.holding-card__author-badge {
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.11);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.holding-card__sector-badge {
+  color: var(--color-text-muted);
+  background: rgba(148, 163, 184, 0.08);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.holding-card__right {
+  width: 96px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+}
+
+.holding-card__position-value {
+  color: var(--color-text-primary);
+  font-size: 17px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.holding-card__quantity {
+  margin-top: 4px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.holding-card__avg-cost {
+  margin-top: 2px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.holding-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-top: 1px solid var(--color-border);
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.holding-card__trade-count,
+.holding-card__last-trade {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.holding-card__trade-count {
+  color: var(--color-text-secondary);
+}
+
+.holding-card__last-trade,
+.holding-card__expand-icon {
+  color: var(--color-text-muted);
+}
+
+.holding-card__expand-icon {
+  display: inline-block;
+  font-size: 12px;
+  transition: transform var(--transition-fast);
+}
+
+.holding-card__expand-icon--open {
+  transform: rotate(180deg);
+}
+
+.holding-card__trades-list {
+  border-top: 1px solid var(--color-border);
+  background: rgba(0, 0, 0, 0.2);
+  padding: 8px 0;
+  animation: holdingCardSlideUp 0.35s ease both;
+  overflow: hidden;
+}
+
+.holding-card__trades-loading,
+.holding-card__trades-empty {
+  padding: 20px 16px;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.holding-card__trade-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 16px;
+  transition: background var(--transition-fast);
+}
+
+.holding-card__trade-item:not(:last-child) {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.holding-card__trade-item:active {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.holding-card__trade-left,
+.holding-card__trade-right {
+  display: flex;
+  align-items: center;
+}
+
+.holding-card__trade-left {
+  gap: 10px;
+  min-width: 0;
+}
+
+.holding-card__trade-right {
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.holding-card__trade-direction {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.holding-card__trade-direction--buy {
+  background: var(--color-profit-bg);
+  color: var(--color-profit);
+}
+
+.holding-card__trade-direction--sell {
+  background: var(--color-loss-bg);
+  color: var(--color-loss);
+}
+
+.holding-card__trade-date,
+.holding-card__trade-qty,
+.holding-card__trade-price {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.holding-card__trade-date,
+.holding-card__trade-qty {
+  color: var(--color-text-secondary);
+}
+
+.holding-card__trade-price {
+  color: var(--color-text-primary);
+  font-weight: 700;
+}
+
+.holding-card--compact {
+  border-radius: 12px;
+}
+
+.holding-card--compact .holding-card__main {
+  min-height: 95px;
+  padding: 10px 12px;
+  gap: 10px;
+}
+
+.holding-card--compact .holding-card__symbol {
+  max-width: 136px;
+  font-size: 15px;
+}
+
+.holding-card--compact .holding-card__type-badge,
+.holding-card--compact .holding-card__option-badge,
+.holding-card--compact .holding-card__broker-badge,
+.holding-card--compact .holding-card__author-badge,
+.holding-card--compact .holding-card__sector-badge {
+  min-height: 17px;
+  padding: 2px 6px;
+  font-size: 9px;
+}
+
+.holding-card--compact .holding-card__meta-row {
+  min-height: 21px;
+}
+
+.holding-card--compact .holding-card__tag-row {
+  min-height: 18px;
+  gap: 5px;
+}
+
+.holding-card--compact .holding-card__name,
+.holding-card--compact .holding-card__expiration {
+  max-width: 172px;
+  font-size: 11px;
+}
+
+.holding-card--compact .holding-card__right {
+  width: 92px;
+}
+
+.holding-card--compact .holding-card__position-value {
+  font-size: 14px;
+}
+
+.holding-card--compact .holding-card__quantity {
+  margin-top: 3px;
+  font-size: 11px;
+}
+
+.holding-card--compact .holding-card__avg-cost {
+  font-size: 10px;
+}
+
+.holding-card--compact .holding-card__footer {
+  display: none;
+}
+
+.holding-card--compact.holding-card--expanded .holding-card__footer {
+  display: flex;
+  padding: 7px 12px;
+}
+
+.holding-card--compact .holding-card__trades-list {
+  padding: 4px 0;
+}
+
+.holding-card--compact .holding-card__trade-item {
+  padding: 8px 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .holding-card,
+  .holding-card__trades-list {
+    animation: none;
+  }
+
+  .holding-card__expand-icon {
+    transition: none;
+  }
+}

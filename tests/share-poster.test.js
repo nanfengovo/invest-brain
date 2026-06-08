@@ -35,6 +35,26 @@ test('market trade decision and information modules expose share poster actions'
   assert.match(information, />分享图</);
 });
 
+test('market boards expose high-frequency refresh and directional background motion', () => {
+  const market = readFileSync(new URL('../src/pages/MarketPage.jsx', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../src/pages/MarketPage.css', import.meta.url), 'utf8');
+  const sectorGrid = readFileSync(new URL('../src/components/Market/SectorGrid.jsx', import.meta.url), 'utf8');
+  const watchlist = readFileSync(new URL('../src/components/Market/WatchlistBoard.jsx', import.meta.url), 'utf8');
+
+  assert.match(market, /marketRefreshing/);
+  assert.match(market, /refreshing=\{marketRefreshing\}/);
+  assert.match(sectorGrid, /refreshing = false/);
+  assert.match(watchlist, /refreshing = false/);
+  assert.match(css, /market-board--refreshing::before/);
+  assert.match(css, /market-board-scan/);
+  assert.match(css, /market-row-wash-up/);
+  assert.match(css, /market-row-wash-down/);
+  assert.match(css, /market-number-pop-up/);
+  assert.match(css, /market-number-pop-down/);
+  assert.match(css, /background-color: rgba\(var\(--market-flash-up-rgb\)/);
+  assert.match(css, /background-color: rgba\(var\(--market-flash-down-rgb\)/);
+});
+
 test('share poster background picker supports local upload and NVIDIA generation', () => {
   const picker = readFileSync(new URL('../src/utils/sharePosterBackgrounds.jsx', import.meta.url), 'utf8');
   const api = readFileSync(new URL('../api/_lib/shareBackground.js', import.meta.url), 'utf8');

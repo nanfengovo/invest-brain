@@ -40,12 +40,12 @@ const getDirectionIcon = (value) => {
   return value > 0 ? '▲' : '▼';
 };
 
-export default function WatchlistBoard({ items, colorConvention, onRemove }) {
+export default function WatchlistBoard({ items, colorConvention, onRemove, refreshing = false }) {
   const navigate = useNavigate();
 
   if (!items || items.length === 0) {
     return (
-      <div className="market-watchlist-empty">
+      <div className={`market-watchlist-empty market-live-board ${refreshing ? 'market-board--refreshing' : ''}`}>
         <div className="market-watchlist-empty__title">暂无关注</div>
         <p>搜索股票或期权后，点加号添加到这里。</p>
       </div>
@@ -53,7 +53,7 @@ export default function WatchlistBoard({ items, colorConvention, onRemove }) {
   }
 
   return (
-    <div className="market-watchlist-board">
+    <div className={`market-watchlist-board market-live-board ${refreshing ? 'market-board--refreshing' : ''}`}>
       {items.map((item) => {
         const hasPrice = item.price !== null && item.price !== undefined;
         const isUpRaw = (item.pctChange || 0) > 0;
@@ -65,7 +65,7 @@ export default function WatchlistBoard({ items, colorConvention, onRemove }) {
 
         return (
           <div
-            className={`market-watchlist-row ${flashClass}`}
+            className={`market-watchlist-row market-live-row ${flashClass}`}
             key={item.symbol}
             role="button"
             tabIndex={0}

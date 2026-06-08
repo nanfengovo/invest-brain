@@ -240,6 +240,28 @@
   -webkit-box-orient: vertical;
 }
 
+.info-row__translation-state {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  transform: translateY(-1px);
+  padding: 1px 5px;
+  border: 1px solid rgba(142, 162, 255, 0.32);
+  border-radius: 999px;
+  background: rgba(142, 162, 255, 0.1);
+  color: #aebdff;
+  font-size: 9px;
+  font-weight: 850;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.info-row__translation-state--ready {
+  border-color: rgba(34, 211, 238, 0.34);
+  background: rgba(34, 211, 238, 0.1);
+  color: #67e8f9;
+}
+
 .info-row__meta {
   display: flex;
   align-items: center;

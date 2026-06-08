@@ -20,6 +20,13 @@ test('information detail reader exposes Chinese and original toggles', () => {
   const source = readFileSync(new URL('../src/pages/InformationDetail.jsx', import.meta.url), 'utf8');
 
   assert.match(source, /handleTranslateReader/);
+  assert.match(source, /autoTitleTranslation/);
+  assert.match(source, /displayTitle/);
+  assert.match(source, /shouldAutoTranslateText/);
+  assert.match(source, /getCachedInformationTranslation/);
+  assert.match(source, /saveInformationTranslation/);
+  assert.match(source, /translateTextToChinese/);
+  assert.match(source, /setReaderMode\('translated'\)/);
   assert.match(source, /中文翻译/);
   assert.match(source, />原文</);
   assert.match(source, /'翻译中文'/);
@@ -51,4 +58,24 @@ test('information detail page uses mobile PWA safe viewport sizing', () => {
   assert.match(source, /100svh/);
   assert.match(source, /-webkit-overflow-scrolling: touch/);
   assert.match(source, /overscroll-behavior: contain/);
+});
+
+test('information list auto-translates non-Chinese titles with local cache', () => {
+  const list = readFileSync(new URL('../src/pages/InformationPage.jsx', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../src/pages/InformationPage.css', import.meta.url), 'utf8');
+  const util = readFileSync(new URL('../src/utils/informationAutoTranslation.js', import.meta.url), 'utf8');
+
+  assert.match(list, /titleTranslations/);
+  assert.match(list, /titleTranslationRequestsRef/);
+  assert.match(list, /shouldAutoTranslateText\(info\.title\)/);
+  assert.match(list, /translateTextToChinese/);
+  assert.match(list, /saveInformationTranslation/);
+  assert.match(list, /displayTitle/);
+  assert.match(list, /info-row__translation-state/);
+  assert.match(css, /info-row__translation-state/);
+  assert.match(util, /ib_information_translation_cache_v1/);
+  assert.match(util, /BUILTIN_AI_API_BASE_URL/);
+  assert.match(util, /localHosts\.has\(window\.location\.hostname\)/);
+  assert.match(util, /buildAiRequestBody/);
+  assert.match(util, /buildAiRequestHeaders/);
 });

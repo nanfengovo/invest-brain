@@ -12,6 +12,12 @@ import { detectVideoPlatform } from '../utils/videoPlatforms';
 import { getSyncStatusMeta, isTeamMirrorRecord } from '../utils/syncStatus';
 import { sharePoster } from '../utils/sharePoster';
 import { buildAiRequestBody, buildAiRequestHeaders, getAiUsageLabel } from '../utils/aiProviders';
+import {
+  getCachedInformationTranslation,
+  saveInformationTranslation,
+  shouldAutoTranslateText,
+  translateTextToChinese,
+} from '../utils/informationAutoTranslation';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import AssetLogo from '../components/common/AssetLogo';
 import { Document, Page, pdfjs } from 'react-pdf';
@@ -657,8 +663,11 @@ export default function InformationDetail() {
   const [translationText, setTranslationText] = useState('');
   const [translationModel, setTranslationModel] = useState('');
   const [translationLoading, setTranslationLoading] = useState(false);
+  const [autoTitleTranslation, setAutoTitleTranslation] = useState('');
+  const [autoTranslationStatus, setAutoTranslationStatus] = useState('');
   const [readerMode, setReaderMode] = useState('original');
   const [actionSheetVisible, setActionSheetVisible] = useState(false);
+  const autoTranslationRequestRef = useRef('');
 
   // Tag editing state
   const [editTypeVisible, setEditTypeVisible] = useState(false);
@@ -722,6 +731,9 @@ export default function InformationDetail() {
   useEffect(() => {
     setTranslationText('');
     setTranslationModel('');
+    setAutoTitleTranslation('');
+    setAutoTranslationStatus('');
+    autoTranslationRequestRef.current = '';
     setReaderMode('original');
   }, [id]);
 
@@ -943,6 +955,125 @@ export default function InformationDetail() {
   const translationSourceContent = cleanContentForTranslation(cleanContent);
   const isTranslatedMode = readerMode === 'translated' && Boolean(translationText);
   const activeReaderContent = isTranslatedMode ? translationText : cleanContent;
+  const displayTitle = autoTitleTranslation || info?.title || '';
+
+  useEffect(() => {
+    if (!info) return undefined;
+    const needsTitleTranslation = shouldAutoTranslateText(info.title);
+    const needsContentTranslation = canTranslateReader && shouldAutoTranslateText(translationSourceContent);
+    if (!needsTitleTranslation && !needsContentTranslation) return undefined;
+
+    const requestKey = [
+      info.id,
+      needsTitleTranslation ? info.title : '',
+      needsContentTranslation ? translationSourceContent : '',
+    ].join('|');
+    if (autoTranslationRequestRef.current === requestKey) return undefined;
+    autoTranslationRequestRef.current = requestKey;
+
+    const cached = getCachedInformationTranslation(info, {
+      title: info.title,
+      content: translationSourceContent,
+    });
+    if (needsTitleTranslation && cached?.title) {
+      setAutoTitleTranslation(cached.title);
+    }
+    if (needsContentTranslation && cached?.content) {
+      setTranslationText(cached.content);
+      setTranslationModel(cached.modelLabel || '');
+      setReaderMode('translated');
+    }
+    if ((!needsTitleTranslation || cached?.title) && (!needsContentTranslation || cached?.content)) {
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    let cancelled = false;
+    setAutoTranslationStatus('translating');
+
+    const run = async () => {
+      let translatedTitle = cached?.title || '';
+      let translatedContent = cached?.content || '';
+      let modelLabel = cached?.modelLabel || '';
+
+      try {
+        if (needsTitleTranslation && !translatedTitle) {
+          const titleResult = await translateTextToChinese({
+            text: info.title,
+            title: info.title,
+            geminiApiKey,
+            nvidiaApiKey,
+            aiProviderConfig,
+            signal: controller.signal,
+            timeoutMs: 18000,
+          });
+          translatedTitle = titleResult.translatedText;
+          modelLabel = titleResult.modelLabel || modelLabel;
+          if (!cancelled && translatedTitle) {
+            setAutoTitleTranslation(translatedTitle);
+            saveInformationTranslation(info, {
+              title: info.title,
+              content: translationSourceContent,
+              translatedTitle,
+              modelLabel,
+            });
+            setAutoTranslationStatus(needsContentTranslation ? 'translating' : 'ready');
+          }
+        }
+      } catch {
+        if (cancelled || controller.signal.aborted) return;
+        setAutoTranslationStatus(needsContentTranslation ? 'translating' : 'failed');
+      }
+
+      try {
+        if (needsContentTranslation && !translatedContent) {
+          const contentResult = await translateTextToChinese({
+            text: translationSourceContent,
+            title: translatedTitle || info.title,
+            geminiApiKey,
+            nvidiaApiKey,
+            aiProviderConfig,
+            signal: controller.signal,
+            timeoutMs: 60000,
+          });
+          translatedContent = contentResult.translatedText;
+          modelLabel = contentResult.modelLabel || modelLabel;
+          if (!cancelled && translatedContent) {
+            setTranslationText(translatedContent);
+            setTranslationModel(modelLabel);
+            setReaderMode('translated');
+          }
+        }
+
+        if (!cancelled) {
+          saveInformationTranslation(info, {
+            title: info.title,
+            content: translationSourceContent,
+            translatedTitle,
+            translatedContent,
+            modelLabel,
+          });
+          setAutoTranslationStatus(translatedTitle || translatedContent ? 'ready' : '');
+        }
+      } catch {
+        if (cancelled || controller.signal.aborted) return;
+        setAutoTranslationStatus(translatedTitle ? 'ready' : 'failed');
+      }
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [
+    aiProviderConfig,
+    canTranslateReader,
+    geminiApiKey,
+    info,
+    nvidiaApiKey,
+    translationSourceContent,
+  ]);
 
   const handleTranslateReader = async (force = false) => {
     if (!canTranslateReader) {
@@ -1253,7 +1384,11 @@ export default function InformationDetail() {
 
       <div className="info-detail__content">
         <div className="info-detail__header">
-          <h1 className="info-detail__title">{info.title}</h1>
+          <h1 className="info-detail__title">
+            {displayTitle}
+            {autoTranslationStatus === 'translating' && <span className="info-detail__translation-state"> 自动翻译中</span>}
+            {autoTranslationStatus === 'ready' && <span className="info-detail__translation-state info-detail__translation-state--ready"> 中文</span>}
+          </h1>
           <div className="info-detail__sync-row">
             <span className={`info-detail__sync-badge ${infoSyncMeta.className}`}>{infoSyncMeta.label}</span>
             {readOnly && <span className="info-detail__readonly-badge">团队镜像只读</span>}

@@ -17,13 +17,13 @@ const formatNumber = (value) => {
   });
 };
 
-export default function SectorGrid({ items, colorConvention }) {
+export default function SectorGrid({ items, colorConvention, refreshing = false }) {
   const navigate = useNavigate();
 
   if (!items || items.length === 0) return null;
 
   return (
-    <div className="market-sector-board">
+    <div className={`market-sector-board market-live-board ${refreshing ? 'market-board--refreshing' : ''}`}>
       {items.map((item, index) => {
         const hasData = item.pctChange !== null && item.pctChange !== undefined;
         const isUpRaw = (item.pctChange || 0) > 0;
@@ -36,7 +36,7 @@ export default function SectorGrid({ items, colorConvention }) {
         return (
           <button
             type="button"
-            className={`market-sector-row ${flashClass}`}
+            className={`market-sector-row market-live-row ${flashClass}`}
             key={`${item.symbol || 'sector'}-${index}`}
             onClick={() => item.symbol && navigate(`/stock/${item.symbol}`)}
           >

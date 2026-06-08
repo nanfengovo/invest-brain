@@ -57,6 +57,28 @@
   line-height: 1.4;
 }
 
+.info-detail__translation-state {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  transform: translateY(-2px);
+  padding: 2px 7px;
+  border: 1px solid rgba(142, 162, 255, 0.32);
+  border-radius: 999px;
+  background: rgba(142, 162, 255, 0.1);
+  color: #aebdff;
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.info-detail__translation-state--ready {
+  border-color: rgba(34, 211, 238, 0.34);
+  background: rgba(34, 211, 238, 0.1);
+  color: #67e8f9;
+}
+
 .info-detail__sync-row {
   display: flex;
   flex-wrap: wrap;

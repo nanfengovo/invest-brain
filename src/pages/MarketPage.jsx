@@ -132,6 +132,7 @@ export default function MarketPage() {
   const [optionQuotes, setOptionQuotes] = useState({});
   const [optionLoading, setOptionLoading] = useState(false);
   const [loading, setLoading] = useState(() => Object.keys(readCachedMarketData()).length === 0);
+  const [marketRefreshing, setMarketRefreshing] = useState(false);
   const [movementMap, setMovementMap] = useState({});
   const priceMemoryRef = useRef({});
   const flashTimersRef = useRef({});
@@ -224,6 +225,7 @@ export default function MarketPage() {
       activeController?.abort();
       activeController = new AbortController();
       const { signal } = activeController;
+      if (mounted) setMarketRefreshing(true);
 
       const primaryRequest = fetchSymbolGroup(primarySymbols, signal, { extended: hasWatchlist });
       const secondaryRequest = fetchSymbolGroup(secondarySymbols, signal);
@@ -246,6 +248,7 @@ export default function MarketPage() {
         }
       } finally {
         if (mounted) setLoading(false);
+        if (mounted) setMarketRefreshing(false);
       }
     };
 
@@ -481,7 +484,7 @@ export default function MarketPage() {
               </svg>
             </button>
           </div>
-          <SectorGrid items={sectorItems} colorConvention={colorConvention} />
+          <SectorGrid items={sectorItems} colorConvention={colorConvention} refreshing={marketRefreshing} />
         </section>
 
         <section>
@@ -496,6 +499,7 @@ export default function MarketPage() {
             items={watchlistItems}
             colorConvention={colorConvention}
             onRemove={removeMarketWatchItem}
+            refreshing={marketRefreshing}
           />
         </section>
       </div>

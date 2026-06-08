@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Tabs, FloatingBubble, Popup, Modal, Toast } from 'antd-mobile';
 import {
   AddOutline,
@@ -20,6 +20,12 @@ import AssetLogo from '../components/common/AssetLogo';
 import { FilterOutline } from 'antd-mobile-icons';
 import { toDateGroupKey } from '../utils/time';
 import { getSyncStatusMeta } from '../utils/syncStatus';
+import {
+  getCachedInformationTranslation,
+  saveInformationTranslation,
+  shouldAutoTranslateText,
+  translateTextToChinese,
+} from '../utils/informationAutoTranslation';
 import './InformationPage.css';
 
 const BookIcon = () => (
@@ -111,7 +117,12 @@ export default function InformationPage() {
   const refreshInformations = useTradeStore((s) => s.refreshInformations);
   const deleteInformation = useTradeStore((s) => s.deleteInformation);
   const workspaceScope = useAppStore((s) => s.workspaceScope);
+  const geminiApiKey = useAppStore((s) => s.geminiApiKey);
+  const nvidiaApiKey = useAppStore((s) => s.nvidiaApiKey);
+  const aiProviderConfig = useAppStore((s) => s.aiProviderConfig);
   const isTeamWorkspace = workspaceScope === 'team';
+  const [titleTranslations, setTitleTranslations] = useState({});
+  const titleTranslationRequestsRef = useRef(new Set());
 
   const handleDeleteInformation = (event, info) => {
     event.stopPropagation();
@@ -172,6 +183,59 @@ export default function InformationPage() {
     refreshInformations(viewMode === 'ARCHIVED' ? 'ARCHIVED' : null);
   }, [viewMode, refreshInformations]);
 
+  useEffect(() => {
+    const getTranslationRequestKey = (info) => `${info.id}:${info.title || ''}`;
+    const candidates = informations
+      .filter((info) => shouldAutoTranslateText(info.title))
+      .filter((info) => !titleTranslationRequestsRef.current.has(getTranslationRequestKey(info)))
+      .slice(0, 8);
+    if (candidates.length === 0) return undefined;
+
+    const controller = new AbortController();
+    let cancelled = false;
+
+    const run = async () => {
+      for (const info of candidates) {
+        if (cancelled) break;
+        titleTranslationRequestsRef.current.add(getTranslationRequestKey(info));
+        const cached = getCachedInformationTranslation(info, { title: info.title });
+        if (cached?.title) {
+          setTitleTranslations((prev) => ({ ...prev, [info.id]: { title: cached.title, modelLabel: cached.modelLabel } }));
+          continue;
+        }
+
+        setTitleTranslations((prev) => ({ ...prev, [info.id]: { loading: true } }));
+        try {
+          const result = await translateTextToChinese({
+            text: info.title,
+            title: info.title,
+            geminiApiKey,
+            nvidiaApiKey,
+            aiProviderConfig,
+            signal: controller.signal,
+            timeoutMs: 18000,
+          });
+          if (cancelled || !result.translatedText) continue;
+          saveInformationTranslation(info, {
+            title: info.title,
+            translatedTitle: result.translatedText,
+            modelLabel: result.modelLabel,
+          });
+          setTitleTranslations((prev) => ({ ...prev, [info.id]: { title: result.translatedText, modelLabel: result.modelLabel } }));
+        } catch {
+          if (cancelled || controller.signal.aborted) return;
+          setTitleTranslations((prev) => ({ ...prev, [info.id]: { error: true } }));
+        }
+      }
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [aiProviderConfig, geminiApiKey, informations, nvidiaApiKey]);
+
   // Extract available filters dynamically
   const availableAssets = useMemo(() => {
     const assets = new Set(
@@ -203,8 +267,10 @@ export default function InformationPage() {
 
     // Apply filters
     result = result.filter(i => {
+      const translatedTitle = titleTranslations[i.id]?.title || '';
       if (filters.keyword && !(
         (i.title && i.title.toLowerCase().includes(filters.keyword.toLowerCase())) ||
+        (translatedTitle && translatedTitle.toLowerCase().includes(filters.keyword.toLowerCase())) ||
         (i.content && i.content.toLowerCase().includes(filters.keyword.toLowerCase()))
       )) {
         return false;
@@ -218,7 +284,7 @@ export default function InformationPage() {
     });
 
     return result;
-  }, [informations, activeTab, filters]);
+  }, [informations, activeTab, filters, titleTranslations]);
 
   return (
     <div className="info-page">
@@ -287,6 +353,9 @@ export default function InformationPage() {
                   const infoSectors = splitList(info.sectors || info.sector);
                   const syncMeta = getSyncStatusMeta(info);
                   const isTeamVisible = info.team_visible === 1 || info.team_visible === true;
+                  const titleTranslation = titleTranslations[info.id];
+                  const displayTitle = titleTranslation?.title || info.title;
+                  const isTranslatedTitle = Boolean(titleTranslation?.title);
 
                   return (
                     <div
@@ -299,7 +368,11 @@ export default function InformationPage() {
                       </div>
                       <div className="info-row__main">
                         <div className="info-row__headline">
-                          <div className="info-row__title">{info.title}</div>
+                          <div className="info-row__title">
+                            {displayTitle}
+                            {titleTranslation?.loading && <span className="info-row__translation-state"> 翻译中</span>}
+                            {isTranslatedTitle && <span className="info-row__translation-state info-row__translation-state--ready"> 中文</span>}
+                          </div>
                           <span className={`info-row__badge badge-${String(info.type || 'ARTICLE').toLowerCase()}`}>
                             {TYPE_LABELS[info.type] || info.type}
                           </span>

@@ -4,6 +4,7 @@
  */
 
 import { getMigrationSQL } from './migrations';
+import { CORE_DATA_TABLES } from './coreDataTables';
 import { buildTradePortfolioSummary } from '../utils/tradeLifecycle';
 
 let worker = null;
@@ -724,6 +725,13 @@ export const db = {
       { sql: `DELETE FROM decisions WHERE COALESCE(NULLIF(TRIM(workspace_scope), ''), 'personal') = ?`, params: [normalizedScope] },
       { sql: `DELETE FROM informations WHERE COALESCE(NULLIF(TRIM(workspace_scope), ''), 'personal') = ?`, params: [normalizedScope] },
     ];
+    return this.transaction(statements);
+  },
+
+  async clearCoreData() {
+    const statements = CORE_DATA_TABLES.map((table) => ({
+      sql: `DELETE FROM ${table}`,
+    }));
     return this.transaction(statements);
   },
 

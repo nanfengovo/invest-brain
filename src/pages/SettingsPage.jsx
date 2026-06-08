@@ -359,24 +359,21 @@ function SettingsPage() {
 
   async function handleClearData() {
     Dialog.show({
-      title: '⚠️ 清除所有数据',
-      content: '此操作将永久删除所有交易记录、决策和信息。请确保已备份数据。',
+      title: '⚠️ 清除核心业务数据',
+      content: '此操作将永久删除交易、持仓、情报、观点、决策、复盘和价格提醒，但会保留 API Key、同步暗号、通知和市场数据配置。请确保已备份数据。',
       closeOnAction: true,
       actions: [
         { key: 'cancel', text: '取消' },
         { 
           key: 'clear', 
-          text: '确认清除', 
+          text: '确认清除业务数据', 
           danger: true,
           onClick: async () => {
             try {
-              Toast.show({ icon: 'loading', content: '正在清除...' });
-              const tables = ['reviews', 'decision_info_links', 'trades', 'decisions', 'informations', 'assets'];
-              for (const table of tables) {
-                await db.exec(`DELETE FROM ${table}`);
-              }
+              Toast.show({ icon: 'loading', content: '正在清除核心业务数据...' });
+              await db.clearCoreData();
               await refreshAll();
-              Toast.show({ icon: 'success', content: '数据已清除' });
+              Toast.show({ icon: 'success', content: '核心业务数据已清除，配置已保留' });
             } catch (err) {
               Toast.show({ icon: 'fail', content: '清除失败: ' + err.message });
             }
@@ -1277,8 +1274,8 @@ function SettingsPage() {
           <div className="settings-card__row settings-card__row--danger" onClick={handleClearData}>
             <span className="settings-card__icon">🗑️</span>
             <div className="settings-card__content">
-              <div className="settings-card__label text-loss">清除所有数据</div>
-              <div className="settings-card__desc">永久删除所有记录（不可恢复）</div>
+              <div className="settings-card__label text-loss">清除核心业务数据</div>
+              <div className="settings-card__desc">删除交易、情报、决策、复盘和提醒，保留配置</div>
             </div>
             <span className="settings-card__arrow">›</span>
           </div>

@@ -3,6 +3,8 @@ import { NavBar, Button, Selector, Toast, SpinLoading } from 'antd-mobile';
 import { useNavigate } from 'react-router-dom';
 import { useTradeStore } from '../stores/useTradeStore';
 import { useAppStore } from '../stores/useAppStore';
+import { getAiErrorMessage } from '../utils/aiErrorMessages';
+import { calculateInsightStats } from '../utils/insightStats';
 import {
   Radar,
   RadarChart,
@@ -44,36 +46,7 @@ export default function InsightsPage() {
   };
 
   const calculateStats = (data) => {
-    if (!data || data.length === 0) {
-      setStats(null);
-      return;
-    }
-
-    const reviews = data.filter(d => d.review_id);
-    const totalReviews = reviews.length;
-    const wins = reviews.filter(d => d.is_successful === 1).length;
-    
-    let totalProfit = 0;
-    let totalLoss = 0;
-    
-    reviews.forEach(d => {
-      const pnl = Number(d.result_pnl) || 0;
-      if (pnl > 0) totalProfit += pnl;
-      if (pnl < 0) totalLoss += Math.abs(pnl);
-    });
-
-    const winRate = totalReviews > 0 ? ((wins / totalReviews) * 100).toFixed(1) : 0;
-    const pnlRatio = totalLoss > 0 ? (totalProfit / totalLoss).toFixed(2) : (totalProfit > 0 ? '∞' : '0');
-
-    setStats({
-      total: totalReviews,
-      winRate,
-      pnlRatio,
-      totalProfit,
-      totalLoss,
-      rawData: data
-    });
-    
+    setStats(calculateInsightStats(data));
     // Clear previous AI result if time range changes
     setInsightResult(null);
   };
@@ -113,7 +86,7 @@ export default function InsightsPage() {
     } catch (err) {
       console.error('AI Diagnosis Error:', err);
       toast.close();
-      Toast.show({ icon: 'fail', content: '诊断失败: ' + err.message });
+      Toast.show({ icon: 'fail', content: getAiErrorMessage(err, 'insights') });
     } finally {
       setAnalyzing(false);
     }

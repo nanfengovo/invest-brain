@@ -76,7 +76,10 @@ export async function parseTradeImage(image, model) {
   const result = await response.json();
   console.log('[OCR Gemini Result]:', result);
 
-  // Transform Gemini result into the format TradeForm expects
+  return normalizeOcrResult(result);
+}
+
+export function normalizeOcrResult(result = {}) {
   const trades = (result.trades || [])
     .filter(t => {
       // Only keep filled/executed trades

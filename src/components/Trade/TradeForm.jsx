@@ -13,6 +13,7 @@ import {
 import { useTradeStore } from '../../stores/useTradeStore';
 import { useAppStore } from '../../stores/useAppStore';
 import { parseTradeImage } from '../../utils/ocrWorker';
+import { getAiErrorMessage, getEmptyOcrMessage } from '../../utils/aiErrorMessages';
 import { recommendDecisionForTrade, attachDecisionRecommendations } from '../../utils/decisionMatcher';
 import { parseDateTime } from '../../utils/time';
 import {
@@ -252,7 +253,7 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
       }
 
       if (!trades || trades.length === 0) {
-        Toast.show({ icon: 'fail', content: '未提取出完整的交易数据' });
+        Toast.show({ icon: 'fail', content: getEmptyOcrMessage() });
         return;
       }
 
@@ -268,9 +269,7 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
       toastHandler.close();
       Toast.show({ 
         icon: 'fail', 
-        content: err.message.includes('429') 
-          ? 'API 额度超限，请检查 Key' 
-          : `识别失败: ${err.message || '请检查网络或 API Key'}` 
+        content: getAiErrorMessage(err, 'ocr'),
       });
     } finally {
       e.target.value = '';

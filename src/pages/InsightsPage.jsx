@@ -5,6 +5,7 @@ import { useTradeStore } from '../stores/useTradeStore';
 import { useAppStore } from '../stores/useAppStore';
 import { getAiErrorMessage } from '../utils/aiErrorMessages';
 import { calculateInsightStats } from '../utils/insightStats';
+import { buildAiRequestBody, buildAiRequestHeaders, getAiUsageLabel } from '../utils/aiProviders';
 import {
   Radar,
   RadarChart,
@@ -18,7 +19,7 @@ import './InsightsPage.css';
 export default function InsightsPage() {
   const navigate = useNavigate();
   const { getTradingInsights } = useTradeStore();
-  const { geminiApiKey } = useAppStore();
+  const { geminiApiKey, nvidiaApiKey, aiProviderConfig } = useAppStore();
 
   const [timeRange, setTimeRange] = useState(['30']);
   const [loadingData, setLoadingData] = useState(false);
@@ -67,11 +68,8 @@ export default function InsightsPage() {
     try {
       const response = await fetch('/api/analyze-personality', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-gemini-api-key': geminiApiKey
-        },
-        body: JSON.stringify({ data: stats.rawData })
+        headers: buildAiRequestHeaders({ geminiApiKey, nvidiaApiKey }),
+        body: JSON.stringify(buildAiRequestBody(aiProviderConfig, { data: stats.rawData }))
       });
 
       if (!response.ok) {
@@ -82,7 +80,10 @@ export default function InsightsPage() {
       const result = await response.json();
       setInsightResult(result);
       toast.close();
-      Toast.show({ icon: 'success', content: '诊断完成' });
+      Toast.show({
+        icon: 'success',
+        content: `诊断完成${getAiUsageLabel(result) ? ` · ${getAiUsageLabel(result)}` : ''}`,
+      });
     } catch (err) {
       console.error('AI Diagnosis Error:', err);
       toast.close();
@@ -177,6 +178,11 @@ export default function InsightsPage() {
         {insightResult && (
           <div className="insights-page__result glass-card">
             <h3 className="insights-page__section-title">AI 诊断报告</h3>
+            {getAiUsageLabel(insightResult) && (
+              <div className="insights-page__model-chip">
+                诊断模型：{getAiUsageLabel(insightResult)}
+              </div>
+            )}
             
             <div className="insights-page__personality">
               <span className="insights-page__personality-label">交易性格诊断：</span>

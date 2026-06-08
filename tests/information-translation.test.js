@@ -9,7 +9,8 @@ test('summarize api translate mode keeps markdown structure and Chinese output i
   assert.match(source, /保留 Markdown 段落、标题、列表、引用等结构/);
   assert.match(source, /只输出翻译后的中文正文/);
   assert.match(source, /x-gemini-api-key/);
-  assert.match(source, /请先在设置页面配置 Gemini API Key/);
+  assert.match(source, /x-nvidia-api-key/);
+  assert.match(source, /请先在设置页面配置 Gemini API Key 或 NVIDIA API Key/);
 });
 
 test('information detail reader exposes Chinese and original toggles', () => {
@@ -21,7 +22,7 @@ test('information detail reader exposes Chinese and original toggles', () => {
   assert.match(source, /'翻译中文'/);
   assert.match(source, /mode: 'translate'/);
   assert.match(source, /readerContent=\{activeReaderContent\}/);
-  assert.match(source, /getSummarizeApiUrl\(Boolean\(localApiKey\)\)/);
+  assert.match(source, /getSummarizeApiUrl\(Boolean\(localGeminiKey \|\| localNvidiaKey\)\)/);
   assert.match(source, /BUILTIN_AI_API_BASE_URL/);
   assert.match(source, /localHosts\.has\(window\.location\.hostname\)/);
 });

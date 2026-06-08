@@ -10,6 +10,8 @@ import { findMediaUrls } from '../utils/mediaResolver';
 import { resolveInformationReaderKind } from '../utils/informationReaderKind';
 import { detectVideoPlatform } from '../utils/videoPlatforms';
 import { getSyncStatusMeta, isTeamMirrorRecord } from '../utils/syncStatus';
+import { sharePoster } from '../utils/sharePoster';
+import { buildAiRequestBody, buildAiRequestHeaders, getAiUsageLabel } from '../utils/aiProviders';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import AssetLogo from '../components/common/AssetLogo';
 import { Document, Page, pdfjs } from 'react-pdf';
@@ -646,6 +648,8 @@ export default function InformationDetail() {
   const workspaceScope = useAppStore(s => s.workspaceScope);
   const addMarketWatchItem = useAppStore(s => s.addMarketWatchItem);
   const geminiApiKey = useAppStore(s => s.geminiApiKey);
+  const nvidiaApiKey = useAppStore(s => s.nvidiaApiKey);
+  const aiProviderConfig = useAppStore(s => s.aiProviderConfig);
   const [authorName, setAuthorName] = useState(
     syncUserId || localStorage.getItem('invest_sync_user_id') || '我'
   );
@@ -964,21 +968,19 @@ export default function InformationDetail() {
     });
 
     try {
-      const localApiKey = String(geminiApiKey || '').trim();
-      const headers = { 'Content-Type': 'application/json' };
-      if (localApiKey) {
-        headers['x-gemini-api-key'] = localApiKey;
-      }
+      const localGeminiKey = String(geminiApiKey || '').trim();
+      const localNvidiaKey = String(nvidiaApiKey || '').trim();
+      const headers = buildAiRequestHeaders({ geminiApiKey: localGeminiKey, nvidiaApiKey: localNvidiaKey });
 
-      const response = await fetch(getSummarizeApiUrl(Boolean(localApiKey)), {
+      const response = await fetch(getSummarizeApiUrl(Boolean(localGeminiKey || localNvidiaKey)), {
         method: 'POST',
         headers,
-        body: JSON.stringify({
+        body: JSON.stringify(buildAiRequestBody(aiProviderConfig, {
           mode: 'translate',
           title: info?.title || '',
           text: translationSourceContent,
           sourceLanguage: 'auto',
-        }),
+        })),
       });
 
       const result = await response.json().catch(() => ({}));
@@ -993,9 +995,13 @@ export default function InformationDetail() {
 
       toast.close();
       setTranslationText(nextTranslationText);
-      setTranslationModel(result.model || '');
+      const modelLabel = getAiUsageLabel(result);
+      setTranslationModel(modelLabel || result.model || '');
       setReaderMode('translated');
-      Toast.show({ icon: 'success', content: result.truncated ? '已翻译前半部分正文' : '翻译完成' });
+      Toast.show({
+        icon: 'success',
+        content: `${result.truncated ? '已翻译前半部分正文' : '翻译完成'}${modelLabel ? ` · ${modelLabel}` : ''}`,
+      });
     } catch (error) {
       toast.close();
       Toast.show({ icon: 'fail', content: error.message || '翻译失败' });
@@ -1060,6 +1066,35 @@ export default function InformationDetail() {
     const label = getReaderLabel(readerKind);
     setSelectedQuote(`${label}: ${info.title || extractDomain(validUrl || '')}`.slice(0, 500));
     Toast.show({ icon: 'success', content: '已标注当前材料' });
+  };
+
+  const handleShareInformationPoster = async () => {
+    try {
+      const result = await sharePoster({
+        typeLabel: TYPE_LABELS[info?.type] || '情报',
+        title: info?.title || '情报材料',
+        subtitle: validUrl ? extractDomain(validUrl) : '本地情报库',
+        sectionTitle: '信息摘要',
+        accent: '#8ea2ff',
+        accent2: '#38bdf8',
+        metrics: [
+          { label: '类型', value: TYPE_LABELS[info?.type] || info?.type || '情报', hint: '信息分类' },
+          { label: '观点', value: viewpoints.length, hint: '已沉淀观点' },
+          { label: '决策', value: linkedDecisions.length, hint: '关联决策' },
+          { label: '来源', value: validUrl ? '外部' : '本地', hint: validUrl ? extractDomain(validUrl) : '离线保存' },
+        ],
+        highlights: [
+          ...splitList(info?.asset_symbols || info?.asset_symbol || info?.asset_id).slice(0, 2).map((asset) => `关联标的：${asset}`),
+          ...splitList(info?.sectors || info?.sector).slice(0, 2).map((sector) => `关联板块：${sector}`),
+          cleanContent ? cleanContent.replace(/\s+/g, ' ').slice(0, 140) : '暂无正文摘要',
+        ],
+        fileName: `investbrain-info-${info?.id || Date.now()}.png`,
+      });
+      Toast.show({ icon: 'success', content: result.mode === 'native' ? '分享图已发送' : '分享图已下载' });
+    } catch (error) {
+      if (error?.name === 'AbortError') return;
+      Toast.show({ icon: 'fail', content: error.message || '分享图生成失败' });
+    }
   };
 
   const handleToggleInfoTeamVisible = async () => {
@@ -1424,6 +1459,7 @@ export default function InformationDetail() {
                   </Button>
                 )
               )}
+              <Button size="mini" fill="outline" onClick={handleShareInformationPoster}>分享图</Button>
               <Button size="mini" fill="outline" onClick={markCurrentMaterial}>标注材料</Button>
               {validUrl && (
                 <Button size="mini" color="primary" onClick={() => window.open(validUrl, '_blank', 'noopener,noreferrer')}>

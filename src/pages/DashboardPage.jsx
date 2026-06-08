@@ -153,9 +153,14 @@ export default function DashboardPage() {
           <div className="dashboard-hero-title text-2xl font-bold tracking-tight">交易分析 Agent</div>
           <div className="dashboard-hero-date text-xs mt-1">{formatDate()}</div>
         </div>
-        <div className={`dashboard-local-badge flex items-center gap-1.5 px-2.5 py-1.5 rounded-full ${isDbPersistent ? 'is-ok' : 'is-risk'}`}>
-          <div className="dashboard-local-badge__dot w-1.5 h-1.5 rounded-full animate-pulse" />
-          <div className="text-[10px] font-medium uppercase tracking-wider">Local</div>
+        <div
+          className={`dashboard-local-badge ${isDbPersistent ? 'is-ok' : 'is-risk'}`}
+          aria-label={isDbPersistent ? '数据已启用本地持久化保存' : '当前可能是临时存储状态'}
+        >
+          <span className="dashboard-local-badge__dot" />
+          <span className="dashboard-local-badge__text">
+            {isDbPersistent ? '本地保存' : '临时存储'}
+          </span>
         </div>
       </div>
 

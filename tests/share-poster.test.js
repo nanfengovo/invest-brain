@@ -1,0 +1,59 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+
+test('share poster utility creates local PNG posters and recommends free-ish model paths', () => {
+  const source = readFileSync(new URL('../src/utils/sharePoster.js', import.meta.url), 'utf8');
+
+  assert.match(source, /POSTER_WIDTH = 1080/);
+  assert.match(source, /POSTER_HEIGHT = 1440/);
+  assert.match(source, /canvas\.toDataURL\('image\/png'/);
+  assert.match(source, /dataUrlToBlob/);
+  assert.match(source, /navigator\.canShare/);
+  assert.match(source, /FREE_IMAGE_MODEL_RECOMMENDATIONS/);
+  assert.match(source, /Qwen-Image/);
+  assert.match(source, /qwen-image-2512/);
+  assert.match(source, /FLUX\.1-schnell/);
+  assert.match(source, /flux\.2-klein-4b/);
+  assert.match(source, /chooseSharePosterBackground/);
+  assert.match(source, /drawPosterBackground/);
+});
+
+test('market trade decision and information modules expose share poster actions', () => {
+  const market = readFileSync(new URL('../src/pages/MarketPage.jsx', import.meta.url), 'utf8');
+  const trade = readFileSync(new URL('../src/components/Trade/TradeCard.jsx', import.meta.url), 'utf8');
+  const decision = readFileSync(new URL('../src/components/Decision/DecisionCard.jsx', import.meta.url), 'utf8');
+  const information = readFileSync(new URL('../src/pages/InformationDetail.jsx', import.meta.url), 'utf8');
+
+  assert.match(market, /sharePoster/);
+  assert.match(market, /市场行情快照/);
+  assert.match(trade, /生成分享图/);
+  assert.match(trade, /handleSharePoster/);
+  assert.match(decision, /生成分享图/);
+  assert.match(decision, /期权归因/);
+  assert.match(information, /handleShareInformationPoster/);
+  assert.match(information, />分享图</);
+});
+
+test('share poster background picker supports local upload and NVIDIA generation', () => {
+  const picker = readFileSync(new URL('../src/utils/sharePosterBackgrounds.jsx', import.meta.url), 'utf8');
+  const api = readFileSync(new URL('../api/share-background.js', import.meta.url), 'utf8');
+  const settings = readFileSync(new URL('../src/pages/SettingsPage.jsx', import.meta.url), 'utf8');
+  const appStore = readFileSync(new URL('../src/stores/useAppStore.js', import.meta.url), 'utf8');
+  const viteConfig = readFileSync(new URL('../vite.config.js', import.meta.url), 'utf8');
+
+  assert.match(picker, /选择本地背景/);
+  assert.match(picker, /使用我的图片/);
+  assert.match(picker, /NVIDIA AI 生成/);
+  assert.match(picker, /qwen-image-2512/);
+  assert.match(picker, /flux\.2-klein-4b/);
+  assert.match(api, /integrate\.api\.nvidia\.com\/v1/);
+  assert.match(api, /\$\{baseUrl\}\/images\/generations/);
+  assert.match(api, /NVIDIA_API_KEY/);
+  assert.match(api, /NVIDIA_IMAGE_BASE_URL/);
+  assert.match(api, /x-nvidia-api-key/);
+  assert.match(settings, /分享图背景生成/);
+  assert.match(settings, /NVIDIA API Key/);
+  assert.match(appStore, /share_background_config/);
+  assert.match(viteConfig, /\/api\/share-background/);
+});

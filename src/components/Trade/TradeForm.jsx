@@ -14,6 +14,7 @@ import { useTradeStore } from '../../stores/useTradeStore';
 import { useAppStore } from '../../stores/useAppStore';
 import { parseTradeImage } from '../../utils/ocrWorker';
 import { getAiErrorMessage, getEmptyOcrMessage } from '../../utils/aiErrorMessages';
+import { DEFAULT_AI_PROVIDER_CONFIG } from '../../utils/aiProviders';
 import { OCR_PROGRESS_PHASES, buildOcrSuccessMessage } from '../../utils/ocrStatus';
 import { recommendDecisionForTrade, attachDecisionRecommendations } from '../../utils/decisionMatcher';
 import { parseDateTime } from '../../utils/time';
@@ -46,8 +47,10 @@ const OPTION_TYPE_OPTIONS = [
 ];
 
 const OCR_MODEL_OPTIONS = [
-  { label: '3.5 Flash', value: 'gemini-3.5-flash', description: '高精度' },
-  { label: '3.1 Lite', value: 'gemini-3.1-flash-lite', description: '高配额' },
+  { label: 'NV Vision 90B', value: 'meta/llama-3.2-90b-vision-instruct', description: 'NVIDIA' },
+  { label: 'NV Vision 11B', value: 'meta/llama-3.2-11b-vision-instruct', description: 'NVIDIA 快' },
+  { label: '3.5 Flash', value: 'gemini-3.5-flash', description: 'Gemini 高精度' },
+  { label: '3.1 Lite', value: 'gemini-3.1-flash-lite', description: 'Gemini 高配额' },
 ];
 
 function formatMissingBuyLabel(item) {
@@ -80,7 +83,7 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
   const [ocrCandidates, setOcrCandidates] = useState({ symbols: [], numbers: [] });
   const [activeField, setActiveField] = useState(null);
   const [referenceImage, setReferenceImage] = useState(null);
-  const [ocrModel, setOcrModel] = useState('gemini-3.5-flash');
+  const [ocrModel, setOcrModel] = useState(DEFAULT_AI_PROVIDER_CONFIG.visionModel);
   const [formDraft, setFormDraft] = useState({});
   const [ignoredRecommendationId, setIgnoredRecommendationId] = useState(null);
 
@@ -96,6 +99,9 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
   const informations = useTradeStore((s) => s.informations);
   const refreshInformations = useTradeStore((s) => s.refreshInformations);
   const syncUserId = useAppStore((s) => s.syncUserId);
+  const geminiApiKey = useAppStore((s) => s.geminiApiKey);
+  const nvidiaApiKey = useAppStore((s) => s.nvidiaApiKey);
+  const aiProviderConfig = useAppStore((s) => s.aiProviderConfig);
   const currentAuthor = (syncUserId || '').trim() || '未标记';
 
   // Load decisions and info for the picker
@@ -240,7 +246,13 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
     }, 3500);
 
     try {
-      const { trades, candidates, meta } = await parseTradeImage(file, ocrModel);
+      const { trades, candidates, meta } = await parseTradeImage(file, ocrModel, {
+        geminiApiKey,
+        nvidiaApiKey,
+        aiProvider: aiProviderConfig.provider,
+        textModel: aiProviderConfig.textModel,
+        visionModel: ocrModel || aiProviderConfig.visionModel,
+      });
       clearInterval(phaseInterval);
       toastHandler.close();
       

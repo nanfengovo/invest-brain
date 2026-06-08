@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { db } from '../db/database';
+import { DEFAULT_AI_PROVIDER_CONFIG } from '../utils/aiProviders';
 
 const MARKET_WATCHLIST_KEY = 'ib_market_watchlist';
 const SYNC_USER_ID_KEY = 'invest_sync_user_id';
@@ -19,6 +20,11 @@ const DEFAULT_MARKET_DATA_CONFIG = {
   optionProvider: 'auto',
   tradierToken: '',
   polygonToken: '',
+};
+const DEFAULT_SHARE_BACKGROUND_CONFIG = {
+  provider: 'local',
+  nvidiaApiKey: '',
+  defaultModel: 'qwen-image-2512',
 };
 
 const normalizeMarketWatchItem = (item) => {
@@ -87,6 +93,50 @@ export const useAppStore = create((set, get) => ({
     }
   },
 
+  // Unified AI provider state
+  nvidiaApiKey: '',
+  aiProviderConfig: DEFAULT_AI_PROVIDER_CONFIG,
+  setNvidiaApiKey: (key) => set({ nvidiaApiKey: key }),
+  setAiProviderConfig: (config) => set({
+    aiProviderConfig: { ...DEFAULT_AI_PROVIDER_CONFIG, ...(config || {}) },
+  }),
+  loadNvidiaApiKey: async () => {
+    try {
+      const key = await db.getSetting('nvidia_api_key');
+      set({ nvidiaApiKey: key || '' });
+    } catch (e) {
+      console.error('Failed to load nvidiaApiKey from DB', e);
+    }
+  },
+  saveNvidiaApiKey: async (key) => {
+    try {
+      const normalized = String(key || '').trim();
+      await db.setSetting('nvidia_api_key', normalized);
+      set({ nvidiaApiKey: normalized });
+    } catch (e) {
+      console.error('Failed to save nvidiaApiKey to DB', e);
+      throw e;
+    }
+  },
+  loadAiProviderConfig: async () => {
+    try {
+      const raw = await db.getSetting('ai_provider_config');
+      set({
+        aiProviderConfig: raw
+          ? { ...DEFAULT_AI_PROVIDER_CONFIG, ...JSON.parse(raw) }
+          : DEFAULT_AI_PROVIDER_CONFIG,
+      });
+    } catch (e) {
+      console.error('Failed to load aiProviderConfig from DB', e);
+      set({ aiProviderConfig: DEFAULT_AI_PROVIDER_CONFIG });
+    }
+  },
+  saveAiProviderConfig: async (config) => {
+    const normalized = { ...DEFAULT_AI_PROVIDER_CONFIG, ...(config || {}) };
+    await db.setSetting('ai_provider_config', JSON.stringify(normalized));
+    set({ aiProviderConfig: normalized });
+  },
+
   // Cloud Sync state
   syncUserId: '',
   syncSecret: '',
@@ -137,6 +187,7 @@ export const useAppStore = create((set, get) => ({
   // Notification & market data provider settings
   notificationConfig: DEFAULT_NOTIFICATION_CONFIG,
   marketDataConfig: DEFAULT_MARKET_DATA_CONFIG,
+  shareBackgroundConfig: DEFAULT_SHARE_BACKGROUND_CONFIG,
   loadNotificationConfig: async () => {
     try {
       const raw = await db.getSetting('notification_config');
@@ -172,6 +223,24 @@ export const useAppStore = create((set, get) => ({
     const normalized = { ...DEFAULT_MARKET_DATA_CONFIG, ...(config || {}) };
     await db.setSetting('market_data_config', JSON.stringify(normalized));
     set({ marketDataConfig: normalized });
+  },
+  loadShareBackgroundConfig: async () => {
+    try {
+      const raw = await db.getSetting('share_background_config');
+      set({
+        shareBackgroundConfig: raw
+          ? { ...DEFAULT_SHARE_BACKGROUND_CONFIG, ...JSON.parse(raw) }
+          : DEFAULT_SHARE_BACKGROUND_CONFIG,
+      });
+    } catch (e) {
+      console.error('Failed to load share background config', e);
+      set({ shareBackgroundConfig: DEFAULT_SHARE_BACKGROUND_CONFIG });
+    }
+  },
+  saveShareBackgroundConfig: async (config) => {
+    const normalized = { ...DEFAULT_SHARE_BACKGROUND_CONFIG, ...(config || {}) };
+    await db.setSetting('share_background_config', JSON.stringify(normalized));
+    set({ shareBackgroundConfig: normalized });
   },
 
   // Active tab

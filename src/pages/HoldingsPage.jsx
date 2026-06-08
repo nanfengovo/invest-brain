@@ -211,6 +211,23 @@ export default function HoldingsPage() {
   const pnlClass =
     realizedPnl > 0 ? 'profit' : realizedPnl < 0 ? 'loss' : 'neutral';
   const pnlPrefix = realizedPnl > 0 ? '+' : '';
+  const portfolioLabel = selectedAuthor
+    ? `${selectedAuthor} 的持仓`
+    : isTeamWorkspace
+      ? '团队投资组合'
+      : '我的持仓';
+  const portfolioModeLabel = selectedAuthor
+    ? '筛选视图'
+    : isTeamWorkspace
+      ? '团队镜像'
+      : '本地账本';
+  const portfolioHint = selectedAuthor
+    ? '仅查看该提交人的活跃仓位、成交流向与已实现结果'
+    : isTeamWorkspace
+      ? '聚合团队同步记录，快速识别当前组合暴露'
+      : '从本地交易记录自动汇总，保持私有优先';
+  const netFlow = totalBuys - totalSells;
+  const netFlowLabel = netFlow >= 0 ? '净投入' : '净回收';
 
   return (
     <div className="holdings-page">
@@ -227,12 +244,39 @@ export default function HoldingsPage() {
       {/* ── Portfolio Summary ── */}
       <div className="holdings-page__section">
         <div className="holdings-page__summary glass-card">
-          <div className="holdings-page__summary-label">
-            {selectedAuthor
-              ? `${selectedAuthor} 的持仓`
-              : isTeamWorkspace
-                ? '团队投资组合'
-                : '我的持仓'}
+          <div className="holdings-page__summary-hero">
+            <div className="holdings-page__summary-copy">
+              <span className="holdings-page__summary-eyebrow">
+                Portfolio Radar
+              </span>
+              <div className="holdings-page__summary-title-row">
+                <h2 className="holdings-page__summary-title">
+                  {portfolioLabel}
+                </h2>
+                <span className={`holdings-page__summary-mode holdings-page__summary-mode--${isTeamWorkspace ? 'team' : 'local'}`}>
+                  {portfolioModeLabel}
+                </span>
+              </div>
+              <p className="holdings-page__summary-hint">
+                {portfolioHint}
+              </p>
+            </div>
+
+            <div className={`holdings-page__summary-orb holdings-page__summary-orb--${pnlClass}`}>
+              <strong className="text-mono">{holdings.length}</strong>
+              <span>Active</span>
+            </div>
+          </div>
+
+          <div className="holdings-page__summary-strip">
+            <div className="holdings-page__summary-strip-item">
+              <span>当前口径</span>
+              <strong>{portfolioModeLabel}</strong>
+            </div>
+            <div className="holdings-page__summary-strip-item">
+              <span>{netFlowLabel}</span>
+              <strong className="text-mono">${formatCurrency(Math.abs(netFlow))}</strong>
+            </div>
           </div>
 
           <div className="holdings-page__summary-grid">

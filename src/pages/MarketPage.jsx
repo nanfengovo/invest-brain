@@ -7,6 +7,7 @@ import IndexCardScroller from '../components/Market/IndexCardScroller';
 import SectorGrid from '../components/Market/SectorGrid';
 import WatchlistBoard from '../components/Market/WatchlistBoard';
 import { findMatchingOption, getOptionCandidates, mergeOptionQuote } from '../utils/optionsMarket';
+import { sharePoster } from '../utils/sharePoster';
 import './MarketPage.css';
 
 const SHARE_BASE_URL = 'https://invest-brain.vercel.app';
@@ -384,33 +385,43 @@ export default function MarketPage() {
   const handleAddWatchItem = (item) => addMarketWatchItem(item);
 
   const handleShareMarket = async () => {
-    const shareUrl = new URL('/market', SHARE_BASE_URL).toString();
-    const shareData = {
-      title: '行情监控',
-      text: '查看全球主要指数、期货和美股夜盘行情',
-      url: shareUrl,
-    };
-
     try {
-      await copyText(shareUrl);
-
-      if (navigator.share) {
-        await navigator.share(shareData);
-        return;
-      }
-
-      Toast.show({ content: '行情链接已复制，可粘贴到微信发送' });
+      const topItems = [...primaryItems, ...optionItems, ...sectorItems]
+        .filter((item) => item?.name && Number.isFinite(item?.pctChange))
+        .slice(0, 4);
+      const highlights = topItems.length > 0
+        ? topItems.map((item) => `${item.name} ${item.pctChange >= 0 ? '+' : ''}${item.pctChange.toFixed(2)}%`)
+        : ['行情数据正在刷新，稍后可生成更完整的市场快照'];
+      const result = await sharePoster({
+        typeLabel: '行情',
+        title: '市场行情快照',
+        subtitle: '指数 · 期权 · 板块 · 自选',
+        sectionTitle: '今日关注',
+        accent: '#38bdf8',
+        accent2: '#2dd4bf',
+        metrics: [
+          { label: hasWatchlist ? '自选数量' : '指数数量', value: hasWatchlist ? marketWatchlist.length : primaryItems.length, hint: hasWatchlist ? '我的关注' : '默认指数' },
+          { label: '期权关注', value: optionItems.length, hint: '合约监控' },
+          { label: '板块池', value: sectorItems.length, hint: '主题雷达' },
+          { label: '刷新间隔', value: `${MARKET_POLL_INTERVAL_MS / 1000}s`, hint: '本地监控' },
+        ],
+        highlights,
+        footer: `行情链接 ${new URL('/market', SHARE_BASE_URL).toString()}`,
+        fileName: `investbrain-market-${Date.now()}.png`,
+      });
+      Toast.show({ icon: 'success', content: result.mode === 'native' ? '分享图已发送' : '分享图已下载' });
     } catch (error) {
       if (error?.name === 'AbortError') {
-        Toast.show({ content: '行情链接已复制，可粘贴到微信发送' });
+        Toast.show({ content: '已取消分享图生成' });
         return;
       }
 
       try {
+        const shareUrl = new URL('/market', SHARE_BASE_URL).toString();
         await copyText(shareUrl);
-        Toast.show({ content: '行情链接已复制，可粘贴到微信发送' });
+        Toast.show({ content: '分享图生成失败，已复制行情链接' });
       } catch {
-        Toast.show({ content: shareUrl, duration: 4000 });
+        Toast.show({ icon: 'fail', content: error.message || '分享图生成失败' });
       }
     }
   };

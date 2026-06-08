@@ -37,9 +37,12 @@ function App({ onReady }) {
 
         // Load settings
         await useAppStore.getState().loadGeminiApiKey();
+        await useAppStore.getState().loadNvidiaApiKey();
+        await useAppStore.getState().loadAiProviderConfig();
         await useAppStore.getState().loadSyncConfig();
         await useAppStore.getState().loadNotificationConfig();
         await useAppStore.getState().loadMarketDataConfig();
+        await useAppStore.getState().loadShareBackgroundConfig();
 
         // PWA Recovery: Check if data was lost (e.g., PWA removed from homescreen)
         try {

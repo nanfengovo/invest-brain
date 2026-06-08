@@ -10,6 +10,9 @@ const MODEL_LABELS = {
   'gemini-3.1-flash-lite': '3.1 Lite',
   'gemini-3-flash-preview': '3 Flash Preview',
   'gemini-2.0-flash': '2.0 Flash',
+  'meta/llama-3.2-90b-vision-instruct': 'NVIDIA Llama Vision 90B',
+  'meta/llama-3.2-11b-vision-instruct': 'NVIDIA Llama Vision 11B',
+  'mistralai/mistral-small-4-119b-2603': 'NVIDIA Mistral Small 4',
 };
 
 export function getOcrModelLabel(model) {

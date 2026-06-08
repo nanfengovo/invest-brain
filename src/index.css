@@ -1138,3 +1138,51 @@ body {
     user-select: none;
   }
 }
+
+/* ── Share Poster Background Picker ── */
+.share-background-dialog {
+  display: grid;
+  gap: 14px;
+  text-align: left;
+}
+
+.share-background-dialog__field {
+  display: grid;
+  gap: 7px;
+}
+
+.share-background-dialog__field label {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.share-background-dialog__input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-input);
+  color: var(--color-text-primary);
+  font: 13px/1.5 var(--adm-font-family);
+  outline: none;
+}
+
+.share-background-dialog__textarea {
+  width: 100%;
+  min-height: 118px;
+  resize: vertical;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-input);
+  color: var(--color-text-primary);
+  font: 13px/1.5 var(--adm-font-family);
+  padding: 10px;
+  outline: none;
+}
+
+.share-background-dialog__hint {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}

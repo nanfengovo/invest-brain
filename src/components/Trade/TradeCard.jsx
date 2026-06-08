@@ -10,6 +10,7 @@ import {
   shouldShowOptionExpirationLabel,
 } from '../../utils/tradeLifecycle';
 import { getSyncStatusMeta } from '../../utils/syncStatus';
+import { sharePoster } from '../../utils/sharePoster';
 import './TradeCard.css';
 
 const DIRECTION_MAP = {
@@ -176,13 +177,46 @@ export default function TradeCard({ trade, index = 0, onEdit, compactMode = fals
   ];
 
   const actionSheetActions = [
+    { text: '生成分享图', key: 'share' },
     { text: '编辑', key: 'edit' },
     { text: '删除', key: 'delete', danger: true },
   ];
 
-  const handleAction = (action) => {
+  const handleSharePoster = async () => {
+    try {
+      const result = await sharePoster({
+        typeLabel: isOption ? '期权交易' : '交易',
+        title: `${dir.label} ${titleText}`,
+        subtitle: trade.trade_time ? `交易时间 ${new Date(trade.trade_time).toLocaleString('zh-CN')}` : '交易记录',
+        sectionTitle: '执行要点',
+        accent: isBuy ? '#2dd4bf' : '#fb7185',
+        accent2: isOption ? '#a78bfa' : '#8ea2ff',
+        metrics: [
+          { label: '方向', value: dir.label, hint: isOption ? optionType || 'OPTION' : trade.asset_type || 'STOCK', tone: isBuy ? 'profit' : 'loss' },
+          { label: '价格', value: `$${formatNumber(trade.price)}`, hint: '成交价' },
+          { label: '数量', value: formatQuantityWithUnit(trade.quantity, quantityUnit), hint: '成交数量' },
+          { label: '金额', value: `$${formatNumber(total)}`, hint: '合约乘数已计入' },
+        ],
+        highlights: [
+          hasOptionExpiration ? trade.option_expiration_label : assetDisplay || trade.asset_type || '普通交易',
+          lifecycleBadge ? `闭环状态：${lifecycleBadge.label}` : '等待后续复盘闭环',
+          trade.decision_title ? `关联决策：${trade.decision_title}` : '未关联决策',
+          trade.broker ? `券商：${trade.broker}` : '',
+        ].filter(Boolean),
+        fileName: `investbrain-trade-${titleText}-${Date.now()}.png`,
+      });
+      Toast.show({ icon: 'success', content: result.mode === 'native' ? '分享图已发送' : '分享图已下载' });
+    } catch (error) {
+      if (error?.name === 'AbortError') return;
+      Toast.show({ icon: 'fail', content: error.message || '分享图生成失败' });
+    }
+  };
+
+  const handleAction = async (action) => {
     setActionSheetVisible(false);
-    if (action.key === 'edit') {
+    if (action.key === 'share') {
+      await handleSharePoster();
+    } else if (action.key === 'edit') {
       onEdit?.(trade);
     } else if (action.key === 'delete') {
       handleDelete();

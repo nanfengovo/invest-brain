@@ -4,6 +4,7 @@
 - 每次提交或部署前，必须确保版本号（Package.json 中的 version）完成自动累加（+1）。
 - 所有的日期选择器必须使用 conditional rendering 以确保 defaultValue 生效，防止回显 bug。
 _ 每次开发完buil通过后自动推送github 确保最新代码在github上并检查Vercel 上是否上最新的如果不是需要将Vercel上的同步为最新的
+_ 所有的异常，报错，提示都使用中文
 
 
 ## 代码风格与架构

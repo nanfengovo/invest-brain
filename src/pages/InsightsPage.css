@@ -137,6 +137,20 @@
   box-shadow: 0 0 30px rgba(var(--color-accent-rgb), 0.1) inset;
 }
 
+.insights-page__model-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  margin: -4px 0 14px;
+  padding: 6px 10px;
+  border: 1px solid rgba(var(--color-accent-rgb), 0.28);
+  border-radius: 999px;
+  background: rgba(var(--color-accent-rgb), 0.1);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .insights-page__personality {
   display: flex;
   align-items: center;

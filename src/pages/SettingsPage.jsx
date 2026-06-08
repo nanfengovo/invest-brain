@@ -7,6 +7,14 @@ import { parseTradesFile } from '../utils/importTrades';
 import { attachDecisionRecommendations } from '../utils/decisionMatcher';
 import { restoreAutoBackup } from '../utils/autoBackup';
 import { syncCloudAlerts } from '../utils/cloudAlerts';
+import {
+  AI_PROVIDER_OPTIONS,
+  AI_TEXT_MODEL_OPTIONS,
+  AI_VISION_MODEL_OPTIONS,
+  DEFAULT_AI_PROVIDER_CONFIG,
+  getModelDisplayName,
+  getProviderDisplayName,
+} from '../utils/aiProviders';
 import './SettingsPage.css';
 
 const PERSONAL_SYNC_TABLES = [
@@ -68,6 +76,10 @@ function SettingsPage() {
     setColorConvention,
     geminiApiKey,
     saveGeminiApiKey,
+    nvidiaApiKey,
+    saveNvidiaApiKey,
+    aiProviderConfig,
+    saveAiProviderConfig,
     syncUserId,
     syncSecret,
     workspaceScope,
@@ -78,17 +90,22 @@ function SettingsPage() {
     notificationConfig,
     saveNotificationConfig,
     marketDataConfig,
-    saveMarketDataConfig
+    saveMarketDataConfig,
+    shareBackgroundConfig,
+    saveShareBackgroundConfig
   } = useAppStore();
 
   const { stats, refreshAll } = useTradeStore();
   const [storageInfo, setStorageInfo] = useState(null);
   const [apiKeyInput, setApiKeyInput] = useState(geminiApiKey);
+  const [nvidiaApiKeyInput, setNvidiaApiKeyInput] = useState(nvidiaApiKey);
+  const [aiProviderInput, setAiProviderInput] = useState(aiProviderConfig);
   const [streamlitUrlInput, setStreamlitUrlInput] = useState(streamlitUrl);
   const [syncUserIdInput, setSyncUserIdInput] = useState(syncUserId);
   const [syncSecretInput, setSyncSecretInput] = useState(syncSecret);
   const [notificationInput, setNotificationInput] = useState(notificationConfig);
   const [marketDataInput, setMarketDataInput] = useState(marketDataConfig);
+  const [shareBackgroundInput, setShareBackgroundInput] = useState(shareBackgroundConfig);
   const [autoSync, setAutoSync] = useState(localStorage.getItem('invest_auto_sync') === 'true');
   const [lastBackupTime, setLastBackupTime] = useState(localStorage.getItem('ib_last_autobackup_time'));
 
@@ -98,6 +115,14 @@ function SettingsPage() {
   useEffect(() => {
     setApiKeyInput(geminiApiKey);
   }, [geminiApiKey]);
+
+  useEffect(() => {
+    setNvidiaApiKeyInput(nvidiaApiKey);
+  }, [nvidiaApiKey]);
+
+  useEffect(() => {
+    setAiProviderInput(aiProviderConfig);
+  }, [aiProviderConfig]);
 
   useEffect(() => {
     setSyncUserIdInput(syncUserId);
@@ -115,6 +140,10 @@ function SettingsPage() {
   useEffect(() => {
     setMarketDataInput(marketDataConfig);
   }, [marketDataConfig]);
+
+  useEffect(() => {
+    setShareBackgroundInput(shareBackgroundConfig);
+  }, [shareBackgroundConfig]);
 
   useEffect(() => {
     // Get storage estimate
@@ -360,7 +389,7 @@ function SettingsPage() {
   async function handleClearData() {
     Dialog.show({
       title: '⚠️ 清除核心业务数据',
-      content: '此操作将永久删除交易、持仓、情报、观点、决策、复盘和价格提醒，但会保留 API Key、同步暗号、通知和市场数据配置。请确保已备份数据。',
+      content: '此操作将永久删除交易、持仓、情报、观点、决策、复盘和价格提醒，但会保留 API Key、同步暗号、通知、市场数据和分享背景配置。请确保已备份数据。',
       closeOnAction: true,
       actions: [
         { key: 'cancel', text: '取消' },
@@ -387,6 +416,24 @@ function SettingsPage() {
     try {
       await saveGeminiApiKey(apiKeyInput);
       Toast.show({ icon: 'success', content: '已保存' });
+    } catch (e) {
+      Toast.show({ icon: 'fail', content: '保存失败' });
+    }
+  }
+
+  async function handleSaveAiProviderConfig() {
+    try {
+      const normalizedConfig = { ...DEFAULT_AI_PROVIDER_CONFIG, ...(aiProviderInput || {}) };
+      await saveAiProviderConfig(normalizedConfig);
+      await saveNvidiaApiKey(nvidiaApiKeyInput);
+      setShareBackgroundInput((current) => ({
+        ...current,
+        nvidiaApiKey: String(nvidiaApiKeyInput || '').trim() || current.nvidiaApiKey || '',
+      }));
+      Toast.show({
+        icon: 'success',
+        content: `AI 配置已保存：${getProviderDisplayName(normalizedConfig.provider)} / ${getModelDisplayName(normalizedConfig.textModel)}`,
+      });
     } catch (e) {
       Toast.show({ icon: 'fail', content: '保存失败' });
     }
@@ -480,6 +527,15 @@ function SettingsPage() {
         marketDataConfig: marketDataInput,
       });
       Toast.show({ icon: 'success', content: '行情数据源已保存' });
+    } catch {
+      Toast.show({ icon: 'fail', content: '保存失败' });
+    }
+  }
+
+  async function handleSaveShareBackgroundConfig() {
+    try {
+      await saveShareBackgroundConfig(shareBackgroundInput);
+      Toast.show({ icon: 'success', content: '分享背景配置已保存' });
     } catch {
       Toast.show({ icon: 'fail', content: '保存失败' });
     }
@@ -871,6 +927,71 @@ function SettingsPage() {
             </Button>
           </div>
         </div>
+        <div className="settings-card glass-card">
+          <div className="settings-card__row" style={{ cursor: 'default' }}>
+            <span className="settings-card__icon">🧠</span>
+            <div className="settings-card__content">
+              <div className="settings-card__label">统一 AI 路由与 NVIDIA API Key</div>
+              <div className="settings-card__desc">
+                摘要、翻译、OCR、交易体检会优先使用本地配置；留空则使用服务端环境变量。每次调用都会返回实际使用的模型。
+              </div>
+            </div>
+          </div>
+          <div className="settings-card__input-row settings-card__input-row--stacked">
+            <Selector
+              options={AI_PROVIDER_OPTIONS}
+              value={[aiProviderInput.provider || 'auto']}
+              onChange={(value) => {
+                if (!value.length) return;
+                setAiProviderInput((current) => ({ ...current, provider: value[0] }));
+              }}
+            />
+            <Selector
+              options={AI_TEXT_MODEL_OPTIONS.map((item) => ({
+                label: item.label,
+                value: item.value,
+                description: `${item.provider} · ${item.description}`,
+              }))}
+              value={[aiProviderInput.textModel || DEFAULT_AI_PROVIDER_CONFIG.textModel]}
+              onChange={(value) => {
+                if (!value.length) return;
+                setAiProviderInput((current) => ({ ...current, textModel: value[0] }));
+              }}
+            />
+            <Selector
+              options={AI_VISION_MODEL_OPTIONS.map((item) => ({
+                label: item.label,
+                value: item.value,
+                description: `${item.provider} · ${item.description}`,
+              }))}
+              value={[aiProviderInput.visionModel || DEFAULT_AI_PROVIDER_CONFIG.visionModel]}
+              onChange={(value) => {
+                if (!value.length) return;
+                setAiProviderInput((current) => ({ ...current, visionModel: value[0] }));
+              }}
+            />
+            <div className="settings-card__input-wrapper">
+              <Input
+                placeholder="NVIDIA API Key（nvapi-...；留空则使用内置/服务端 Key）"
+                value={nvidiaApiKeyInput}
+                onChange={setNvidiaApiKeyInput}
+                type="password"
+                clearable
+              />
+            </div>
+          </div>
+          <div className="settings-card__actions-row">
+            <Button
+              color="primary"
+              size="small"
+              fill="solid"
+              onClick={handleSaveAiProviderConfig}
+              style={{ borderRadius: '6px' }}
+            >
+              保存 AI 路由
+            </Button>
+          </div>
+        </div>
       </div>
 
       {/* Streamlit AI Configuration */}
@@ -908,6 +1029,62 @@ function SettingsPage() {
               style={{ borderRadius: '6px' }}
             >
               保存
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Share Poster Background Configuration */}
+      <div className="section">
+        <div className="section__title">分享图背景生成</div>
+        <div className="settings-card glass-card">
+          <div className="settings-card__row" style={{ cursor: 'default' }}>
+            <span className="settings-card__icon">🖼️</span>
+            <div className="settings-card__content">
+              <div className="settings-card__label">背景来源与 NVIDIA 模型</div>
+              <div className="settings-card__desc">
+                分享时可选择本地背景、上传图片或用 NVIDIA AI 生成背景；标题、收益和期权信息仍由本地 Canvas 绘制。
+              </div>
+            </div>
+          </div>
+          <div className="settings-card__input-row settings-card__input-row--stacked">
+            <Selector
+              options={[
+                { label: '本地优先', value: 'local' },
+                { label: 'NVIDIA AI', value: 'nvidia' },
+              ]}
+              value={[shareBackgroundInput.provider || 'local']}
+              onChange={(value) => {
+                if (!value.length) return;
+                setShareBackgroundInput((current) => ({ ...current, provider: value[0] }));
+              }}
+            />
+            <Selector
+              options={[
+                { label: 'Qwen Image 2512', value: 'qwen-image-2512' },
+                { label: 'Qwen Image', value: 'qwen-image' },
+                { label: 'FLUX.2 Klein 4B', value: 'flux.2-klein-4b' },
+                { label: 'SD 3.5 Large', value: 'stabilityai/stable-diffusion-3.5-large' },
+              ]}
+              value={[shareBackgroundInput.defaultModel || 'qwen-image-2512']}
+              onChange={(value) => {
+                if (!value.length) return;
+                setShareBackgroundInput((current) => ({ ...current, defaultModel: value[0] }));
+              }}
+            />
+            <div className="settings-card__input-wrapper">
+              <Input
+                placeholder="NVIDIA API Key（可选；留空则使用服务端环境变量）"
+                type="password"
+                value={shareBackgroundInput.nvidiaApiKey || ''}
+                onChange={(value) => setShareBackgroundInput((current) => ({ ...current, nvidiaApiKey: value }))}
+                clearable
+              />
+            </div>
+          </div>
+          <div className="settings-card__actions-row">
+            <Button color="primary" size="small" fill="solid" onClick={handleSaveShareBackgroundConfig} style={{ borderRadius: '6px' }}>
+              保存背景配置
             </Button>
           </div>
         </div>

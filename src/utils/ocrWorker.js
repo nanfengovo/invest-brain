@@ -1,5 +1,5 @@
 /**
- * OCR Worker — calls /api/ocr (Gemini Vision) for trade extraction.
+ * OCR Worker — calls /api/ocr (Gemini/NVIDIA Vision) for trade extraction.
  *
  * Replaces the old Tesseract.js approach with a multimodal LLM
  * that understands broker screenshot layouts from:
@@ -49,22 +49,33 @@ function compressImageToBase64(file) {
 }
 
 /**
- * Parse an image for trade information using Gemini Vision API.
+ * Parse an image for trade information using multimodal AI.
  *
  * @param {File|Blob} image - The image to parse
- * @param {string} [model] - Gemini model to use (e.g. 'gemini-3.5-flash')
+ * @param {string} [model] - Vision model to use (e.g. 'gemini-3.5-flash')
+ * @param {object} [aiOptions] - AI headers/config
  * @returns {Promise<{ trades: Array<Object>, candidates: { symbols: string[], numbers: string[] } }>}
  */
-export async function parseTradeImage(image, model) {
+export async function parseTradeImage(image, model, aiOptions = {}) {
   const dataUrl = await compressImageToBase64(image);
   const mimeType = 'image/jpeg';
 
-  const body = { image: dataUrl, mimeType };
+  const body = {
+    image: dataUrl,
+    mimeType,
+    aiProvider: aiOptions.aiProvider,
+    textModel: aiOptions.textModel,
+    visionModel: aiOptions.visionModel,
+  };
   if (model) body.model = model;
+
+  const headers = { 'Content-Type': 'application/json' };
+  if (aiOptions.geminiApiKey) headers['x-gemini-api-key'] = aiOptions.geminiApiKey;
+  if (aiOptions.nvidiaApiKey) headers['x-nvidia-api-key'] = aiOptions.nvidiaApiKey;
 
   const response = await fetch('/api/ocr', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(body),
   });
 
@@ -74,7 +85,7 @@ export async function parseTradeImage(image, model) {
   }
 
   const result = await response.json();
-  console.log('[OCR Gemini Result]:', result);
+  console.log('[OCR AI Result]:', result);
 
   return normalizeOcrResult(result);
 }
@@ -120,8 +131,10 @@ export function normalizeOcrMeta(result = {}) {
   const requestedModel = result.requested_model || result.requestedModel || null;
   const fallbackValue = result.fallback_used ?? result.fallbackUsed;
   const retryCount = Number(result.retry_count ?? result.retryCount ?? 0);
+  const provider = result.provider || result.providerUsed || null;
 
   return {
+    provider,
     modelUsed,
     requestedModel,
     fallbackUsed: Boolean(

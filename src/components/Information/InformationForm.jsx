@@ -3,6 +3,7 @@ import { Form, Input, Button, Selector, Toast, NavBar, TextArea } from 'antd-mob
 import { useTradeStore } from '../../stores/useTradeStore';
 import { useAppStore } from '../../stores/useAppStore';
 import { saveFileToOPFS } from '../../utils/opfsUtils';
+import { buildAiRequestBody, buildAiRequestHeaders, getAiUsageLabel } from '../../utils/aiProviders';
 import { db } from '../../db/database';
 import './InformationForm.css';
 
@@ -147,21 +148,18 @@ export default function InformationForm({ onClose }) {
         mimeType = targetFile.type;
       }
 
-      const localApiKey = useAppStore.getState().geminiApiKey;
-      const headers = { 'Content-Type': 'application/json' };
-      if (localApiKey) {
-        headers['x-gemini-api-key'] = localApiKey;
-      }
+      const { geminiApiKey, nvidiaApiKey, aiProviderConfig } = useAppStore.getState();
+      const headers = buildAiRequestHeaders({ geminiApiKey, nvidiaApiKey });
 
       const response = await fetch('/api/summarize', {
         method: 'POST',
         headers,
-        body: JSON.stringify({
+        body: JSON.stringify(buildAiRequestBody(aiProviderConfig, {
           url: urlVal || undefined,
           content: contentVal || undefined,
           image: base64Image || undefined,
           mimeType,
-        }),
+        })),
       });
 
       toast.close();
@@ -189,7 +187,11 @@ export default function InformationForm({ onClose }) {
         }
 
         form.setFieldsValue(updates);
-        Toast.show({ icon: 'success', content: parsedContent ? '信息已解析并回填' : '标题已解析' });
+        const modelLabel = getAiUsageLabel(result);
+        Toast.show({
+          icon: 'success',
+          content: `${parsedContent ? '信息已解析并回填' : '标题已解析'}${modelLabel ? ` · ${modelLabel}` : ''}`,
+        });
       }
     } catch (err) {
       console.error('[AI Summarize Error]:', err);

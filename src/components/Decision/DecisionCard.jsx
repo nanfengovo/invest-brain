@@ -9,6 +9,7 @@ import {
   normalizeOptionDisciplineScore,
   normalizeOptionLesson,
 } from '../../utils/optionReview';
+import { sharePoster } from '../../utils/sharePoster';
 import ReviewForm from './ReviewForm';
 import './DecisionCard.css';
 
@@ -298,10 +299,51 @@ export default function DecisionCard({ decision, index = 0, onClick, onEdit, onR
 
   const isFinished = ['ENDED', 'CLOSED'].includes(decision.status);
   const isAbandoned = decision.status === 'ABANDONED';
+  const handleSharePoster = async () => {
+    try {
+      let optionAttributionLabel = '';
+      if (decision.review_content) {
+        const review = JSON.parse(decision.review_content);
+        if (hasOptionReviewData(review)) {
+          optionAttributionLabel = getOptionReviewAttribution(review.optionAttribution)?.label || review.optionAttribution || '';
+        }
+      }
+
+      const pnl = Number(decision.result_pnl) || 0;
+      const result = await sharePoster({
+        typeLabel: decision.review_id ? '复盘' : '决策',
+        title: decision.title || '投资决策',
+        subtitle: `${decision.asset_symbol || decision.asset_id || '未绑定标的'} · ${status.label}`,
+        sectionTitle: decision.review_id ? '复盘结论' : '决策要点',
+        accent: sentiment.className === 'bearish' ? '#fb7185' : sentiment.className === 'bullish' ? '#2dd4bf' : '#8ea2ff',
+        accent2: '#f59e0b',
+        metrics: [
+          { label: '方向', value: decision.sentiment || 'NEUTRAL', hint: '观点倾向' },
+          { label: '信心', value: `${decision.confidence || 0}/5`, hint: '主观评分' },
+          { label: '交易', value: decision.trade_count || 0, hint: '关联执行' },
+          { label: '盈亏', value: decision.review_id ? `${pnl >= 0 ? '+' : '-'}$${Math.abs(pnl).toFixed(2)}` : '待复盘', hint: decision.review_id ? '复盘结果' : '闭环后生成', tone: pnl >= 0 ? 'profit' : 'loss' },
+        ],
+        highlights: [
+          decision.content || '暂无决策正文',
+          linkedInfoCount > 0 ? `证据：${linkedInfoCount} 条${linkedInfoPreview ? ` · ${linkedInfoPreview}` : ''}` : '暂无关联情报证据',
+          decision.review_id ? `结果：${decision.is_successful ? '投资成功' : '投资失败'}` : '尚未完成复盘',
+          optionAttributionLabel ? `期权归因：${optionAttributionLabel}` : '',
+          decision.lessons ? `经验：${decision.lessons}` : '',
+        ].filter(Boolean),
+        fileName: `investbrain-decision-${decision.id || Date.now()}.png`,
+      });
+      Toast.show({ icon: 'success', content: result.mode === 'native' ? '分享图已发送' : '分享图已下载' });
+    } catch (error) {
+      if (error?.name === 'AbortError') return;
+      Toast.show({ icon: 'fail', content: error.message || '分享图生成失败' });
+    }
+  };
 
   const actions = readOnly ? [
+    { text: '生成分享图', key: 'share', onClick: handleSharePoster },
     { text: '团队镜像只读', key: 'readonly', disabled: true },
   ] : [
+    { text: '生成分享图', key: 'share', onClick: handleSharePoster },
     { text: '编辑记录', key: 'edit', onClick: () => onEdit?.() },
     { 
       text: isFinished ? '重新激活决策' : '归档完结决策', 

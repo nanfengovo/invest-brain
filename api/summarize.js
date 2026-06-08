@@ -1,7 +1,15 @@
+import {
+  buildAiMetadata,
+  callAiWithModelPool,
+  getAiKeys,
+  getAiModelPool,
+  hasAnyAiKey,
+} from './_lib/aiProviders.js';
+
 /**
  * Vercel Serverless Function — /api/summarize
  *
- * Uses Gemini to summarize a short title for information cards based on:
+ * Uses Gemini/NVIDIA models to summarize a short title for information cards based on:
  * 1. Pasted text content
  * 2. URL page metadata (parsed inside the function)
  * 3. Base64 uploaded images
@@ -495,12 +503,19 @@ async function callGeminiWithModelPool({ apiKey, models, parts, maxOutputTokens 
   throw new Error(details);
 }
 
-async function handleTranslateMode({ req, res, apiKey }) {
-  if (!apiKey) {
-    return res.status(401).json({ error: '请先在设置页面配置 Gemini API Key' });
+async function handleTranslateMode({ req, res, keys }) {
+  if (!hasAnyAiKey(keys)) {
+    return res.status(401).json({ error: '请先在设置页面配置 Gemini API Key 或 NVIDIA API Key' });
   }
 
-  const { text, title = '', sourceLanguage = 'auto' } = req.body || {};
+  const {
+    text,
+    title = '',
+    sourceLanguage = 'auto',
+    aiProvider = 'auto',
+    model,
+    textModel,
+  } = req.body || {};
   const sourceText = truncateText(text, MAX_TRANSLATE_CHARS);
   if (!sourceText) {
     return res.status(400).json({ error: '没有可翻译的正文' });
@@ -521,32 +536,52 @@ async function handleTranslateMode({ req, res, apiKey }) {
 原文：
 ${sourceText}`;
 
-  const models = getGeminiModelPool(
-    process.env.GEMINI_TRANSLATE_MODELS,
-    process.env.GEMINI_MODELS,
-    process.env.GEMINI_MODEL,
-  );
-  const { rawResponse, model } = await callGeminiWithModelPool({
-    apiKey,
+  const requestedModel = String(model || textModel || '').trim();
+  const models = getAiModelPool({
+    task: 'text',
+    provider: aiProvider,
+    requestedModel,
+    configuredValues: [
+      process.env.NVIDIA_TRANSLATE_MODELS,
+      process.env.NVIDIA_MODELS,
+      process.env.NVIDIA_MODEL,
+      process.env.GEMINI_TRANSLATE_MODELS,
+      process.env.GEMINI_MODELS,
+      process.env.GEMINI_MODEL,
+    ],
+    keys,
+  });
+  const result = await callAiWithModelPool({
+    keys,
     models,
     parts: [{ text: prompt }],
     maxOutputTokens: 8192,
     responseMimeType: 'text/plain',
   });
+  const metadata = buildAiMetadata(result, requestedModel || models[0]);
 
   return res.status(200).json({
     success: true,
-    translatedText: rawResponse,
-    model,
+    translatedText: result.rawResponse,
+    model: result.model,
     truncated: String(text || '').length > sourceText.length,
+    ...metadata,
   });
+}
+
+function getLegacyGeminiSummaryModels() {
+  return getGeminiModelPool(
+    process.env.GEMINI_TRANSLATE_MODELS,
+    process.env.GEMINI_MODELS,
+    process.env.GEMINI_MODEL,
+  );
 }
 
 export default async function handler(req, res) {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-gemini-api-key');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-gemini-api-key, x-nvidia-api-key');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -557,19 +592,29 @@ export default async function handler(req, res) {
   }
 
   try {
-    const apiKey = req.headers['x-gemini-api-key'] || process.env.GEMINI_API_KEY;
-    const { url, content, image, mimeType = 'image/png', mode } = req.body;
+    const keys = getAiKeys(req);
+    const {
+      url,
+      content,
+      image,
+      mimeType = 'image/png',
+      mode,
+      aiProvider = 'auto',
+      model,
+      textModel,
+      visionModel,
+    } = req.body;
 
     if (mode === 'translate') {
-      return await handleTranslateMode({ req, res, apiKey });
+      return await handleTranslateMode({ req, res, keys });
     }
 
     if (!url && !content && !image) {
       return res.status(400).json({ error: 'Please provide either url, content, or image.' });
     }
 
-    if (!apiKey && image && !url && !content) {
-      return res.status(500).json({ error: '图片解析需要配置 Gemini API Key。也可以先手动填写标题和正文。' });
+    if (!hasAnyAiKey(keys) && image && !url && !content) {
+      return res.status(500).json({ error: '图片解析需要配置 Gemini API Key 或 NVIDIA API Key。也可以先手动填写标题和正文。' });
     }
 
     let summaryPromptText = '';
@@ -764,31 +809,45 @@ JSON 格式：
       parts.push({ text: '另外，参考上面这张图片的内容进行综合标题总结。' });
     }
 
-    const summarizeModels = getGeminiModelPool(
-      process.env.GEMINI_SUMMARY_MODELS,
-      process.env.GEMINI_MODELS,
-      process.env.GEMINI_MODEL,
-    );
+    const requestedModel = String((image ? (visionModel || model) : (textModel || model)) || '').trim();
+    const summarizeModels = hasAnyAiKey(keys)
+      ? getAiModelPool({
+          task: image ? 'vision' : 'text',
+          provider: aiProvider,
+          requestedModel,
+          configuredValues: [
+            process.env.NVIDIA_SUMMARY_MODELS,
+            process.env.NVIDIA_MODELS,
+            process.env.NVIDIA_MODEL,
+            process.env.GEMINI_SUMMARY_MODELS,
+            process.env.GEMINI_MODELS,
+            process.env.GEMINI_MODEL,
+          ],
+          keys,
+        })
+      : getLegacyGeminiSummaryModels();
 
     let generatedTitle = '';
     let modelUsed = '';
+    let aiMetadata = null;
 
-    if (apiKey) {
+    if (hasAnyAiKey(keys)) {
       try {
-        const { rawResponse, model } = await callGeminiWithModelPool({
-          apiKey,
+        const aiResult = await callAiWithModelPool({
+          keys,
           models: summarizeModels,
           parts,
         });
-        modelUsed = model;
-        const parsed = parseStructuredSummary(rawResponse);
+        modelUsed = aiResult.model;
+        aiMetadata = buildAiMetadata(aiResult, requestedModel || summarizeModels[0]);
+        const parsed = parseStructuredSummary(aiResult.rawResponse);
         generatedTitle = parsed.title;
         extractedSummary = parsed.summary ? parsed.summary.slice(0, 100) : extractedSummary;
       } catch (err) {
-        console.warn('[Summarize API] Gemini failed, falling back to deterministic link parsing:', err.message);
+        console.warn('[Summarize API] AI provider failed, falling back to deterministic link parsing:', err.message);
         if (!extractedContent && !extractedMedia && image) {
           return res.status(502).json({
-            error: 'Gemini API error (All summary models failed)',
+            error: 'AI API error (All summary models failed)',
             details: err.message,
           });
         }
@@ -829,6 +888,7 @@ JSON 格式：
       contentSource,
       parsed,
       model: modelUsed,
+      ...(aiMetadata || {}),
     });
   } catch (err) {
     console.error('[Summarize API] Exception:', err);

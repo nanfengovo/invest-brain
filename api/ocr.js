@@ -2,16 +2,27 @@
  * Vercel Serverless Function — /api/ocr
  *
  * Receives a broker screenshot (base64) and uses
- * Gemini multimodal models to extract structured trade data.
+ * Gemini/NVIDIA multimodal models to extract structured trade data.
  * Supports model selection from the frontend.
  * Supports: 复星, 长桥, 盈立, 盈透, 嘉信, and more.
  */
 
-const ALLOWED_MODELS = [
+import {
+  buildAiMetadata,
+  callAiWithModelPool,
+  getAiKeys,
+  getAiModelPool,
+  hasAnyAiKey,
+  NVIDIA_VISION_MODELS,
+  parseAiJsonObject,
+} from './_lib/aiProviders.js';
+
+export const OCR_MODEL_OPTIONS = [
   'gemini-3.5-flash',
   'gemini-3.1-flash-lite',
   'gemini-3-flash-preview',
   'gemini-2.0-flash',
+  ...NVIDIA_VISION_MODELS,
 ];
 
 const DEFAULT_MODEL = 'gemini-3.5-flash';
@@ -66,7 +77,7 @@ export default async function handler(req, res) {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-gemini-api-key');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-gemini-api-key, x-nvidia-api-key');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -76,145 +87,62 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: '仅支持 POST 请求' });
   }
 
-  const apiKey = req.headers['x-gemini-api-key'] || process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({ error: 'Gemini API Key 未配置，请先在 Vercel 或本地设置中添加。' });
+  const keys = getAiKeys(req);
+  if (!hasAnyAiKey(keys)) {
+    return res.status(500).json({ error: 'AI API Key 未配置，请先在设置页添加 Gemini 或 NVIDIA Key。' });
   }
 
   try {
-    const { image, mimeType = 'image/png', model: requestedModel } = req.body;
+    const {
+      image,
+      mimeType = 'image/png',
+      model: requestedModel,
+      visionModel,
+      aiProvider = 'auto',
+    } = req.body;
 
     if (!image) {
       return res.status(400).json({ error: '请先上传需要识别的截图' });
     }
 
-    // Validate and select preferred model
-    const preferredModel = ALLOWED_MODELS.includes(requestedModel) ? requestedModel : DEFAULT_MODEL;
-    
-    // Build fallback list (excluding preferred)
-    const fallbackModels = ALLOWED_MODELS.filter(m => m !== preferredModel);
+    const preferredModel = String(visionModel || requestedModel || DEFAULT_MODEL).trim();
+    const models = getAiModelPool({
+      task: 'vision',
+      provider: aiProvider,
+      requestedModel: preferredModel,
+      configuredValues: [
+        process.env.NVIDIA_OCR_MODELS,
+        process.env.NVIDIA_VISION_MODELS,
+        process.env.NVIDIA_MODELS,
+        process.env.GEMINI_OCR_MODELS,
+        process.env.GEMINI_VISION_MODELS,
+        process.env.GEMINI_MODELS,
+      ],
+      keys,
+    });
 
     // Strip data URL prefix if present
     const base64Data = image.replace(/^data:image\/\w+;base64,/, '');
 
-    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-
-    /**
-     * Attempt a single Gemini API call. Returns { success, data } or { success: false, error }.
-     */
-    async function tryModel(model) {
-      console.log(`[OCR API] Trying model: ${model}`);
-      const geminiResponse = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  { text: SYSTEM_PROMPT },
-                  { inlineData: { mimeType, data: base64Data } },
-                  { text: '请分析这张券商截图，提取所有可识别的交易记录。' },
-                ],
-              },
-            ],
-            generationConfig: {
-              temperature: 0.1,
-              maxOutputTokens: 4096,
-              responseMimeType: 'application/json',
-            },
-          }),
-        }
-      );
-
-      if (!geminiResponse.ok) {
-        const errorText = await geminiResponse.text();
-        console.warn(`[OCR API] Model ${model} HTTP ${geminiResponse.status}`);
-        return { success: false, status: geminiResponse.status, error: errorText };
-      }
-
-      const geminiData = await geminiResponse.json();
-      const textContent = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '';
-
-      let parsed;
-      try {
-        parsed = JSON.parse(textContent);
-      } catch {
-        const jsonMatch = textContent.match(/```(?:json)?\s*([\s\S]*?)```/);
-        if (jsonMatch) {
-          parsed = JSON.parse(jsonMatch[1].trim());
-        } else {
-          const braceMatch = textContent.match(/\{[\s\S]*\}/);
-          if (braceMatch) {
-            parsed = JSON.parse(braceMatch[0]);
-          } else {
-            throw new Error('Could not parse Gemini response as JSON');
-          }
-        }
-      }
-
-      console.log(`[OCR API] Success with model: ${model}`);
-      return { success: true, data: parsed, modelUsed: model };
-    }
-
-    // Strategy: Retry preferred model up to 3 times (with 3s delays), then try fallbacks
-    let lastError = null;
-    let retryCount = 0;
-    const attemptedModels = [];
-    const MAX_PREFERRED_RETRIES = 3;
-
-    const withOcrMeta = (data, modelUsed) => ({
-      ...data,
-      model_used: modelUsed,
-      requested_model: preferredModel,
-      fallback_used: modelUsed !== preferredModel,
-      retry_count: retryCount,
-      attempted_models: attemptedModels,
+    const aiResult = await callAiWithModelPool({
+      keys,
+      models,
+      parts: [
+        { text: SYSTEM_PROMPT },
+        { inlineData: { mimeType, data: base64Data } },
+        { text: '请分析这张券商截图，提取所有可识别的交易记录。' },
+      ],
+      maxOutputTokens: 4096,
+      responseMimeType: 'application/json',
+      temperature: 0.1,
+      preferredRetries: 3,
     });
+    const parsed = parseAiJsonObject(aiResult.rawResponse);
+    const metadata = buildAiMetadata(aiResult, preferredModel);
 
-    for (let attempt = 0; attempt < MAX_PREFERRED_RETRIES; attempt++) {
-      try {
-        attemptedModels.push(preferredModel);
-        const result = await tryModel(preferredModel);
-        if (result.success) {
-          return res.status(200).json(withOcrMeta(result.data, result.modelUsed));
-        }
-        lastError = result.error;
-        // If 503/429, wait 3 seconds before retry
-        if ((result.status === 503 || result.status === 429) && attempt < MAX_PREFERRED_RETRIES - 1) {
-          retryCount++;
-          console.log(`[OCR API] Preferred model ${preferredModel} overloaded, retrying in 3s (attempt ${attempt + 1}/${MAX_PREFERRED_RETRIES})`);
-          await sleep(3000);
-        } else {
-          // Other errors (400, 404, etc.) — don't retry, go to fallback
-          break;
-        }
-      } catch (err) {
-        console.error(`[OCR API] Preferred model exception:`, err);
-        lastError = err.message;
-        break;
-      }
-    }
-
-    // Fallback to alternative models (no retries, just try each once)
-    for (const fbModel of fallbackModels) {
-      try {
-        attemptedModels.push(fbModel);
-        const result = await tryModel(fbModel);
-        if (result.success) {
-          return res.status(200).json(withOcrMeta(result.data, result.modelUsed));
-        }
-        lastError = result.error;
-      } catch (err) {
-        console.error(`[OCR API] Fallback model ${fbModel} exception:`, err);
-        lastError = err.message;
-      }
-    }
-
-    return res.status(502).json({
-      error: 'Gemini API 调用失败',
-      details: typeof lastError === 'string' ? lastError : '所有模型重试后仍失败'
+    return res.status(200).json({
+      ...parsed,
+      ...metadata,
     });
   } catch (err) {
     console.error('[OCR API] Error:', err);

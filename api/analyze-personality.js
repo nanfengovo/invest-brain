@@ -1,26 +1,41 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import {
+  buildAiMetadata,
+  callAiWithModelPool,
+  getAiKeys,
+  getAiModelPool,
+  hasAnyAiKey,
+  parseAiJsonObject,
+} from './_lib/aiProviders.js';
 
 export default async function handler(req, res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-gemini-api-key, x-nvidia-api-key');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    const { data } = req.body;
+    const {
+      data,
+      aiProvider = 'auto',
+      model,
+      textModel,
+    } = req.body || {};
     
-    // Check local API key header first, fallback to env variable
-    const apiKey = req.headers['x-gemini-api-key'] || process.env.GEMINI_API_KEY;
-
-    if (!apiKey) {
-      return res.status(401).json({ error: '请在设置页面配置 Gemini API Key' });
+    const keys = getAiKeys(req);
+    if (!hasAnyAiKey(keys)) {
+      return res.status(401).json({ error: '请在设置页面配置 Gemini API Key 或 NVIDIA API Key' });
     }
 
     if (!data || data.length === 0) {
       return res.status(400).json({ error: '没有足够的数据进行分析' });
     }
-
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
 
     const prompt = `你是一位华尔街资深的量化分析师和交易教练。
 我将提供给你一个交易员最近一段时间的“决策与复盘闭环数据”。每一条记录都包含了他买入/卖出时的【原始决策逻辑】以及平仓后的【复盘反思】。
@@ -55,20 +70,37 @@ ${JSON.stringify(data.slice(0, 20), null, 2)}
   ]
 }`;
 
-    const result = await model.generateContent(prompt);
-    const responseText = result.response.text();
-    
-    // Clean up potential markdown formatting from Gemini's response
-    let jsonStr = responseText;
-    if (jsonStr.startsWith('\`\`\`json')) {
-      jsonStr = jsonStr.replace(/^\`\`\`json\n/, '').replace(/\n\`\`\`$/, '');
-    } else if (jsonStr.startsWith('\`\`\`')) {
-      jsonStr = jsonStr.replace(/^\`\`\`\n/, '').replace(/\n\`\`\`$/, '');
-    }
+    const requestedModel = String(model || textModel || '').trim();
+    const models = getAiModelPool({
+      task: 'text',
+      provider: aiProvider,
+      requestedModel,
+      configuredValues: [
+        process.env.NVIDIA_INSIGHT_MODELS,
+        process.env.NVIDIA_MODELS,
+        process.env.NVIDIA_MODEL,
+        process.env.GEMINI_INSIGHT_MODELS,
+        process.env.GEMINI_MODELS,
+        'gemini-1.5-pro',
+      ],
+      keys,
+    });
+    const aiResult = await callAiWithModelPool({
+      keys,
+      models,
+      parts: [{ text: prompt }],
+      maxOutputTokens: 4096,
+      responseMimeType: 'application/json',
+      temperature: 0.2,
+    });
+    const metadata = buildAiMetadata(aiResult, requestedModel || models[0]);
+    const parsedData = parseAiJsonObject(aiResult.rawResponse);
 
-    const parsedData = JSON.parse(jsonStr);
-
-    res.status(200).json(parsedData);
+    res.status(200).json({
+      ...parsedData,
+      ...metadata,
+      _meta: metadata,
+    });
   } catch (error) {
     console.error('AI Insight Error:', error);
     res.status(500).json({ error: error.message || 'AI 分析失败' });

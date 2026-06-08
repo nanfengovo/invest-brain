@@ -38,6 +38,7 @@ export default function SectorGrid({ items, colorConvention, refreshing = false 
             type="button"
             className={`market-sector-row market-live-row ${flashClass}`}
             key={`${item.symbol || 'sector'}-${index}`}
+            style={{ '--market-row-index': index }}
             onClick={() => item.symbol && navigate(`/stock/${item.symbol}`)}
           >
             <div className="market-sector-row__left">

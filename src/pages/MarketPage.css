@@ -637,6 +637,30 @@
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045), 0 16px 38px rgba(0, 0, 0, 0.28);
 }
 
+.market-live-board {
+  isolation: isolate;
+  transform: translateZ(0);
+}
+
+.market-live-board::after {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  content: '';
+  background:
+    radial-gradient(circle at 18% 18%, rgba(36, 216, 174, 0.12), transparent 26%),
+    radial-gradient(circle at 82% 66%, rgba(141, 183, 255, 0.1), transparent 28%),
+    linear-gradient(100deg, transparent 0%, rgba(255, 255, 255, 0.045) 42%, rgba(36, 216, 174, 0.1) 50%, transparent 62%);
+  background-size: 160% 160%, 180% 180%, 46% 100%;
+  mix-blend-mode: screen;
+  opacity: 0.48;
+  transform: translate3d(-18%, 0, 0);
+  animation:
+    market-live-board-scan 560ms linear infinite,
+    market-live-board-color-pulse 920ms ease-in-out infinite;
+}
+
 .market-sector-row {
   position: relative;
   display: flex;
@@ -654,6 +678,28 @@
   isolation: isolate;
   transition: background 180ms ease, box-shadow 180ms ease, transform 180ms ease;
   will-change: transform;
+}
+
+.market-live-row::before {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  content: '';
+  background:
+    linear-gradient(90deg, transparent 0%, rgba(141, 183, 255, 0.045) 38%, rgba(36, 216, 174, 0.08) 50%, transparent 68%);
+  opacity: 0;
+  transform: translate3d(-82%, 0, 0);
+  animation: market-live-row-spark 760ms linear infinite;
+  animation-delay: calc(var(--market-row-index, 0) * 58ms);
+}
+
+.market-live-row:nth-child(2n)::before {
+  animation-duration: 680ms;
+}
+
+.market-live-row:nth-child(3n)::before {
+  animation-duration: 840ms;
 }
 
 .market-sector-row:nth-child(odd) {
@@ -960,6 +1006,15 @@
   animation: market-number-pop-down 720ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+.market-live-row .market-sector-row__price,
+.market-live-row .market-sector-row__change,
+.market-live-row .market-watchlist-row__price,
+.market-live-row .market-watchlist-row__change {
+  animation: market-live-number-tick 620ms ease-in-out infinite;
+  animation-delay: calc(var(--market-row-index, 0) * 43ms);
+  will-change: filter, text-shadow;
+}
+
 .market-board--refreshing::before {
   position: absolute;
   inset: 0;
@@ -974,7 +1029,47 @@
 }
 
 .market-board--refreshing {
-  animation: market-board-breathe 1.15s ease-in-out infinite;
+  animation: market-board-breathe 620ms ease-in-out infinite;
+}
+
+@keyframes market-live-board-scan {
+  0% {
+    background-position: 0% 0%, 100% 100%, -42% 0;
+    transform: translate3d(-18%, 0, 0);
+  }
+  100% {
+    background-position: 72% 42%, 28% 72%, 142% 0;
+    transform: translate3d(18%, 0, 0);
+  }
+}
+
+@keyframes market-live-board-color-pulse {
+  0%,
+  100% {
+    opacity: 0.34;
+    filter: saturate(1);
+  }
+  45% {
+    opacity: 0.62;
+    filter: saturate(1.28);
+  }
+}
+
+@keyframes market-live-row-spark {
+  0% {
+    opacity: 0;
+    transform: translate3d(-86%, 0, 0);
+  }
+  24% {
+    opacity: 0.62;
+  }
+  58% {
+    opacity: 0.28;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(86%, 0, 0);
+  }
 }
 
 @keyframes market-row-flash-up {
@@ -1063,6 +1158,18 @@
   }
 }
 
+@keyframes market-live-number-tick {
+  0%,
+  100% {
+    filter: brightness(1);
+    text-shadow: none;
+  }
+  48% {
+    filter: brightness(1.18);
+    text-shadow: 0 0 10px rgba(141, 183, 255, 0.18);
+  }
+}
+
 @keyframes market-board-scan {
   0% {
     transform: translateX(-115%);
@@ -1085,6 +1192,8 @@
 @media (prefers-reduced-motion: reduce) {
   .market-board--refreshing,
   .market-board--refreshing::before,
+  .market-live-board::after,
+  .market-live-row::before,
   .market-flash--up,
   .market-flash--down,
   .market-flash--up::after,
@@ -1100,7 +1209,11 @@
   .market-flash--down .market-watchlist-row__price,
   .market-flash--down .market-watchlist-row__change,
   .market-flash--down .market-index-card__price,
-  .market-flash--down .market-index-card__change {
+  .market-flash--down .market-index-card__change,
+  .market-live-row .market-sector-row__price,
+  .market-live-row .market-sector-row__change,
+  .market-live-row .market-watchlist-row__price,
+  .market-live-row .market-watchlist-row__change {
     animation: none;
   }
 }

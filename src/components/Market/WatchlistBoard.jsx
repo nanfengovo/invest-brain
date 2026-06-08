@@ -54,7 +54,7 @@ export default function WatchlistBoard({ items, colorConvention, onRemove, refre
 
   return (
     <div className={`market-watchlist-board market-live-board ${refreshing ? 'market-board--refreshing' : ''}`}>
-      {items.map((item) => {
+      {items.map((item, index) => {
         const hasPrice = item.price !== null && item.price !== undefined;
         const isUpRaw = (item.pctChange || 0) > 0;
         const isNeutral = item.pctChange === null || item.pctChange === undefined || item.pctChange === 0;
@@ -67,6 +67,7 @@ export default function WatchlistBoard({ items, colorConvention, onRemove, refre
           <div
             className={`market-watchlist-row market-live-row ${flashClass}`}
             key={item.symbol}
+            style={{ '--market-row-index': index }}
             role="button"
             tabIndex={0}
             onClick={() => navigate(`/stock/${item.symbol}`)}

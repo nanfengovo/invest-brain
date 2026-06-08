@@ -51,6 +51,12 @@ test('market boards expose high-frequency refresh and directional background mot
   assert.match(css, /market-row-wash-down/);
   assert.match(css, /market-number-pop-up/);
   assert.match(css, /market-number-pop-down/);
+  assert.match(css, /market-live-board-scan/);
+  assert.match(css, /market-live-row-spark/);
+  assert.match(css, /market-live-number-tick/);
+  assert.match(css, /560ms linear infinite/);
+  assert.match(sectorGrid, /--market-row-index/);
+  assert.match(watchlist, /--market-row-index/);
   assert.match(css, /background-color: rgba\(var\(--market-flash-up-rgb\)/);
   assert.match(css, /background-color: rgba\(var\(--market-flash-down-rgb\)/);
 });

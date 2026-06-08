@@ -74,6 +74,42 @@ export default function DashboardPage() {
       : '当前没有未关联交易，执行闭环保持完整。';
   const funnelBadge = isWarning ? '待补齐' : tradeCount > 0 ? '已闭环' : '未开始';
   const funnelBadgeIcon = isWarning ? '!' : tradeCount > 0 ? '✓' : '·';
+  const funnelFocusTitle = !hasDisciplineSample
+    ? '等待第一笔闭环记录'
+    : isWarning
+      ? '交易缺少决策来源'
+      : '交易链路完整';
+  const funnelFocusCopy = !hasDisciplineSample
+    ? '先沉淀情报、观点和决策，再记录交易执行。'
+    : isWarning
+      ? `${strayTradesCount} 笔交易还没有关联到决策，建议优先补齐来源。`
+      : '当前交易都能追溯到对应决策，可以继续复盘沉淀。';
+  const funnelSteps = [
+    {
+      label: '情报',
+      value: infoCount,
+      hint: '线索池',
+      tone: infoCount > 0 ? 'filled' : 'empty',
+    },
+    {
+      label: '观点',
+      value: viewpointCount,
+      hint: '判断',
+      tone: viewpointCount > 0 ? 'filled' : 'empty',
+    },
+    {
+      label: '决策',
+      value: decisionCount,
+      hint: '计划',
+      tone: decisionCount > 0 ? 'filled' : 'empty',
+    },
+    {
+      label: '交易',
+      value: tradeCount,
+      hint: isWarning ? `${strayTradesCount} 笔游离` : '执行',
+      tone: isWarning ? 'risk' : tradeCount > 0 ? 'filled' : 'empty',
+    },
+  ];
   const activeDecisionCount = activeDecisionPool.length;
   const actionItems = [
     {
@@ -176,7 +212,7 @@ export default function DashboardPage() {
 
       {/* Module 3: Execution Funnel */}
       <Card className="dashboard-home-card" bodyStyle={{ padding: '16px' }}>
-        <div className="flex justify-between items-start mb-6">
+        <div className="flex justify-between items-start mb-4">
           <div className="flex flex-col">
             <span className="dashboard-home-eyebrow text-[10px] mb-0.5">执行闭环</span>
             <span className="dashboard-home-title text-sm font-medium">决策执行漏斗</span>
@@ -191,87 +227,89 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="flex justify-between items-center mb-6 px-1">
-          <div className="flex flex-col items-center gap-2 flex-1">
-            <span className="dashboard-home-eyebrow text-[11px]">情报</span>
-            <div className="dashboard-funnel-box w-12 h-12 rounded-lg flex items-center justify-center text-lg font-bold">{infoCount}</div>
+        <div className={`dashboard-closure-focus ${isWarning ? 'is-risk' : tradeCount > 0 ? 'is-calm' : 'is-idle'}`}>
+          <div className="dashboard-closure-focus__copy">
+            <span className="dashboard-closure-focus__label">当前断点</span>
+            <strong>{funnelFocusTitle}</strong>
+            <span>{funnelFocusCopy}</span>
           </div>
-          <span className="dashboard-funnel-arrow text-xs mt-6">→</span>
-          <div className="flex flex-col items-center gap-2 flex-1">
-            <span className="dashboard-home-eyebrow text-[11px]">观点</span>
-            <div className="dashboard-funnel-box w-12 h-12 rounded-lg flex items-center justify-center text-lg font-bold">{viewpointCount}</div>
-          </div>
-          <span className="dashboard-funnel-arrow text-xs mt-6">→</span>
-          <div className="flex flex-col items-center gap-2 flex-1">
-            <span className="dashboard-home-eyebrow text-[11px]">决策</span>
-            <div className="dashboard-funnel-box w-12 h-12 rounded-lg flex items-center justify-center text-lg font-bold">{decisionCount}</div>
-          </div>
-          <span className="dashboard-funnel-arrow text-xs mt-6">→</span>
-          <div className="flex flex-col items-center gap-2 flex-1">
-            <span className="dashboard-home-eyebrow text-[11px]">交易</span>
-            <div className={`dashboard-funnel-box w-12 h-12 rounded-lg flex items-center justify-center text-lg font-bold ${isWarning ? 'is-warning' : ''}`}>
-              {tradeCount}
-            </div>
-          </div>
+          <button
+            className="dashboard-closure-focus__action"
+            type="button"
+            onClick={() => navigate(isWarning ? '/trades' : '/decisions')}
+          >
+            {isWarning ? '去补齐' : '看决策'}
+          </button>
         </div>
 
-        {isWarning && (
-          <div className="dashboard-home-warning p-3 rounded-lg flex flex-col gap-1.5">
-            <span className="text-xs font-semibold">异常交易提醒</span>
-            <span className="text-[11px] leading-relaxed">
-              存在 {strayTradesCount} 笔游离交易未关联决策，建议先完成复盘再继续加仓。
-            </span>
-          </div>
-        )}
+        <div className="dashboard-flow-strip">
+          {funnelSteps.map((step, index) => (
+            <div key={step.label} className={`dashboard-flow-step is-${step.tone}`}>
+              <div className="dashboard-flow-step__rail">
+                <span className="dashboard-flow-step__dot" />
+              </div>
+              <span className="dashboard-flow-step__label">{step.label}</span>
+              <strong>{step.value}</strong>
+              <span className="dashboard-flow-step__hint">{step.hint}</span>
+              {index < funnelSteps.length - 1 && <span className="dashboard-flow-step__connector" />}
+            </div>
+          ))}
+        </div>
       </Card>
 
       {/* Module 4: Active Decisions */}
       <div className="dashboard-active-section mt-2 mb-4">
-        <div className="dashboard-active-head">
-          <div className="dashboard-section-label text-xs font-medium">活跃决策追踪</div>
-          <button className="dashboard-inline-action" onClick={() => navigate('/decisions?new=1')}>新建决策</button>
-        </div>
-        {activeDecisions.length > 0 ? (
-          <div className="flex flex-col gap-3">
-            {activeDecisions.map((d) => (
-              <Card 
-                key={d.id} 
-                className="dashboard-home-card dashboard-home-card--flush dashboard-decision-card"
-                bodyStyle={{ padding: '12px 16px' }}
-                onClick={() => navigate('/decisions')}
-              >
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center">
-                    <span className="dashboard-decision-chip text-[10px] px-1.5 py-0.5 rounded tracking-wide">
+        <div className="dashboard-active-panel">
+          <div className="dashboard-active-head">
+            <div className="dashboard-active-title">
+              <span className="dashboard-section-label text-xs font-medium">决策队列</span>
+              <strong>活跃决策追踪</strong>
+            </div>
+            <button className="dashboard-inline-action" type="button" onClick={() => navigate('/decisions?new=1')}>
+              新建
+            </button>
+          </div>
+          {activeDecisions.length > 0 ? (
+            <div className="dashboard-active-list">
+              {activeDecisions.map((d) => (
+                <button
+                  key={d.id}
+                  className="dashboard-decision-card"
+                  type="button"
+                  onClick={() => navigate('/decisions')}
+                >
+                  <div className="dashboard-decision-card__main">
+                    <span className="dashboard-decision-chip">
                       {DECISION_STATUS_LABELS[d.status] || '跟踪中'} · 重要度 {d.priority || 3}
                     </span>
-                  </div>
-                  <div className="dashboard-decision-title text-sm font-semibold tracking-wide truncate">
-                    {d.title || `${d.asset_symbol || d.asset_id || ''} 建仓决策`}
-                  </div>
-                  <div className="dashboard-decision-meta text-[10px] mt-1 flex justify-between items-center">
-                    <span>
+                    <span className="dashboard-decision-title">
+                      {d.title || `${d.asset_symbol || d.asset_id || ''} 建仓决策`}
+                    </span>
+                    <span className="dashboard-decision-meta">
                       交易 <span className="dashboard-inline-strong">{d.trade_count || 0}</span>
                       {' '}· 证据 <span className="dashboard-inline-strong">{d.linked_info_count || 0}</span>
                       {' '}· {d.asset_symbol || d.asset_id || '未绑定'}
                     </span>
-                    <span className="dashboard-decision-arrow">→</span>
                   </div>
-                </div>
-              </Card>
-            ))}
-          </div>
-        ) : (
-          <Card className="dashboard-home-card dashboard-home-card--flush" bodyStyle={{ padding: '12px 16px' }}>
-            <div className="dashboard-empty-decision">
-              <div>
-                <div className="dashboard-decision-title text-sm font-semibold">暂无活跃决策</div>
-                <div className="dashboard-decision-meta text-[10px] mt-1">新建决策后会在这里持续跟踪执行状态。</div>
-              </div>
-              <button className="dashboard-inline-action" onClick={() => navigate('/decisions?new=1')}>新建</button>
+                  <span className="dashboard-decision-arrow">→</span>
+                </button>
+              ))}
             </div>
-          </Card>
-        )}
+          ) : (
+            <button
+              className="dashboard-active-empty"
+              type="button"
+              onClick={() => navigate('/decisions?new=1')}
+            >
+              <span className="dashboard-active-empty__mark">+</span>
+              <span className="dashboard-active-empty__copy">
+                <strong>暂无活跃决策</strong>
+                <span>0 条执行中 · 可新建一条跟踪项</span>
+              </span>
+              <span className="dashboard-decision-arrow">→</span>
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="dashboard-action-section">

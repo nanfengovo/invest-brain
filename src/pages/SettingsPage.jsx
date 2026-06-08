@@ -21,7 +21,16 @@ const PERSONAL_SYNC_TABLES = [
   'trades',
   'price_alerts',
 ];
-const TEAM_SYNC_TABLES = ['assets', 'trades'];
+const TEAM_SYNC_TABLES = [
+  'assets',
+  'informations',
+  'information_asset_links',
+  'information_sector_links',
+  'decisions',
+  'decision_info_links',
+  'viewpoints',
+  'trades',
+];
 
 function AgentLogo() {
   return (
@@ -169,7 +178,7 @@ function SettingsPage() {
 
       const confirmed = await Dialog.confirm({
         title: '确认导入并覆盖',
-        content: `全量恢复将清除当前所有数据并导入 "${file.name}"。此操作不可撤销。确定继续？`,
+        content: `全量恢复将清除当前所有数据并导入 "${file.name}"，包括本地配置、个人数据和团队镜像。它不是团队合并操作，此操作不可撤销。确定继续？`,
         confirmText: '确认覆盖',
         cancelText: '取消',
       });
@@ -538,9 +547,13 @@ function SettingsPage() {
       });
 
       const tradeCount = exportData?.tables?.trades?.length || 0;
-      if (tradeCount === 0) {
+      const infoCount = exportData?.tables?.informations?.length || 0;
+      const decisionCount = exportData?.tables?.decisions?.length || 0;
+      const viewpointCount = exportData?.tables?.viewpoints?.length || 0;
+      const totalCount = tradeCount + infoCount + decisionCount + viewpointCount;
+      if (totalCount === 0) {
         Toast.clear();
-        Toast.show({ content: '当前花名下没有可同步的个人交易记录' });
+        Toast.show({ content: scope === 'team' ? '没有可发布到团队的数据，请先标记情报、决策或确认有个人交易记录' : '当前花名下没有可同步的个人工作区数据' });
         return;
       }
 
@@ -568,8 +581,20 @@ function SettingsPage() {
       }
       if (!res.ok) throw new Error(responseData?.error || '上传失败');
 
+      await db.markWorkspaceSyncStatus({
+        author: syncUserId,
+        scope: 'personal',
+        targetScope: scope,
+      });
+      await refreshAll();
+
       Toast.clear();
-      Toast.show({ icon: 'success', content: scope === 'team' ? `已发布 ${tradeCount} 笔我的交易到团队空间` : `个人云端备份已完成（${tradeCount} 笔）` });
+      Toast.show({
+        icon: 'success',
+        content: scope === 'team'
+          ? `已发布到团队：交易 ${tradeCount}，情报 ${infoCount}，决策 ${decisionCount}，观点 ${viewpointCount}`
+          : `个人云端备份已完成（${totalCount} 条）`,
+      });
     } catch (e) {
       Toast.clear();
       Toast.show({ icon: 'fail', content: e.message });
@@ -607,7 +632,7 @@ function SettingsPage() {
       Toast.show({ icon: 'loading', content: `刷新 ${responseData.usersFound} 位成员的团队镜像...`, duration: 0 });
       
       const jsonString = JSON.stringify(responseData.mergedData);
-      await db.clearTradeWorkspace('team');
+      await db.clearWorkspace('team');
       await db.importDB(jsonString, true, {
         allowedTables: TEAM_SYNC_TABLES,
         workspaceScope: 'team',
@@ -653,6 +678,17 @@ function SettingsPage() {
         return;
       }
 
+      const confirmed = await Dialog.confirm({
+        title: '确认恢复个人云端备份？',
+        content: '恢复会把云端同 ID 的个人记录合并到本机；如果本机和云端都改过同一条记录，云端记录可能覆盖本机内容。团队镜像和私密配置不会被恢复覆盖。',
+        confirmText: '确认恢复',
+        cancelText: '取消',
+      });
+      if (!confirmed) {
+        Toast.clear();
+        return;
+      }
+
       Toast.show({ icon: 'loading', content: '恢复并合并数据...', duration: 0 });
       
       const jsonString = JSON.stringify(responseData.mergedData);
@@ -670,6 +706,41 @@ function SettingsPage() {
     } catch (e) {
       Toast.clear();
       Toast.show({ icon: 'fail', content: e.message });
+    }
+  }
+
+  async function handleWithdrawTeamData() {
+    if (!syncUserId || !syncSecret) {
+      Toast.show({ icon: 'fail', content: '请先填写并保存同步凭证' });
+      return;
+    }
+    const confirmed = await Dialog.confirm({
+      title: '撤回团队发布？',
+      content: '将从云端团队空间删除当前花名发布的数据。其他成员下次拉取团队空间后，将不再看到您的团队镜像数据；个人云端备份不会受影响。',
+      confirmText: '确认撤回',
+      cancelText: '取消',
+    });
+    if (!confirmed) return;
+    try {
+      Toast.show({ icon: 'loading', content: '正在撤回团队发布...', duration: 0 });
+      const res = await fetch('/api/sync-upload?action=withdraw-team&scope=team', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${encodeURIComponent(syncSecret)}`
+        },
+        body: JSON.stringify({
+          userId: syncUserId,
+          scope: 'team',
+        }),
+      });
+      const responseData = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(responseData?.error || '撤回失败');
+      Toast.clear();
+      Toast.show({ icon: 'success', content: responseData?.message || '已撤回团队发布' });
+    } catch (e) {
+      Toast.clear();
+      Toast.show({ icon: 'fail', content: e.message || '撤回团队发布失败' });
     }
   }
 
@@ -1011,7 +1082,7 @@ function SettingsPage() {
             <div className="settings-card__content">
               <div className="settings-card__label">同步身份与暗号</div>
               <div className="settings-card__desc">
-                新交易和导入记录会自动标记当前花名；发布团队时只提交此花名下的个人记录。
+                新交易、情报、决策和观点会自动标记当前花名；团队发布只提交此花名下的个人记录和已标记团队可见的内容。
               </div>
             </div>
           </div>
@@ -1060,7 +1131,7 @@ function SettingsPage() {
             <span className="settings-card__icon">🚀</span>
             <div className="settings-card__content">
               <div className="settings-card__label">备份我的云端数据</div>
-              <div className="settings-card__desc">保存个人工作区数据；不会上传 API Key、同步暗号和通知配置</div>
+              <div className="settings-card__desc">保存个人工作区数据；不会上传 API Key、同步暗号和通知配置，也不会自动发布团队</div>
             </div>
             <span className="settings-card__arrow">›</span>
           </div>
@@ -1070,7 +1141,17 @@ function SettingsPage() {
             <span className="settings-card__icon">🤝</span>
             <div className="settings-card__content">
               <div className="settings-card__label">同步到团队空间</div>
-              <div className="settings-card__desc">只发布当前花名的交易和资产快照，供团队成员聚合查看</div>
+              <div className="settings-card__desc">发布当前花名的交易，以及已标记团队可见的情报、决策和观点</div>
+            </div>
+            <span className="settings-card__arrow">›</span>
+          </div>
+
+          <div className="settings-card__divider" />
+          <div className="settings-card__row" onClick={handleWithdrawTeamData}>
+            <span className="settings-card__icon">↩</span>
+            <div className="settings-card__content">
+              <div className="settings-card__label">撤回我的团队发布</div>
+              <div className="settings-card__desc">从云端团队空间移除当前花名发布的数据，不影响个人云端备份</div>
             </div>
             <span className="settings-card__arrow">›</span>
           </div>
@@ -1080,7 +1161,7 @@ function SettingsPage() {
             <span className="settings-card__icon">🔄</span>
             <div className="settings-card__content">
               <div className="settings-card__label">恢复我的云端数据</div>
-              <div className="settings-card__desc">仅拉取我自己的个人备份并合并到个人工作区</div>
+              <div className="settings-card__desc">仅拉取我自己的个人备份并合并到个人工作区；同 ID 记录可能覆盖本机版本</div>
             </div>
             <span className="settings-card__arrow">›</span>
           </div>
@@ -1090,7 +1171,7 @@ function SettingsPage() {
             <span className="settings-card__icon">📥</span>
             <div className="settings-card__content">
               <div className="settings-card__label">拉取团队空间数据</div>
-              <div className="settings-card__desc">只刷新团队交易镜像，不覆盖个人工作区和私密配置</div>
+              <div className="settings-card__desc">刷新团队镜像数据，不覆盖个人工作区和私密配置</div>
             </div>
             <span className="settings-card__arrow">›</span>
           </div>
@@ -1114,7 +1195,7 @@ function SettingsPage() {
             <span className="settings-card__icon">📥</span>
             <div className="settings-card__content">
               <div className="settings-card__label">全量导入覆盖 (恢复)</div>
-              <div className="settings-card__desc">从备份文件恢复数据 (将清空现有数据)</div>
+              <div className="settings-card__desc">从备份文件恢复整个数据库，会覆盖本地配置；不是团队合并</div>
             </div>
             <span className="settings-card__arrow">›</span>
           </div>

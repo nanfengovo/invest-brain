@@ -261,6 +261,76 @@ export const MIGRATIONS = [
       `CREATE INDEX IF NOT EXISTS idx_trades_source_author ON trades(source_author)`,
       `CREATE INDEX IF NOT EXISTS idx_trades_origin ON trades(origin_id, workspace_scope)`
     ]
+  },
+  {
+    version: 11,
+    description: 'Phase 11: Workspace-scoped collaboration metadata',
+    statements: [
+      `ALTER TABLE trades ADD COLUMN updated_at INTEGER`,
+      `UPDATE trades SET updated_at = COALESCE(updated_at, created_at, unixepoch())`,
+
+      `ALTER TABLE informations ADD COLUMN author TEXT`,
+      `ALTER TABLE informations ADD COLUMN workspace_scope TEXT DEFAULT 'personal'`,
+      `ALTER TABLE informations ADD COLUMN source_author TEXT`,
+      `ALTER TABLE informations ADD COLUMN source_scope TEXT DEFAULT 'personal'`,
+      `ALTER TABLE informations ADD COLUMN origin_id TEXT`,
+      `ALTER TABLE informations ADD COLUMN sync_status TEXT DEFAULT 'local'`,
+      `ALTER TABLE informations ADD COLUMN team_visible INTEGER DEFAULT 0`,
+      `ALTER TABLE informations ADD COLUMN updated_at INTEGER`,
+      `UPDATE informations
+          SET author = COALESCE(NULLIF(TRIM(author), ''), '未标记'),
+              workspace_scope = COALESCE(NULLIF(TRIM(workspace_scope), ''), 'personal'),
+              source_author = COALESCE(NULLIF(TRIM(source_author), ''), COALESCE(NULLIF(TRIM(author), ''), '未标记')),
+              source_scope = COALESCE(NULLIF(TRIM(source_scope), ''), 'personal'),
+              origin_id = COALESCE(NULLIF(TRIM(origin_id), ''), id),
+              sync_status = COALESCE(NULLIF(TRIM(sync_status), ''), 'local'),
+              team_visible = COALESCE(team_visible, 0),
+              updated_at = COALESCE(updated_at, created_at, unixepoch())`,
+      `CREATE INDEX IF NOT EXISTS idx_informations_workspace_scope ON informations(workspace_scope)`,
+      `CREATE INDEX IF NOT EXISTS idx_informations_source_author ON informations(source_author)`,
+      `CREATE INDEX IF NOT EXISTS idx_informations_origin ON informations(origin_id, workspace_scope)`,
+      `CREATE INDEX IF NOT EXISTS idx_informations_team_visible ON informations(team_visible)`,
+
+      `ALTER TABLE decisions ADD COLUMN author TEXT`,
+      `ALTER TABLE decisions ADD COLUMN workspace_scope TEXT DEFAULT 'personal'`,
+      `ALTER TABLE decisions ADD COLUMN source_author TEXT`,
+      `ALTER TABLE decisions ADD COLUMN source_scope TEXT DEFAULT 'personal'`,
+      `ALTER TABLE decisions ADD COLUMN origin_id TEXT`,
+      `ALTER TABLE decisions ADD COLUMN sync_status TEXT DEFAULT 'local'`,
+      `ALTER TABLE decisions ADD COLUMN team_visible INTEGER DEFAULT 0`,
+      `UPDATE decisions
+          SET author = COALESCE(NULLIF(TRIM(author), ''), '未标记'),
+              workspace_scope = COALESCE(NULLIF(TRIM(workspace_scope), ''), 'personal'),
+              source_author = COALESCE(NULLIF(TRIM(source_author), ''), COALESCE(NULLIF(TRIM(author), ''), '未标记')),
+              source_scope = COALESCE(NULLIF(TRIM(source_scope), ''), 'personal'),
+              origin_id = COALESCE(NULLIF(TRIM(origin_id), ''), id),
+              sync_status = COALESCE(NULLIF(TRIM(sync_status), ''), 'local'),
+              team_visible = COALESCE(team_visible, 0)`,
+      `CREATE INDEX IF NOT EXISTS idx_decisions_workspace_scope ON decisions(workspace_scope)`,
+      `CREATE INDEX IF NOT EXISTS idx_decisions_source_author ON decisions(source_author)`,
+      `CREATE INDEX IF NOT EXISTS idx_decisions_origin ON decisions(origin_id, workspace_scope)`,
+      `CREATE INDEX IF NOT EXISTS idx_decisions_team_visible ON decisions(team_visible)`,
+
+      `ALTER TABLE viewpoints ADD COLUMN workspace_scope TEXT DEFAULT 'personal'`,
+      `ALTER TABLE viewpoints ADD COLUMN source_author TEXT`,
+      `ALTER TABLE viewpoints ADD COLUMN source_scope TEXT DEFAULT 'personal'`,
+      `ALTER TABLE viewpoints ADD COLUMN origin_id TEXT`,
+      `ALTER TABLE viewpoints ADD COLUMN sync_status TEXT DEFAULT 'local'`,
+      `ALTER TABLE viewpoints ADD COLUMN team_visible INTEGER DEFAULT 0`,
+      `UPDATE viewpoints
+          SET author = COALESCE(NULLIF(TRIM(author), ''), '未标记'),
+              workspace_scope = COALESCE(NULLIF(TRIM(workspace_scope), ''), 'personal'),
+              source_author = COALESCE(NULLIF(TRIM(source_author), ''), COALESCE(NULLIF(TRIM(author), ''), '未标记')),
+              source_scope = COALESCE(NULLIF(TRIM(source_scope), ''), 'personal'),
+              origin_id = COALESCE(NULLIF(TRIM(origin_id), ''), id),
+              sync_status = COALESCE(NULLIF(TRIM(sync_status), ''), 'local'),
+              team_visible = COALESCE(team_visible, 0),
+              updated_at = COALESCE(updated_at, created_at, unixepoch())`,
+      `CREATE INDEX IF NOT EXISTS idx_viewpoints_workspace_scope ON viewpoints(workspace_scope)`,
+      `CREATE INDEX IF NOT EXISTS idx_viewpoints_source_author ON viewpoints(source_author)`,
+      `CREATE INDEX IF NOT EXISTS idx_viewpoints_origin ON viewpoints(origin_id, workspace_scope)`,
+      `CREATE INDEX IF NOT EXISTS idx_viewpoints_team_visible ON viewpoints(team_visible)`
+    ]
   }
 ];
 

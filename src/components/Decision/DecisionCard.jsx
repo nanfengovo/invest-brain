@@ -1,6 +1,8 @@
 import { useCallback, useState } from 'react';
 import { SwipeAction, Dialog, Toast, ActionSheet, Popup } from 'antd-mobile';
 import { useTradeStore } from '../../stores/useTradeStore';
+import { db } from '../../db/database';
+import { getSyncStatusMeta } from '../../utils/syncStatus';
 import ReviewForm from './ReviewForm';
 import './DecisionCard.css';
 
@@ -52,7 +54,7 @@ function ConfidenceStars({ value = 0 }) {
  * @param {function} [props.onEdit] - Edit handler
  * @param {function} [props.onRefresh] - Reload handler after state changes
  */
-export default function DecisionCard({ decision, index = 0, onClick, onEdit, onRefresh }) {
+export default function DecisionCard({ decision, index = 0, onClick, onEdit, onRefresh, readOnly = false }) {
   const [actionSheetVisible, setActionSheetVisible] = useState(false);
   const [showReviewForm, setShowReviewForm] = useState(false);
   const deleteDecision = useTradeStore((s) => s.deleteDecision);
@@ -67,8 +69,14 @@ export default function DecisionCard({ decision, index = 0, onClick, onEdit, onR
     .filter(Boolean)
     .slice(0, 2)
     .join('、');
+  const syncMeta = getSyncStatusMeta(decision);
+  const isTeamVisible = decision.team_visible === 1 || decision.team_visible === true;
 
   const handleDelete = useCallback(async () => {
+    if (readOnly) {
+      Toast.show({ content: '团队工作区是只读镜像，不能删除决策' });
+      return;
+    }
     Dialog.show({
       content: '确定删除这条决策记录？',
       closeOnAction: true,
@@ -90,9 +98,13 @@ export default function DecisionCard({ decision, index = 0, onClick, onEdit, onR
         },
       ]
     });
-  }, [deleteDecision, decision.id, onRefresh]);
+  }, [deleteDecision, decision.id, onRefresh, readOnly]);
 
   const handleToggleStatus = async () => {
+    if (readOnly) {
+      Toast.show({ content: '团队工作区是只读镜像，不能修改决策状态' });
+      return;
+    }
     const isFinished = ['ENDED', 'CLOSED'].includes(decision.status);
     const newStatus = isFinished ? 'ACTIVE' : 'CLOSED';
     const result = await updateDecision(decision.id, { status: newStatus });
@@ -105,6 +117,10 @@ export default function DecisionCard({ decision, index = 0, onClick, onEdit, onR
   };
 
   const handleAbandonStatus = async () => {
+    if (readOnly) {
+      Toast.show({ content: '团队工作区是只读镜像，不能修改决策状态' });
+      return;
+    }
     const isAbandoned = decision.status === 'ABANDONED';
     const newStatus = isAbandoned ? 'ACTIVE' : 'ABANDONED';
     const result = await updateDecision(decision.id, { status: newStatus });
@@ -205,6 +221,22 @@ export default function DecisionCard({ decision, index = 0, onClick, onEdit, onR
       onClick: handleDelete,
     },
   ];
+  const effectiveSwipeActions = readOnly ? [] : swipeActions;
+
+  const handleToggleTeamVisible = async (e) => {
+    e.stopPropagation();
+    if (readOnly) {
+      Toast.show({ content: '团队镜像不能直接发布或撤回，请回到个人工作区操作' });
+      return;
+    }
+    try {
+      await db.setDecisionTeamVisible(decision.id, !isTeamVisible);
+      Toast.show({ icon: 'success', content: isTeamVisible ? '已撤回团队发布标记' : '已标记为可发布到团队' });
+      onRefresh?.();
+    } catch (err) {
+      Toast.show({ icon: 'fail', content: err.message || '更新团队发布标记失败' });
+    }
+  };
 
   const handleCardClick = (e) => {
     if (onClick) onClick(e);
@@ -214,7 +246,9 @@ export default function DecisionCard({ decision, index = 0, onClick, onEdit, onR
   const isFinished = ['ENDED', 'CLOSED'].includes(decision.status);
   const isAbandoned = decision.status === 'ABANDONED';
 
-  const actions = [
+  const actions = readOnly ? [
+    { text: '团队镜像只读', key: 'readonly', disabled: true },
+  ] : [
     { text: '编辑记录', key: 'edit', onClick: () => onEdit?.() },
     { 
       text: isFinished ? '重新激活决策' : '归档完结决策', 
@@ -231,7 +265,7 @@ export default function DecisionCard({ decision, index = 0, onClick, onEdit, onR
 
   return (
     <>
-      <SwipeAction rightActions={swipeActions} className="decision-card__swipe">
+      <SwipeAction rightActions={effectiveSwipeActions} className="decision-card__swipe">
         <div
           className={`decision-card decision-card--${sentiment.className}`}
           style={{ animationDelay }}
@@ -261,6 +295,18 @@ export default function DecisionCard({ decision, index = 0, onClick, onEdit, onR
               <span className="decision-card__trace-chip decision-card__trace-chip--evidence">
                 证据 {linkedInfoCount}{linkedInfoPreview ? ` · ${linkedInfoPreview}` : ''}
               </span>
+            )}
+            <span className={`decision-card__trace-chip decision-card__trace-chip--sync ${syncMeta.className}`}>
+              {syncMeta.label}
+            </span>
+            {!readOnly && (
+              <button
+                type="button"
+                className={`decision-card__publish-btn ${isTeamVisible ? 'decision-card__publish-btn--active' : ''}`}
+                onClick={handleToggleTeamVisible}
+              >
+                {isTeamVisible ? '撤回团队' : '发布团队'}
+              </button>
             )}
           </div>
 
@@ -295,7 +341,7 @@ export default function DecisionCard({ decision, index = 0, onClick, onEdit, onR
                 </button>
               ) : (
                 // Finished, pending review
-                isFinished && (
+                isFinished && !readOnly && (
                   <button
                     className="decision-card__review-btn"
                     onClick={(e) => {

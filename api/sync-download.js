@@ -12,7 +12,16 @@ const PERSONAL_SYNC_TABLES = new Set([
   'trades',
   'price_alerts',
 ]);
-const TEAM_SYNC_TABLES = new Set(['assets', 'trades']);
+const TEAM_SYNC_TABLES = new Set([
+  'assets',
+  'informations',
+  'information_asset_links',
+  'information_sector_links',
+  'decisions',
+  'decision_info_links',
+  'viewpoints',
+  'trades',
+]);
 
 function filterDumpTables(dump, scope) {
   const allowedTables = scope === 'team' ? TEAM_SYNC_TABLES : PERSONAL_SYNC_TABLES;
@@ -28,6 +37,21 @@ function filterDumpTables(dump, scope) {
   };
 }
 
+function getRowMergeKey(tableName, row) {
+  if (!row) return null;
+  if (row.id) return row.id;
+  if (tableName === 'information_asset_links') {
+    return `${row.info_id || ''}:${row.asset_id || ''}`;
+  }
+  if (tableName === 'information_sector_links') {
+    return `${row.info_id || ''}:${row.sector || ''}`;
+  }
+  if (tableName === 'decision_info_links') {
+    return `${row.decision_id || ''}:${row.info_id || ''}`;
+  }
+  return JSON.stringify(row);
+}
+
 function mergeUserDumps(allData, scope) {
   const mergedDump = { tables: {}, version: Date.now() };
 
@@ -41,17 +65,22 @@ function mergeUserDumps(allData, scope) {
         mergedDump.tables[tableName] = [];
       }
 
-      const rowMap = new Map(mergedDump.tables[tableName].map((row) => [row.id, row]));
+      const rowMap = new Map(
+        mergedDump.tables[tableName]
+          .map((row) => [getRowMergeKey(tableName, row), row])
+          .filter(([key]) => key)
+      );
 
       for (const row of rows) {
-        if (!row?.id) continue;
-        const existing = rowMap.get(row.id);
+        const rowKey = getRowMergeKey(tableName, row);
+        if (!rowKey) continue;
+        const existing = rowMap.get(rowKey);
         if (!existing) {
-          rowMap.set(row.id, row);
+          rowMap.set(rowKey, row);
         } else if (row.updated_at && existing.updated_at) {
-          rowMap.set(row.id, row.updated_at > existing.updated_at ? row : existing);
+          rowMap.set(rowKey, row.updated_at > existing.updated_at ? row : existing);
         } else {
-          rowMap.set(row.id, row);
+          rowMap.set(rowKey, row);
         }
       }
 

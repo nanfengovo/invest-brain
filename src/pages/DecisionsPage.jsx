@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Tabs, Popup, Button } from 'antd-mobile';
 import { useTradeStore } from '../stores/useTradeStore';
+import { useAppStore } from '../stores/useAppStore';
 import { db } from '../db/database';
 import DecisionForm from '../components/Decision/DecisionForm';
 import DecisionCard from '../components/Decision/DecisionCard';
@@ -25,6 +26,8 @@ export default function DecisionsPage() {
   const [activeFilter, setActiveFilter] = useState('ALL');
 
   const { decisions, decisionsLoading, refreshDecisions } = useTradeStore();
+  const workspaceScope = useAppStore((s) => s.workspaceScope);
+  const isTeamWorkspace = workspaceScope === 'team';
 
   useEffect(() => {
     refreshDecisions();
@@ -34,6 +37,10 @@ export default function DecisionsPage() {
     const shouldOpen = searchParams.get('new') === '1';
     const infoId = searchParams.get('info_id');
     if (!shouldOpen) return;
+    if (isTeamWorkspace) {
+      setSearchParams({}, { replace: true });
+      return;
+    }
 
     let mounted = true;
     async function openFromRoute() {
@@ -56,7 +63,7 @@ export default function DecisionsPage() {
     return () => {
       mounted = false;
     };
-  }, [searchParams]);
+  }, [searchParams, isTeamWorkspace, setSearchParams]);
 
   const filteredDecisions =
     activeFilter === 'ALL'
@@ -78,12 +85,14 @@ export default function DecisionsPage() {
   };
 
   const openCreateForm = () => {
+    if (isTeamWorkspace) return;
     setEditingDecision(null);
     setSourceInformation(null);
     setShowForm(true);
   };
 
   const handleEdit = async (decision) => {
+    if (isTeamWorkspace) return;
     try {
       const fullDecision = await db.getDecisionById(decision.id);
       setEditingDecision(fullDecision || decision);
@@ -111,11 +120,15 @@ export default function DecisionsPage() {
       <div className="decisions-page__header">
         <div>
           <h1 className="decisions-page__title">投资决策</h1>
-          <div className="decisions-page__subtitle">把观点转成可执行、可复盘的交易计划</div>
+          <div className="decisions-page__subtitle">
+            {isTeamWorkspace ? '团队镜像只读，用于查看所有成员发布的决策' : '把观点转成可执行、可复盘的交易计划'}
+          </div>
         </div>
-        <Button size="small" color="primary" onClick={openCreateForm}>
-          新建决策
-        </Button>
+        {!isTeamWorkspace && (
+          <Button size="small" color="primary" onClick={openCreateForm}>
+            新建决策
+          </Button>
+        )}
       </div>
 
       {/* ── Filter Tabs ── */}
@@ -148,6 +161,7 @@ export default function DecisionsPage() {
               decision={decision} 
               onEdit={() => handleEdit(decision)} 
               onRefresh={refreshDecisions}
+              readOnly={isTeamWorkspace}
             />
           ))}
         </div>
@@ -160,12 +174,14 @@ export default function DecisionsPage() {
       )}
 
       {/* ── FAB ── */}
-      <button
-        className="action-fab"
-        onClick={openCreateForm}
-      >
-        <span>+</span>
-      </button>
+      {!isTeamWorkspace && (
+        <button
+          className="action-fab"
+          onClick={openCreateForm}
+        >
+          <span>+</span>
+        </button>
+      )}
 
       {/* ── Add/Edit Popup ── */}
       <Popup

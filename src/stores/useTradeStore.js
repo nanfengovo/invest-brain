@@ -4,6 +4,16 @@ import { triggerAutoBackup } from '../utils/autoBackup';
 import { useAppStore } from './useAppStore';
 
 const getWorkspaceScope = () => useAppStore.getState().workspaceScope || 'personal';
+const getCurrentAuthor = () => {
+  const { syncUserId } = useAppStore.getState();
+  return String(syncUserId || localStorage.getItem('invest_sync_user_id') || '未标记').trim() || '未标记';
+};
+const assertPersonalWorkspace = () => {
+  if (getWorkspaceScope() === 'team') {
+    return { success: false, error: '团队工作区是只读镜像，请先切换到个人工作区再编辑' };
+  }
+  return null;
+};
 
 export const useTradeStore = create((set, get) => ({
   // Trade data
@@ -63,7 +73,7 @@ export const useTradeStore = create((set, get) => ({
 
   updateTrade: async (trade) => {
     try {
-      await db.updateTrade(trade);
+      await db.updateTrade({ ...trade, sync_status: 'local' });
       await get().refreshTrades();
       await get().refreshHoldings();
       triggerAutoBackup().catch((e) => console.error('[AutoBackup] Error:', e));
@@ -137,7 +147,7 @@ export const useTradeStore = create((set, get) => ({
   refreshDecisions: async () => {
     set({ decisionsLoading: true });
     try {
-      const decisions = await db.getDecisions();
+      const decisions = await db.getDecisions(null, getWorkspaceScope());
       set({ decisions, decisionsLoading: false });
     } catch (err) {
       console.error('Failed to load decisions:', err);
@@ -147,7 +157,18 @@ export const useTradeStore = create((set, get) => ({
 
   addDecision: async (decision) => {
     try {
-      await db.addDecision(decision);
+      const blocked = assertPersonalWorkspace();
+      if (blocked) return blocked;
+      const currentAuthor = getCurrentAuthor();
+      await db.addDecision({
+        ...decision,
+        author: decision.author || currentAuthor,
+        source_author: decision.source_author || decision.author || currentAuthor,
+        workspace_scope: 'personal',
+        source_scope: decision.source_scope || 'personal',
+        origin_id: decision.origin_id || decision.id,
+        sync_status: decision.sync_status || 'local',
+      });
       await get().refreshDecisions();
       triggerAutoBackup().catch((e) => console.error('[AutoBackup] Error:', e));
       return { success: true };
@@ -159,7 +180,9 @@ export const useTradeStore = create((set, get) => ({
 
   updateDecision: async (id, updates) => {
     try {
-      await db.updateDecision(id, updates);
+      const blocked = assertPersonalWorkspace();
+      if (blocked) return blocked;
+      await db.updateDecision(id, { ...updates, sync_status: 'local' });
       await get().refreshDecisions();
       triggerAutoBackup().catch((e) => console.error('[AutoBackup] Error:', e));
       return { success: true };
@@ -171,6 +194,8 @@ export const useTradeStore = create((set, get) => ({
 
   deleteDecision: async (id) => {
     try {
+      const blocked = assertPersonalWorkspace();
+      if (blocked) return blocked;
       await db.deleteDecision(id);
       await get().refreshDecisions();
       triggerAutoBackup().catch((e) => console.error('[AutoBackup] Error:', e));
@@ -183,6 +208,8 @@ export const useTradeStore = create((set, get) => ({
 
   addReview: async (review) => {
     try {
+      const blocked = assertPersonalWorkspace();
+      if (blocked) return blocked;
       await db.addReview(review);
       await db.updateDecision(review.decision_id, { status: 'CLOSED' });
       await get().refreshDecisions();
@@ -205,7 +232,7 @@ export const useTradeStore = create((set, get) => ({
   refreshInformations: async (status = null) => {
     set({ informationsLoading: true });
     try {
-      const informations = await db.getInformations(status);
+      const informations = await db.getInformations(status, getWorkspaceScope());
       set({ informations, informationsLoading: false });
     } catch (err) {
       console.error('Failed to load informations:', err);
@@ -215,7 +242,18 @@ export const useTradeStore = create((set, get) => ({
 
   addInformation: async (info) => {
     try {
-      await db.addInformation(info);
+      const blocked = assertPersonalWorkspace();
+      if (blocked) return blocked;
+      const currentAuthor = getCurrentAuthor();
+      await db.addInformation({
+        ...info,
+        author: info.author || currentAuthor,
+        source_author: info.source_author || info.author || currentAuthor,
+        workspace_scope: 'personal',
+        source_scope: info.source_scope || 'personal',
+        origin_id: info.origin_id || info.id,
+        sync_status: info.sync_status || 'local',
+      });
       await get().refreshInformations();
       await get().refreshAssets();
       triggerAutoBackup().catch((e) => console.error('[AutoBackup] Error:', e));
@@ -228,7 +266,9 @@ export const useTradeStore = create((set, get) => ({
 
   updateInformation: async (info) => {
     try {
-      await db.updateInformation(info);
+      const blocked = assertPersonalWorkspace();
+      if (blocked) return blocked;
+      await db.updateInformation({ ...info, sync_status: 'local' });
       await get().refreshInformations();
       await get().refreshAssets();
       triggerAutoBackup().catch((e) => console.error('[AutoBackup] Error:', e));
@@ -241,6 +281,8 @@ export const useTradeStore = create((set, get) => ({
 
   deleteInformation: async (id) => {
     try {
+      const blocked = assertPersonalWorkspace();
+      if (blocked) return blocked;
       await db.deleteInformation(id);
       await get().refreshInformations();
       triggerAutoBackup().catch((e) => console.error('[AutoBackup] Error:', e));
@@ -257,7 +299,18 @@ export const useTradeStore = create((set, get) => ({
 
   addViewpoint: async (vp) => {
     try {
-      await db.addViewpoint(vp);
+      const blocked = assertPersonalWorkspace();
+      if (blocked) return blocked;
+      const currentAuthor = getCurrentAuthor();
+      await db.addViewpoint({
+        ...vp,
+        author: vp.author || currentAuthor,
+        source_author: vp.source_author || vp.author || currentAuthor,
+        workspace_scope: 'personal',
+        source_scope: vp.source_scope || 'personal',
+        origin_id: vp.origin_id || vp.id,
+        sync_status: vp.sync_status || 'local',
+      });
       await get().refreshInformations(); // updates viewpoint_count
       triggerAutoBackup().catch((e) => console.error('[AutoBackup] Error:', e));
       return { success: true };
@@ -269,6 +322,8 @@ export const useTradeStore = create((set, get) => ({
 
   updateViewpoint: async (vp) => {
     try {
+      const blocked = assertPersonalWorkspace();
+      if (blocked) return blocked;
       await db.updateViewpoint(vp);
       triggerAutoBackup().catch((e) => console.error('[AutoBackup] Error:', e));
       return { success: true };
@@ -280,6 +335,8 @@ export const useTradeStore = create((set, get) => ({
 
   deleteViewpoint: async (id) => {
     try {
+      const blocked = assertPersonalWorkspace();
+      if (blocked) return blocked;
       await db.deleteViewpoint(id);
       await get().refreshInformations();
       triggerAutoBackup().catch((e) => console.error('[AutoBackup] Error:', e));
@@ -292,6 +349,8 @@ export const useTradeStore = create((set, get) => ({
 
   updateViewpointStatus: async (id, status) => {
     try {
+      const blocked = assertPersonalWorkspace();
+      if (blocked) return blocked;
       await db.updateViewpointStatus(id, status);
       triggerAutoBackup().catch((e) => console.error('[AutoBackup] Error:', e));
       return { success: true };

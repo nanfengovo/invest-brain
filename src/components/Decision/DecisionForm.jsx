@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Form, Input, TextArea, Selector, Toast } from 'antd-mobile';
 import { useTradeStore } from '../../stores/useTradeStore';
+import { useAppStore } from '../../stores/useAppStore';
 import { db } from '../../db/database';
 import AssetSelector from '../common/AssetSelector';
 import './DecisionForm.css';
@@ -77,10 +78,12 @@ export default function DecisionForm({ onClose, onSuccess, initialData, sourceIn
     if (fromInitial.length > 0) return fromInitial;
     return sourceInformation?.id ? [sourceInformation.id] : [];
   });
+  const workspaceScope = useAppStore((s) => s.workspaceScope);
+  const syncUserId = useAppStore((s) => s.syncUserId);
 
   useEffect(() => {
     let mounted = true;
-    db.getInformations()
+    db.getInformations(null, workspaceScope)
       .then((items) => {
         if (mounted) setInformations(items || []);
       })
@@ -88,7 +91,7 @@ export default function DecisionForm({ onClose, onSuccess, initialData, sourceIn
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [workspaceScope]);
 
   useEffect(() => {
     if (initialData) {
@@ -212,6 +215,9 @@ export default function DecisionForm({ onClose, onSuccess, initialData, sourceIn
           sector: values.sector || null,
           priority,
           info_ids: selectedInfoIds,
+          author: syncUserId || localStorage.getItem('invest_sync_user_id') || '未标记',
+          workspace_scope: 'personal',
+          source_scope: 'personal',
           created_at: new Date().toISOString(),
         };
 

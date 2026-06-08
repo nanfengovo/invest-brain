@@ -81,6 +81,7 @@ export async function triggerAutoBackup() {
               },
               body: JSON.stringify({
                 userId: syncUserId,
+                scope: 'personal',
                 data: dbData
               })
             });

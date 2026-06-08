@@ -73,6 +73,20 @@ END`;
 
 const TRADE_AUTHOR_SQL = `COALESCE(NULLIF(TRIM(t.author), ''), '未标记')`;
 const TRADE_WORKSPACE_SQL = `COALESCE(NULLIF(TRIM(t.workspace_scope), ''), 'personal')`;
+const TRADE_AUTHOR_NO_ALIAS_SQL = `COALESCE(NULLIF(TRIM(author), ''), '未标记')`;
+const TRADE_WORKSPACE_NO_ALIAS_SQL = `COALESCE(NULLIF(TRIM(workspace_scope), ''), 'personal')`;
+const INFO_AUTHOR_SQL = `COALESCE(NULLIF(TRIM(i.author), ''), COALESCE(NULLIF(TRIM(i.source_author), ''), '未标记'))`;
+const INFO_WORKSPACE_SQL = `COALESCE(NULLIF(TRIM(i.workspace_scope), ''), 'personal')`;
+const INFO_AUTHOR_NO_ALIAS_SQL = `COALESCE(NULLIF(TRIM(author), ''), COALESCE(NULLIF(TRIM(source_author), ''), '未标记'))`;
+const INFO_WORKSPACE_NO_ALIAS_SQL = `COALESCE(NULLIF(TRIM(workspace_scope), ''), 'personal')`;
+const DECISION_AUTHOR_SQL = `COALESCE(NULLIF(TRIM(d.author), ''), COALESCE(NULLIF(TRIM(d.source_author), ''), '未标记'))`;
+const DECISION_WORKSPACE_SQL = `COALESCE(NULLIF(TRIM(d.workspace_scope), ''), 'personal')`;
+const DECISION_AUTHOR_NO_ALIAS_SQL = `COALESCE(NULLIF(TRIM(author), ''), COALESCE(NULLIF(TRIM(source_author), ''), '未标记'))`;
+const DECISION_WORKSPACE_NO_ALIAS_SQL = `COALESCE(NULLIF(TRIM(workspace_scope), ''), 'personal')`;
+const VIEWPOINT_AUTHOR_SQL = `COALESCE(NULLIF(TRIM(v.author), ''), COALESCE(NULLIF(TRIM(v.source_author), ''), '未标记'))`;
+const VIEWPOINT_WORKSPACE_SQL = `COALESCE(NULLIF(TRIM(v.workspace_scope), ''), 'personal')`;
+const VIEWPOINT_AUTHOR_NO_ALIAS_SQL = `COALESCE(NULLIF(TRIM(author), ''), COALESCE(NULLIF(TRIM(source_author), ''), '未标记'))`;
+const VIEWPOINT_WORKSPACE_NO_ALIAS_SQL = `COALESCE(NULLIF(TRIM(workspace_scope), ''), 'personal')`;
 const PERSONAL_SYNC_TABLES = [
   'assets',
   'informations',
@@ -87,24 +101,57 @@ const PERSONAL_SYNC_TABLES = [
 ];
 const TEAM_SYNC_TABLES = [
   'assets',
+  'informations',
+  'information_asset_links',
+  'information_sector_links',
+  'decisions',
+  'decision_info_links',
+  'viewpoints',
   'trades',
 ];
 
-function appendAuthorFilter(sql, params, author) {
+function appendAuthorFilter(sql, params, author, authorSql = TRADE_AUTHOR_SQL) {
   const normalizedAuthor = String(author || '').trim();
   if (!normalizedAuthor) return sql;
   params.push(normalizedAuthor);
-  return `${sql} AND ${TRADE_AUTHOR_SQL} = ?`;
+  return `${sql} AND ${authorSql} = ?`;
 }
 
 function normalizeWorkspaceScope(scope) {
   return scope === 'team' ? 'team' : 'personal';
 }
 
-function appendWorkspaceFilter(sql, params, scope = 'personal') {
+function appendWorkspaceFilter(sql, params, scope = 'personal', workspaceSql = TRADE_WORKSPACE_SQL) {
   const normalizedScope = normalizeWorkspaceScope(scope);
   params.push(normalizedScope);
-  return `${sql} AND ${TRADE_WORKSPACE_SQL} = ?`;
+  return `${sql} AND ${workspaceSql} = ?`;
+}
+
+function normalizeSyncStatus(status) {
+  const value = String(status || '').trim();
+  return value || 'local';
+}
+
+function normalizeTeamVisible(value) {
+  return value === true || value === 1 || value === '1' ? 1 : 0;
+}
+
+function withExportSyncMeta(row, author, targetScope) {
+  const normalizedAuthor = String(row?.author || row?.source_author || author || '未标记').trim() || '未标记';
+  return {
+    ...row,
+    author: normalizedAuthor,
+    workspace_scope: targetScope,
+    source_scope: targetScope,
+    source_author: row?.source_author || normalizedAuthor,
+    origin_id: row?.origin_id || row?.id,
+    sync_status: targetScope === 'team' ? 'published' : 'backup',
+  };
+}
+
+function authorClause(authorSql, author) {
+  const normalizedAuthor = String(author || '').trim();
+  return normalizedAuthor ? { sql: ` AND ${authorSql} = ?`, params: [normalizedAuthor] } : { sql: '', params: [] };
 }
 
 /**
@@ -408,10 +455,10 @@ export const db = {
   // Decision operations
   // ==========================================
 
-  async getDecisions(status = null) {
+  async getDecisions(status = null, scope = 'personal') {
     const selectSql = `SELECT d.*,
                 a.symbol as asset_symbol,
-                (SELECT COUNT(*) FROM trades WHERE decision_id = d.id) as trade_count,
+                (SELECT COUNT(*) FROM trades WHERE decision_id = d.id AND COALESCE(NULLIF(TRIM(workspace_scope), ''), 'personal') = COALESCE(NULLIF(TRIM(d.workspace_scope), ''), 'personal')) as trade_count,
                 (SELECT COUNT(*) FROM decision_info_links WHERE decision_id = d.id) as linked_info_count,
                 (SELECT GROUP_CONCAT(i.title, '、')
                    FROM decision_info_links dil
@@ -434,17 +481,19 @@ export const db = {
          COALESCE(d.priority, 3) DESC,
          d.created_at DESC`;
 
+    const params = [];
+    let whereSql = `WHERE 1 = 1`;
+    whereSql = appendWorkspaceFilter(whereSql, params, scope, DECISION_WORKSPACE_SQL);
     if (status) {
-      return this.query(
-        `${selectSql}
-         WHERE d.status = ?
-         ${orderSql}`,
-        [status]
-      );
+      whereSql += ` AND d.status = ?`;
+      params.push(status);
     }
     return this.query(
       `${selectSql}
+       ${whereSql}
        ${orderSql}`
+      ,
+      params
     );
   },
 
@@ -466,11 +515,28 @@ export const db = {
   },
 
   async addDecision(decision) {
-    const { id, title, content, confidence, sentiment, status, asset_id, sector, priority, info_ids } = decision;
+    const { id, title, content, confidence, sentiment, status, asset_id, sector, priority, info_ids, author, workspace_scope, source_author, source_scope, origin_id, sync_status, team_visible } = decision;
     await this.exec(
-      `INSERT INTO decisions (id, title, content, confidence, sentiment, status, asset_id, sector, priority)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, title, content || '', confidence || 3, sentiment || 'NEUTRAL', status || 'ACTIVE', asset_id || null, sector || null, priority || 3]
+      `INSERT INTO decisions (id, title, content, confidence, sentiment, status, asset_id, sector, priority, author, workspace_scope, source_author, source_scope, origin_id, sync_status, team_visible)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        title,
+        content || '',
+        confidence || 3,
+        sentiment || 'NEUTRAL',
+        status || 'ACTIVE',
+        asset_id || null,
+        sector || null,
+        priority || 3,
+        author || null,
+        workspace_scope || 'personal',
+        source_author || author || null,
+        source_scope || workspace_scope || 'personal',
+        origin_id || id,
+        normalizeSyncStatus(sync_status),
+        normalizeTeamVisible(team_visible),
+      ]
     );
     if (Array.isArray(info_ids)) {
       await this.setDecisionInfoLinks(id, info_ids);
@@ -490,6 +556,9 @@ export const db = {
     }
     if (fields.length) {
       fields.push('updated_at = unixepoch()');
+      if (!Object.prototype.hasOwnProperty.call(columnUpdates, 'sync_status')) {
+        fields.push(`sync_status = 'local'`);
+      }
       values.push(id);
       await this.exec(
         `UPDATE decisions SET ${fields.join(', ')} WHERE id = ?`,
@@ -500,6 +569,17 @@ export const db = {
       await this.setDecisionInfoLinks(id, info_ids);
     }
     return { id };
+  },
+
+  async setDecisionTeamVisible(id, visible) {
+    return this.exec(
+      `UPDATE decisions
+          SET team_visible = ?,
+              sync_status = CASE WHEN ? = 1 THEN 'local' ELSE 'local' END,
+              updated_at = unixepoch()
+        WHERE id = ? AND COALESCE(NULLIF(TRIM(workspace_scope), ''), 'personal') = 'personal'`,
+      [normalizeTeamVisible(visible), normalizeTeamVisible(visible), id]
+    );
   },
 
   async setDecisionInfoLinks(decisionId, infoIds = []) {
@@ -513,7 +593,7 @@ export const db = {
     }
   },
 
-  async getDecisionsByInformation(infoId) {
+  async getDecisionsByInformation(infoId, scope = 'personal') {
     return this.query(
       `SELECT d.*, a.symbol as asset_symbol,
               (SELECT COUNT(*) FROM trades WHERE decision_id = d.id) as trade_count
@@ -521,6 +601,7 @@ export const db = {
        JOIN decisions d ON d.id = dil.decision_id
        LEFT JOIN assets a ON d.asset_id = a.id
        WHERE dil.info_id = ?
+         AND ${DECISION_WORKSPACE_SQL} = ?
        ORDER BY
          CASE d.status
            WHEN 'ACTIVE' THEN 0
@@ -533,7 +614,7 @@ export const db = {
          END,
          COALESCE(d.priority, 3) DESC,
          d.created_at DESC`,
-      [infoId]
+      [infoId, normalizeWorkspaceScope(scope)]
     );
   },
 
@@ -591,6 +672,69 @@ export const db = {
       `DELETE FROM trades WHERE COALESCE(NULLIF(TRIM(workspace_scope), ''), 'personal') = ?`,
       [normalizeWorkspaceScope(scope)]
     );
+  },
+
+  async clearWorkspace(scope = 'team') {
+    const normalizedScope = normalizeWorkspaceScope(scope);
+    const statements = [
+      { sql: `DELETE FROM reviews WHERE decision_id IN (SELECT id FROM decisions WHERE COALESCE(NULLIF(TRIM(workspace_scope), ''), 'personal') = ?)`, params: [normalizedScope] },
+      { sql: `DELETE FROM decision_info_links WHERE decision_id IN (SELECT id FROM decisions WHERE COALESCE(NULLIF(TRIM(workspace_scope), ''), 'personal') = ?) OR info_id IN (SELECT id FROM informations WHERE COALESCE(NULLIF(TRIM(workspace_scope), ''), 'personal') = ?)`, params: [normalizedScope, normalizedScope] },
+      { sql: `DELETE FROM information_asset_links WHERE info_id IN (SELECT id FROM informations WHERE COALESCE(NULLIF(TRIM(workspace_scope), ''), 'personal') = ?)`, params: [normalizedScope] },
+      { sql: `DELETE FROM information_sector_links WHERE info_id IN (SELECT id FROM informations WHERE COALESCE(NULLIF(TRIM(workspace_scope), ''), 'personal') = ?)`, params: [normalizedScope] },
+      { sql: `DELETE FROM viewpoints WHERE COALESCE(NULLIF(TRIM(workspace_scope), ''), 'personal') = ?`, params: [normalizedScope] },
+      { sql: `DELETE FROM trades WHERE COALESCE(NULLIF(TRIM(workspace_scope), ''), 'personal') = ?`, params: [normalizedScope] },
+      { sql: `DELETE FROM decisions WHERE COALESCE(NULLIF(TRIM(workspace_scope), ''), 'personal') = ?`, params: [normalizedScope] },
+      { sql: `DELETE FROM informations WHERE COALESCE(NULLIF(TRIM(workspace_scope), ''), 'personal') = ?`, params: [normalizedScope] },
+    ];
+    return this.transaction(statements);
+  },
+
+  async markWorkspaceSyncStatus({ author = null, scope = 'personal', targetScope = 'personal' } = {}) {
+    const normalizedScope = normalizeWorkspaceScope(scope);
+    const status = targetScope === 'team' ? 'published' : 'backup';
+    const statements = [];
+    const appendAuthor = (sql, authorSql) => {
+      const filter = authorClause(authorSql, author);
+      return { sql: `${sql}${filter.sql}`, params: filter.params };
+    };
+
+    const tradeFilter = authorClause(TRADE_AUTHOR_NO_ALIAS_SQL, author);
+    statements.push({
+      sql: `UPDATE trades
+              SET sync_status = ?,
+                  updated_at = COALESCE(updated_at, created_at, unixepoch())
+            WHERE ${TRADE_WORKSPACE_NO_ALIAS_SQL} = ?${tradeFilter.sql}`,
+      params: [status, normalizedScope, ...tradeFilter.params],
+    });
+
+    const infoFilter = authorClause(INFO_AUTHOR_NO_ALIAS_SQL, author);
+    statements.push({
+      sql: `UPDATE informations
+          SET sync_status = ?,
+              updated_at = unixepoch()
+        WHERE ${INFO_WORKSPACE_NO_ALIAS_SQL} = ?${targetScope === 'team' ? ' AND COALESCE(team_visible, 0) = 1' : ''}${infoFilter.sql}`,
+      params: [status, normalizedScope, ...infoFilter.params],
+    });
+
+    const decisionFilter = authorClause(DECISION_AUTHOR_NO_ALIAS_SQL, author);
+    statements.push({
+      sql: `UPDATE decisions
+          SET sync_status = ?,
+              updated_at = unixepoch()
+        WHERE ${DECISION_WORKSPACE_NO_ALIAS_SQL} = ?${targetScope === 'team' ? ' AND COALESCE(team_visible, 0) = 1' : ''}${decisionFilter.sql}`,
+      params: [status, normalizedScope, ...decisionFilter.params],
+    });
+
+    const viewpointFilter = authorClause(VIEWPOINT_AUTHOR_NO_ALIAS_SQL, author);
+    statements.push({
+      sql: `UPDATE viewpoints
+          SET sync_status = ?,
+              updated_at = unixepoch()
+        WHERE ${VIEWPOINT_WORKSPACE_NO_ALIAS_SQL} = ?${targetScope === 'team' ? ' AND COALESCE(team_visible, 0) = 1' : ''}${viewpointFilter.sql}`,
+      params: [status, normalizedScope, ...viewpointFilter.params],
+    });
+
+    return this.transaction(statements);
   },
 
   async getHoldings(author = null, scope = 'personal') {
@@ -679,13 +823,100 @@ export const db = {
         sql = appendAuthorFilter(sql, params, author);
         const trades = await this.query(sql, params);
         tables.trades = trades.map((trade) => ({
-          ...trade,
-          workspace_scope: targetScope,
-          source_scope: targetScope,
-          source_author: trade.source_author || trade.author || author || '未标记',
-          origin_id: trade.origin_id || trade.id,
-          sync_status: 'synced',
+          ...withExportSyncMeta(trade, author, targetScope),
+          sync_status: targetScope === 'team' ? 'published' : 'backup',
         }));
+      } else if (table.name === 'informations') {
+        let sql = `SELECT * FROM informations i WHERE 1 = 1`;
+        const params = [];
+        sql = appendWorkspaceFilter(sql, params, normalizedScope, INFO_WORKSPACE_SQL);
+        sql = appendAuthorFilter(sql, params, author, INFO_AUTHOR_SQL);
+        if (targetScope === 'team') {
+          sql += ` AND COALESCE(i.team_visible, 0) = 1`;
+        }
+        const infos = await this.query(sql, params);
+        tables.informations = infos.map((info) => withExportSyncMeta(info, author, targetScope));
+      } else if (table.name === 'decisions') {
+        let sql = `SELECT * FROM decisions d WHERE 1 = 1`;
+        const params = [];
+        sql = appendWorkspaceFilter(sql, params, normalizedScope, DECISION_WORKSPACE_SQL);
+        sql = appendAuthorFilter(sql, params, author, DECISION_AUTHOR_SQL);
+        if (targetScope === 'team') {
+          sql += ` AND COALESCE(d.team_visible, 0) = 1`;
+        }
+        const decisions = await this.query(sql, params);
+        tables.decisions = decisions.map((decision) => withExportSyncMeta(decision, author, targetScope));
+      } else if (table.name === 'viewpoints') {
+        let sql = `SELECT * FROM viewpoints v WHERE 1 = 1`;
+        const params = [];
+        sql = appendWorkspaceFilter(sql, params, normalizedScope, VIEWPOINT_WORKSPACE_SQL);
+        sql = appendAuthorFilter(sql, params, author, VIEWPOINT_AUTHOR_SQL);
+        if (targetScope === 'team') {
+          sql += ` AND COALESCE(v.team_visible, 0) = 1`;
+        }
+        const viewpoints = await this.query(sql, params);
+        tables.viewpoints = viewpoints.map((viewpoint) => withExportSyncMeta(viewpoint, author, targetScope));
+      } else if (table.name === 'information_asset_links') {
+        const authorFilter = authorClause(INFO_AUTHOR_SQL, author);
+        tables[table.name] = targetScope === 'team'
+          ? await this.query(
+            `SELECT ial.* FROM information_asset_links ial
+              JOIN informations i ON i.id = ial.info_id
+             WHERE COALESCE(NULLIF(TRIM(i.workspace_scope), ''), 'personal') = ?
+               AND COALESCE(i.team_visible, 0) = 1${authorFilter.sql}`,
+            [normalizedScope, ...authorFilter.params]
+          )
+          : await this.query(
+            `SELECT ial.* FROM information_asset_links ial
+              JOIN informations i ON i.id = ial.info_id
+             WHERE COALESCE(NULLIF(TRIM(i.workspace_scope), ''), 'personal') = ?${authorFilter.sql}`,
+            [normalizedScope, ...authorFilter.params]
+          );
+      } else if (table.name === 'information_sector_links') {
+        const authorFilter = authorClause(INFO_AUTHOR_SQL, author);
+        tables[table.name] = targetScope === 'team'
+          ? await this.query(
+            `SELECT isl.* FROM information_sector_links isl
+              JOIN informations i ON i.id = isl.info_id
+             WHERE COALESCE(NULLIF(TRIM(i.workspace_scope), ''), 'personal') = ?
+               AND COALESCE(i.team_visible, 0) = 1${authorFilter.sql}`,
+            [normalizedScope, ...authorFilter.params]
+          )
+          : await this.query(
+            `SELECT isl.* FROM information_sector_links isl
+              JOIN informations i ON i.id = isl.info_id
+             WHERE COALESCE(NULLIF(TRIM(i.workspace_scope), ''), 'personal') = ?${authorFilter.sql}`,
+            [normalizedScope, ...authorFilter.params]
+          );
+      } else if (table.name === 'decision_info_links') {
+        const decisionAuthorFilter = authorClause(DECISION_AUTHOR_SQL, author);
+        tables[table.name] = targetScope === 'team'
+          ? await this.query(
+            `SELECT dil.* FROM decision_info_links dil
+              JOIN decisions d ON d.id = dil.decision_id
+              JOIN informations i ON i.id = dil.info_id
+             WHERE COALESCE(NULLIF(TRIM(d.workspace_scope), ''), 'personal') = ?
+               AND COALESCE(NULLIF(TRIM(i.workspace_scope), ''), 'personal') = ?
+               AND COALESCE(d.team_visible, 0) = 1
+               AND COALESCE(i.team_visible, 0) = 1${decisionAuthorFilter.sql}`,
+            [normalizedScope, normalizedScope, ...decisionAuthorFilter.params]
+          )
+          : await this.query(
+            `SELECT dil.* FROM decision_info_links dil
+              JOIN decisions d ON d.id = dil.decision_id
+             WHERE COALESCE(NULLIF(TRIM(d.workspace_scope), ''), 'personal') = ?${decisionAuthorFilter.sql}`,
+            [normalizedScope, ...decisionAuthorFilter.params]
+          );
+      } else if (table.name === 'reviews') {
+        const decisionAuthorFilter = authorClause(DECISION_AUTHOR_SQL, author);
+        tables[table.name] = await this.query(
+          `SELECT r.* FROM reviews r
+            JOIN decisions d ON d.id = r.decision_id
+           WHERE COALESCE(NULLIF(TRIM(d.workspace_scope), ''), 'personal') = ?${decisionAuthorFilter.sql}`,
+          [normalizedScope, ...decisionAuthorFilter.params]
+        );
+      } else if (table.name === 'price_alerts') {
+        tables[table.name] = targetScope === 'team' ? [] : await this.query(`SELECT * FROM price_alerts`);
       } else {
         tables[table.name] = await this.query(`SELECT * FROM ${table.name}`);
       }
@@ -720,7 +951,7 @@ export const db = {
   // Information operations
   // ==========================================
 
-  async getInformations(status = null) {
+  async getInformations(status = null, scope = 'personal') {
     let sql = `SELECT i.*, a.symbol as asset_symbol,
         COALESCE(
           (SELECT GROUP_CONCAT(asset_id) FROM (
@@ -741,12 +972,14 @@ export const db = {
        LEFT JOIN assets a ON i.asset_id = a.id`;
 
     const params = [];
+    sql += ` WHERE 1 = 1`;
+    sql = appendWorkspaceFilter(sql, params, scope, INFO_WORKSPACE_SQL);
     if (status) {
-      sql += ` WHERE i.status = ?`;
+      sql += ` AND i.status = ?`;
       params.push(status);
     } else {
       // By default exclude ARCHIVED unless explicitly requested
-      sql += ` WHERE i.status != 'ARCHIVED' OR i.status IS NULL`;
+      sql += ` AND (i.status != 'ARCHIVED' OR i.status IS NULL)`;
     }
 
     sql += ` ORDER BY i.created_at DESC`;
@@ -778,29 +1011,94 @@ export const db = {
   },
 
   async addInformation(info) {
-    const { id, title, type, source, url, content, file_path, asset_id, sector, status } = info;
+    const { id, title, type, source, url, content, file_path, asset_id, sector, status, author, workspace_scope, source_author, source_scope, origin_id, sync_status, team_visible } = info;
     const assetIds = normalizeSymbols(info.asset_ids || asset_id);
     const sectors = normalizeList(info.sectors || sector);
     const finalId = id || crypto.randomUUID();
     await this.exec(
-      `INSERT INTO informations (id, title, type, source, url, content, file_path, asset_id, sector, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [finalId, title, type || 'ARTICLE', source || null, url || null, content || null, file_path || null, assetIds[0] || asset_id || null, sectors[0] || sector || null, status || 'UNPROCESSED']
+      `INSERT INTO informations (id, title, type, source, url, content, file_path, asset_id, sector, status, author, workspace_scope, source_author, source_scope, origin_id, sync_status, team_visible, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, unixepoch())`,
+      [
+        finalId,
+        title,
+        type || 'ARTICLE',
+        source || null,
+        url || null,
+        content || null,
+        file_path || null,
+        assetIds[0] || asset_id || null,
+        sectors[0] || sector || null,
+        status || 'UNPROCESSED',
+        author || null,
+        workspace_scope || 'personal',
+        source_author || author || null,
+        source_scope || workspace_scope || 'personal',
+        origin_id || finalId,
+        normalizeSyncStatus(sync_status),
+        normalizeTeamVisible(team_visible),
+      ]
     );
     await this.setInformationLinks(finalId, assetIds, sectors);
     return { id: finalId };
   },
 
   async updateInformation(info) {
-    const { id, title, type, source, url, content, file_path, asset_id, sector, status } = info;
+    const { id, title, type, source, url, content, file_path, asset_id, sector, status, author, workspace_scope, source_author, source_scope, origin_id, sync_status, team_visible } = info;
     const assetIds = normalizeSymbols(info.asset_ids || info.asset_symbols || asset_id);
     const sectors = normalizeList(info.sectors || sector);
     await this.exec(
-      `UPDATE informations SET title = ?, type = ?, source = ?, url = ?, content = ?, file_path = ?, asset_id = ?, sector = ?, status = ? WHERE id = ?`,
-      [title, type, source || null, url || null, content || null, file_path || null, assetIds[0] || asset_id || null, sectors[0] || sector || null, status || 'UNPROCESSED', id]
+      `UPDATE informations
+          SET title = ?,
+              type = ?,
+              source = ?,
+              url = ?,
+              content = ?,
+              file_path = ?,
+              asset_id = ?,
+              sector = ?,
+              status = ?,
+              author = ?,
+              workspace_scope = ?,
+              source_author = ?,
+              source_scope = ?,
+              origin_id = ?,
+              sync_status = ?,
+              team_visible = ?,
+              updated_at = unixepoch()
+        WHERE id = ?`,
+      [
+        title,
+        type,
+        source || null,
+        url || null,
+        content || null,
+        file_path || null,
+        assetIds[0] || asset_id || null,
+        sectors[0] || sector || null,
+        status || 'UNPROCESSED',
+        author || null,
+        workspace_scope || 'personal',
+        source_author || author || null,
+        source_scope || workspace_scope || 'personal',
+        origin_id || id,
+        sync_status || 'local',
+        normalizeTeamVisible(team_visible),
+        id,
+      ]
     );
     await this.setInformationLinks(id, assetIds, sectors);
     return { id };
+  },
+
+  async setInformationTeamVisible(id, visible) {
+    return this.exec(
+      `UPDATE informations
+          SET team_visible = ?,
+              sync_status = 'local',
+              updated_at = unixepoch()
+        WHERE id = ? AND COALESCE(NULLIF(TRIM(workspace_scope), ''), 'personal') = 'personal'`,
+      [normalizeTeamVisible(visible), id]
+    );
   },
 
   async setInformationLinks(infoId, assetIds = [], sectors = []) {
@@ -843,19 +1141,44 @@ export const db = {
   // Viewpoints operations
   // ==========================================
 
-  async getViewpoints(infoId = null) {
+  async getViewpoints(infoId = null, scope = 'personal') {
+    const normalizedScope = normalizeWorkspaceScope(scope);
     if (infoId) {
-      return this.query('SELECT * FROM viewpoints WHERE info_id = ? ORDER BY created_at DESC', [infoId]);
+      return this.query(
+        `SELECT * FROM viewpoints v
+          WHERE info_id = ? AND ${VIEWPOINT_WORKSPACE_SQL} = ?
+          ORDER BY created_at DESC`,
+        [infoId, normalizedScope]
+      );
     }
-    return this.query('SELECT * FROM viewpoints ORDER BY created_at DESC');
+    return this.query(
+      `SELECT * FROM viewpoints v WHERE ${VIEWPOINT_WORKSPACE_SQL} = ? ORDER BY created_at DESC`,
+      [normalizedScope]
+    );
   },
 
   async addViewpoint(vp) {
-    const { id, info_id, content, tags, status, author, quote, target_type } = vp;
+    const { id, info_id, content, tags, status, author, quote, target_type, workspace_scope, source_author, source_scope, origin_id, sync_status, team_visible } = vp;
     const tagsJson = tags ? JSON.stringify(tags) : null;
     return this.exec(
-      'INSERT INTO viewpoints (id, info_id, content, tags, status, author, quote, target_type, version, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, unixepoch())',
-      [id, info_id, content, tagsJson, status || 'ACTIVE', author || '我', quote || null, target_type || 'GENERAL']
+      `INSERT INTO viewpoints (id, info_id, content, tags, status, author, quote, target_type, workspace_scope, source_author, source_scope, origin_id, sync_status, team_visible, version, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, unixepoch())`,
+      [
+        id,
+        info_id,
+        content,
+        tagsJson,
+        status || 'ACTIVE',
+        author || '我',
+        quote || null,
+        target_type || 'GENERAL',
+        workspace_scope || 'personal',
+        source_author || author || null,
+        source_scope || workspace_scope || 'personal',
+        origin_id || id,
+        normalizeSyncStatus(sync_status),
+        normalizeTeamVisible(team_visible),
+      ]
     );
   },
 
@@ -864,20 +1187,37 @@ export const db = {
     const tagsJson = tags ? JSON.stringify(tags) : undefined;
     if (tagsJson !== undefined) {
       return this.exec(
-        'UPDATE viewpoints SET content = ?, tags = ?, version = version + 1, updated_at = unixepoch() WHERE id = ?',
+        `UPDATE viewpoints
+            SET content = ?, tags = ?, version = version + 1, updated_at = unixepoch(), sync_status = 'local'
+          WHERE id = ?`,
         [content, tagsJson, id]
       );
     }
     return this.exec(
-      'UPDATE viewpoints SET content = ?, version = version + 1, updated_at = unixepoch() WHERE id = ?',
+      `UPDATE viewpoints
+          SET content = ?, version = version + 1, updated_at = unixepoch(), sync_status = 'local'
+        WHERE id = ?`,
       [content, id]
     );
   },
 
   async updateViewpointStatus(id, status) {
     return this.exec(
-      'UPDATE viewpoints SET status = ?, updated_at = unixepoch() WHERE id = ?',
+      `UPDATE viewpoints
+          SET status = ?, updated_at = unixepoch(), sync_status = 'local'
+        WHERE id = ?`,
       [status, id]
+    );
+  },
+
+  async setViewpointTeamVisible(id, visible) {
+    return this.exec(
+      `UPDATE viewpoints
+          SET team_visible = ?,
+              sync_status = 'local',
+              updated_at = unixepoch()
+        WHERE id = ? AND COALESCE(NULLIF(TRIM(workspace_scope), ''), 'personal') = 'personal'`,
+      [normalizeTeamVisible(visible), id]
     );
   },
 

@@ -8,6 +8,7 @@ import {
   getTradeQuantityUnit,
   getTradeSymbolDisplay,
 } from '../../utils/tradeLifecycle';
+import { getSyncStatusMeta } from '../../utils/syncStatus';
 import './TradeCard.css';
 
 const DIRECTION_MAP = {
@@ -113,6 +114,7 @@ export default function TradeCard({ trade, index = 0, onEdit, compactMode = fals
   const quantityUnit = getTradeQuantityUnit(trade);
   const lifecycleBadge = getLifecycleBadge(trade.lifecycle, dir.type);
   const authorLabel = String(trade.author || '').trim() || '未标记';
+  const syncMeta = getSyncStatusMeta(trade);
 
   const total = useMemo(() => {
     const qty = parseFloat(trade.quantity) || 0;
@@ -200,6 +202,9 @@ export default function TradeCard({ trade, index = 0, onEdit, compactMode = fals
               <span className="trade-card__author-tag">
                 提交人 {authorLabel}
               </span>
+              <span className={`trade-card__sync-tag ${syncMeta.className}`}>
+                {syncMeta.label}
+              </span>
             </div>
           </div>
 
@@ -222,6 +227,9 @@ export default function TradeCard({ trade, index = 0, onEdit, compactMode = fals
           <div className="trade-card__footer">
             <span className="trade-card__author-tag trade-card__author-tag--footer">
               提交人 {authorLabel}
+            </span>
+            <span className={`trade-card__sync-tag trade-card__sync-tag--footer ${syncMeta.className}`}>
+              {syncMeta.label}
             </span>
             {trade.broker && (
               <span className="trade-card__broker-tag">{trade.broker}</span>

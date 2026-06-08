@@ -117,51 +117,139 @@ function normalizeImportedDump(dump, options = {}) {
     }
   }
 
-  if (!Array.isArray(filteredTables.trades)) {
-    return {
-      ...dump,
-      tables: filteredTables,
-    };
-  }
-
   const normalizedAuthor = String(currentAuthor || '').trim();
   const authorFilter = String(restrictAuthor || '').trim();
+  const idMap = new Map();
+  const mirrorId = (sourceAuthor, originId) => `team:${sourceAuthor}:${originId}`;
+  const normalizeCollaborativeRow = (row, optionsForRow = {}) => {
+    const {
+      hasAuthor = true,
+      fallbackAuthor = normalizedAuthor,
+      publishedStatus = syncStatus,
+    } = optionsForRow;
+    const author = String(row?.author || row?.source_author || fallbackAuthor || '未标记').trim() || '未标记';
+    const originId = String(row?.origin_id || row?.id || '').trim();
+    const next = {
+      ...row,
+      source_author: String(row?.source_author || author).trim() || author,
+      workspace_scope: workspaceScope || row?.workspace_scope || 'personal',
+      source_scope: sourceScope || row?.source_scope || workspaceScope || 'personal',
+      origin_id: originId || row?.id,
+      sync_status: publishedStatus || row?.sync_status || 'local',
+    };
+    if (hasAuthor) next.author = author;
 
-  const trades = filteredTables.trades
-    .filter((row) => {
-      if (!authorFilter) return true;
-      return String(row?.author || row?.source_author || '').trim() === authorFilter;
-    })
-    .map((row) => {
-      const author = String(row?.author || row?.source_author || normalizedAuthor || '未标记').trim() || '未标记';
-      const originId = String(row?.origin_id || row?.id || '').trim();
-      const next = {
+    if (teamMirror && originId) {
+      next.id = mirrorId(next.source_author, originId);
+      next.workspace_scope = 'team';
+      next.source_scope = row?.source_scope || 'team';
+      next.origin_id = originId;
+      next.sync_status = 'mirror';
+      idMap.set(row.id, next.id);
+      idMap.set(originId, next.id);
+    }
+
+    return next;
+  };
+  const byAuthor = (row) => {
+    if (!authorFilter) return true;
+    return String(row?.author || row?.source_author || '').trim() === authorFilter;
+  };
+
+  const normalizedTables = { ...filteredTables };
+
+  if (Array.isArray(filteredTables.informations)) {
+    normalizedTables.informations = filteredTables.informations
+      .filter(byAuthor)
+      .map((row) => normalizeCollaborativeRow(row));
+  }
+
+  if (Array.isArray(filteredTables.decisions)) {
+    normalizedTables.decisions = filteredTables.decisions
+      .filter(byAuthor)
+      .map((row) => normalizeCollaborativeRow(row));
+  }
+
+  if (Array.isArray(filteredTables.viewpoints)) {
+    normalizedTables.viewpoints = filteredTables.viewpoints
+      .filter(byAuthor)
+      .map((row) => {
+        const next = normalizeCollaborativeRow(row);
+        if (teamMirror && next.info_id) {
+          next.info_id = idMap.get(next.info_id) || mirrorId(next.source_author, next.info_id);
+        }
+        return next;
+      });
+  }
+
+  if (Array.isArray(filteredTables.trades)) {
+    normalizedTables.trades = filteredTables.trades
+      .filter(byAuthor)
+      .map((row) => {
+        const next = normalizeCollaborativeRow(row);
+        if (teamMirror) {
+          if (next.decision_id) {
+            next.decision_id = idMap.get(next.decision_id) || mirrorId(next.source_author, next.decision_id);
+          }
+          if (next.info_id) {
+            next.info_id = idMap.get(next.info_id) || mirrorId(next.source_author, next.info_id);
+          }
+        }
+        return next;
+      });
+  }
+
+  if (teamMirror && Array.isArray(filteredTables.information_asset_links)) {
+    normalizedTables.information_asset_links = filteredTables.information_asset_links
+      .map((row) => ({
         ...row,
-        author,
-        source_author: String(row?.source_author || author).trim() || author,
-        workspace_scope: workspaceScope || row?.workspace_scope || 'personal',
-        source_scope: sourceScope || row?.source_scope || workspaceScope || 'personal',
-        origin_id: originId || row?.id,
-        sync_status: syncStatus || row?.sync_status || 'local',
-      };
+        info_id: idMap.get(row.info_id) || row.info_id,
+      }))
+      .filter((row) => String(row.info_id || '').startsWith('team:'));
+  }
 
-      if (teamMirror && originId) {
-        next.id = `team:${next.source_author}:${originId}`;
-        next.workspace_scope = 'team';
-        next.source_scope = row?.source_scope || 'team';
-        next.origin_id = originId;
-        next.sync_status = 'synced';
-      }
+  if (teamMirror && Array.isArray(filteredTables.information_sector_links)) {
+    normalizedTables.information_sector_links = filteredTables.information_sector_links
+      .map((row) => ({
+        ...row,
+        info_id: idMap.get(row.info_id) || row.info_id,
+      }))
+      .filter((row) => String(row.info_id || '').startsWith('team:'));
+  }
 
-      return next;
-    });
+  if (teamMirror && Array.isArray(filteredTables.decision_info_links)) {
+    normalizedTables.decision_info_links = filteredTables.decision_info_links
+      .map((row) => ({
+        ...row,
+        decision_id: idMap.get(row.decision_id) || row.decision_id,
+        info_id: idMap.get(row.info_id) || row.info_id,
+      }))
+      .filter((row) => String(row.decision_id || '').startsWith('team:') && String(row.info_id || '').startsWith('team:'));
+  }
+
+  if (teamMirror && Array.isArray(filteredTables.reviews)) {
+    normalizedTables.reviews = filteredTables.reviews
+      .map((row) => {
+        const nextDecisionId = idMap.get(row.decision_id) || row.decision_id;
+        const sourceAuthor = String(row?.source_author || normalizedAuthor || '未标记').trim() || '未标记';
+        const originId = String(row?.origin_id || row?.id || '').trim();
+        return {
+          ...row,
+          id: originId ? mirrorId(sourceAuthor, originId) : row.id,
+          decision_id: nextDecisionId,
+          origin_id: originId || row.id,
+          source_author: sourceAuthor,
+          workspace_scope: 'team',
+          source_scope: row?.source_scope || 'team',
+          sync_status: 'mirror',
+        };
+      })
+      .filter((row) => String(row.decision_id || '').startsWith('team:'));
+  }
 
   return {
     ...dump,
-    tables: {
-      ...filteredTables,
-      trades,
-    },
+    tables: normalizedTables,
   };
 }
 

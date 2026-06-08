@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { NavBar, Button, Toast, Tag, TextArea, Divider, List, ActionSheet, SwipeAction, Modal, Popup, Selector, Input } from 'antd-mobile';
 import { LinkOutline, MoreOutline, EditSOutline, AddOutline, PlayOutline, EyeOutline, DeleteOutline } from 'antd-mobile-icons';
@@ -7,6 +7,7 @@ import { useTradeStore } from '../stores/useTradeStore';
 import { useAppStore } from '../stores/useAppStore';
 import { getFileUrlFromOPFS } from '../utils/opfsUtils';
 import { findMediaUrls } from '../utils/mediaResolver';
+import { getSyncStatusMeta, isTeamMirrorRecord } from '../utils/syncStatus';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import AssetLogo from '../components/common/AssetLogo';
 import { Document, Page, pdfjs } from 'react-pdf';
@@ -623,6 +624,7 @@ export default function InformationDetail() {
   const [newVpTags, setNewVpTags] = useState([]);
   const [selectedQuote, setSelectedQuote] = useState('');
   const syncUserId = useAppStore(s => s.syncUserId);
+  const workspaceScope = useAppStore(s => s.workspaceScope);
   const addMarketWatchItem = useAppStore(s => s.addMarketWatchItem);
   const [authorName, setAuthorName] = useState(
     syncUserId || localStorage.getItem('invest_sync_user_id') || '我'
@@ -638,15 +640,17 @@ export default function InformationDetail() {
   const inlineSourceRef = useRef(null);
 
   const addViewpoint = useTradeStore(s => s.addViewpoint);
+  const isTeamWorkspace = workspaceScope === 'team';
+  const readOnly = isTeamWorkspace || isTeamMirrorRecord(info || {});
 
-  const reloadContext = async () => {
+  const reloadContext = useCallback(async () => {
     const [vps, decisionsForInfo] = await Promise.all([
-      db.getViewpoints(id),
-      db.getDecisionsByInformation(id),
+      db.getViewpoints(id, workspaceScope),
+      db.getDecisionsByInformation(id, workspaceScope),
     ]);
     setViewpoints(vps || []);
     setLinkedDecisions(decisionsForInfo || []);
-  };
+  }, [id, workspaceScope]);
 
   useEffect(() => {
     let currentUrl = null;
@@ -682,9 +686,13 @@ export default function InformationDetail() {
         URL.revokeObjectURL(currentUrl);
       }
     };
-  }, [id, navigate]);
+  }, [id, navigate, reloadContext]);
 
   const handleAddViewpoint = async () => {
+    if (readOnly) {
+      Toast.show({ icon: 'fail', content: '团队工作区是只读镜像，不能添加观点' });
+      return;
+    }
     if (!newViewpoint.trim()) return;
     setSubmittingVp(true);
     try {
@@ -694,6 +702,9 @@ export default function InformationDetail() {
         content: newViewpoint.trim(),
         tags: newVpTags.length > 0 ? newVpTags : null,
         author: authorName.trim() || '我',
+        source_author: authorName.trim() || syncUserId || '我',
+        workspace_scope: 'personal',
+        source_scope: 'personal',
         quote: selectedQuote.trim() || null,
         target_type: info?.type || 'GENERAL',
       });
@@ -712,6 +723,10 @@ export default function InformationDetail() {
   };
 
   const handleCreateDecision = () => {
+    if (readOnly) {
+      Toast.show({ content: '团队工作区是只读镜像，请复制到个人工作区后再新建决策' });
+      return;
+    }
     navigate(`/decisions?info_id=${id}&new=1`);
   };
 
@@ -727,6 +742,10 @@ export default function InformationDetail() {
 
   // Tag editing handlers
   const handleEditType = async (typeArr) => {
+    if (readOnly) {
+      Toast.show({ icon: 'fail', content: '团队工作区是只读镜像，不能编辑情报' });
+      return;
+    }
     if (!typeArr || typeArr.length === 0) return;
     const newType = typeArr[0];
     const updateInformation = useTradeStore.getState().updateInformation;
@@ -739,6 +758,10 @@ export default function InformationDetail() {
   };
 
   const handleEditAsset = async () => {
+    if (readOnly) {
+      Toast.show({ icon: 'fail', content: '团队工作区是只读镜像，不能编辑情报' });
+      return;
+    }
     const symbol = editAssetValue.toUpperCase().trim();
     const updateInformation = useTradeStore.getState().updateInformation;
 
@@ -775,6 +798,10 @@ export default function InformationDetail() {
   };
 
   const handleEditSector = async () => {
+    if (readOnly) {
+      Toast.show({ icon: 'fail', content: '团队工作区是只读镜像，不能编辑情报' });
+      return;
+    }
     const sector = editSectorValue.trim() || null;
     const sectors = splitList(editSectorValue);
     const updateInformation = useTradeStore.getState().updateInformation;
@@ -787,6 +814,10 @@ export default function InformationDetail() {
   };
 
   const handleViewpointStatusChange = async (vpId, newStatus) => {
+    if (readOnly) {
+      Toast.show({ icon: 'fail', content: '团队工作区是只读镜像，不能修改观点状态' });
+      return;
+    }
     const updateVpStatus = useTradeStore.getState().updateViewpointStatus;
     const res = await updateVpStatus(vpId, newStatus);
     if (res.success) {
@@ -865,6 +896,18 @@ export default function InformationDetail() {
 
   const handleAction = async (action) => {
     setActionSheetVisible(false);
+    if (action.key === 'copy-personal') {
+      await handleCopyToPersonal();
+      return;
+    }
+    if (action.key === 'toggle-team') {
+      await handleToggleInfoTeamVisible();
+      return;
+    }
+    if (readOnly && ['archive', 'delete'].includes(action.key)) {
+      Toast.show({ icon: 'fail', content: '团队工作区是只读镜像，不能修改或删除情报' });
+      return;
+    }
     if (action.key === 'archive') {
       const res = await updateInformation({ ...info, status: 'ARCHIVED' });
       if (res.success) {
@@ -900,20 +943,96 @@ export default function InformationDetail() {
   };
 
   const markCurrentMaterial = () => {
+    if (readOnly) {
+      Toast.show({ content: '团队工作区是只读镜像，不能添加观点引用' });
+      return;
+    }
     const label = getReaderLabel(readerKind);
     setSelectedQuote(`${label}: ${info.title || extractDomain(validUrl || '')}`.slice(0, 500));
     Toast.show({ icon: 'success', content: '已标注当前材料' });
   };
 
-  const actionSheetActions = [
-    { text: '归档', key: 'archive' },
-    { text: '删除', key: 'delete', danger: true },
-  ];
+  const handleToggleInfoTeamVisible = async () => {
+    if (readOnly) {
+      Toast.show({ content: '团队镜像不能直接发布或撤回，请回到个人工作区操作' });
+      return;
+    }
+    const nextVisible = !(info.team_visible === 1 || info.team_visible === true);
+    await db.setInformationTeamVisible(info.id, nextVisible);
+    setInfo((prev) => ({ ...prev, team_visible: nextVisible ? 1 : 0, sync_status: 'local' }));
+    Toast.show({ icon: 'success', content: nextVisible ? '已标记为可发布到团队' : '已撤回团队发布标记' });
+  };
+
+  const handleToggleViewpointTeamVisible = async (vp) => {
+    if (readOnly) {
+      Toast.show({ content: '团队镜像不能直接发布或撤回，请回到个人工作区操作' });
+      return;
+    }
+    const nextVisible = !(vp.team_visible === 1 || vp.team_visible === true);
+    await db.setViewpointTeamVisible(vp.id, nextVisible);
+    await reloadContext();
+    Toast.show({ icon: 'success', content: nextVisible ? '观点已标记为可发布到团队' : '观点已撤回团队发布标记' });
+  };
+
+  const handleCopyToPersonal = async () => {
+    if (!info) return;
+    try {
+      const newInfoId = crypto.randomUUID();
+      const currentAuthor = syncUserId || localStorage.getItem('invest_sync_user_id') || '未标记';
+      await db.addInformation({
+        ...info,
+        id: newInfoId,
+        author: currentAuthor,
+        source_author: currentAuthor,
+        workspace_scope: 'personal',
+        source_scope: 'personal',
+        origin_id: newInfoId,
+        sync_status: 'local',
+        team_visible: 0,
+        asset_ids: info.asset_symbols || info.asset_id,
+        sectors: info.sectors || info.sector,
+      });
+      for (const vp of viewpoints) {
+        const newViewpointId = crypto.randomUUID();
+        await db.addViewpoint({
+          ...vp,
+          id: newViewpointId,
+          info_id: newInfoId,
+          author: currentAuthor,
+          source_author: currentAuthor,
+          workspace_scope: 'personal',
+          source_scope: 'personal',
+          origin_id: newViewpointId,
+          sync_status: 'local',
+          team_visible: 0,
+        });
+      }
+      Toast.show({ icon: 'success', content: '已复制到个人工作区' });
+      navigate(`/information/${newInfoId}`);
+    } catch (err) {
+      Toast.show({ icon: 'fail', content: err.message || '复制到个人工作区失败' });
+    }
+  };
+
+  const actionSheetActions = readOnly
+    ? [{ text: '复制到个人工作区', key: 'copy-personal' }]
+    : [
+      { text: info?.team_visible ? '撤回团队发布标记' : '发布到团队', key: 'toggle-team' },
+      { text: '归档', key: 'archive' },
+      { text: '删除', key: 'delete', danger: true },
+    ];
 
   // Build swipe actions for viewpoint based on its current status
   const getVpSwipeActions = (vp) => {
+    if (readOnly) return [];
     const status = vp.status || 'ACTIVE';
     const actions = [];
+    actions.push({
+      key: 'publish',
+      text: vp.team_visible ? '撤回' : '发布',
+      color: '#10b981',
+      onClick: () => handleToggleViewpointTeamVisible(vp),
+    });
 
     if (status !== 'VALIDATED') {
       actions.push({
@@ -962,6 +1081,7 @@ export default function InformationDetail() {
 
   const infoAssets = splitList(info.asset_symbols || info.asset_symbol || info.asset_id);
   const infoSectors = splitList(info.sectors || info.sector);
+  const infoSyncMeta = getSyncStatusMeta(info);
 
   return (
     <div className="info-detail">
@@ -983,17 +1103,21 @@ export default function InformationDetail() {
       <div className="info-detail__content">
         <div className="info-detail__header">
           <h1 className="info-detail__title">{info.title}</h1>
+          <div className="info-detail__sync-row">
+            <span className={`info-detail__sync-badge ${infoSyncMeta.className}`}>{infoSyncMeta.label}</span>
+            {readOnly && <span className="info-detail__readonly-badge">团队镜像只读</span>}
+          </div>
 
           {/* ── Editable Tags ── */}
           <div className="info-detail__tags">
             <Tag
               color={TYPE_COLORS[info.type] || 'default'}
               fill="outline"
-              className="info-detail__tag-editable"
-              onClick={() => setEditTypeVisible(true)}
+              className={readOnly ? 'info-detail__tag-static' : 'info-detail__tag-editable'}
+              onClick={() => !readOnly && setEditTypeVisible(true)}
             >
               {TYPE_LABELS[info.type] || info.type}
-              <EditSOutline className="info-detail__tag-edit-icon" />
+              {!readOnly && <EditSOutline className="info-detail__tag-edit-icon" />}
             </Tag>
 
             {infoAssets.length > 0 ? (
@@ -1002,19 +1126,20 @@ export default function InformationDetail() {
                   key={asset}
                   color="primary"
                   fill="outline"
-                  className="info-detail__tag-editable"
+                  className={readOnly ? 'info-detail__tag-static' : 'info-detail__tag-editable'}
                   onClick={() => {
+                    if (readOnly) return;
                     setEditAssetValue(infoAssets.join(','));
                     setEditAssetVisible(true);
                   }}
                 >
                   <AssetLogo symbol={asset} className="info-detail__asset-logo" />
                   {asset}
-                  <EditSOutline className="info-detail__tag-edit-icon" />
+                  {!readOnly && <EditSOutline className="info-detail__tag-edit-icon" />}
                 </Tag>
               ))
             ) : (
-              <Tag
+              !readOnly && <Tag
                 color="default"
                 fill="outline"
                 className="info-detail__tag-add"
@@ -1034,19 +1159,20 @@ export default function InformationDetail() {
                   key={sector}
                   color="success"
                   fill="outline"
-                  className="info-detail__tag-editable"
+                  className={readOnly ? 'info-detail__tag-static' : 'info-detail__tag-editable'}
                   onClick={() => {
+                    if (readOnly) return;
                     setEditSectorValue(infoSectors.join(','));
                     setEditSectorVisible(true);
                   }}
                 >
                   <SectorIcon />
                   {sector}
-                  <EditSOutline className="info-detail__tag-edit-icon" />
+                  {!readOnly && <EditSOutline className="info-detail__tag-edit-icon" />}
                 </Tag>
               ))
             ) : (
-              <Tag
+              !readOnly && <Tag
                 color="default"
                 fill="outline"
                 className="info-detail__tag-add"
@@ -1088,11 +1214,11 @@ export default function InformationDetail() {
               fill="outline"
               color="danger"
               className="info-detail__primary-action"
-              onClick={() => handleAction({ key: 'delete' })}
+              onClick={() => readOnly ? handleCopyToPersonal() : handleAction({ key: 'delete' })}
             >
               <span className="info-detail__primary-action-inner">
-                <DeleteOutline />
-                <span>删除</span>
+                {readOnly ? <AddOutline /> : <DeleteOutline />}
+                <span>{readOnly ? '复制到个人' : '删除'}</span>
               </span>
             </Button>
           </div>
@@ -1201,7 +1327,7 @@ export default function InformationDetail() {
               <div className="info-detail__linked-title">关联决策</div>
               <div className="info-detail__linked-subtitle">这条信息可以沉淀出多个投资决策</div>
             </div>
-            <Button size="mini" color="primary" onClick={handleCreateDecision}>新建</Button>
+            {!readOnly && <Button size="mini" color="primary" onClick={handleCreateDecision}>新建</Button>}
           </div>
           {linkedDecisions.length > 0 ? (
             <div className="info-detail__linked-list">
@@ -1221,7 +1347,9 @@ export default function InformationDetail() {
               ))}
             </div>
           ) : (
-            <div className="info-detail__linked-empty">暂无决策，从这条信息生成后会自动绑定来源。</div>
+            <div className="info-detail__linked-empty">
+              {readOnly ? '暂无团队发布的关联决策。' : '暂无决策，从这条信息生成后会自动绑定来源。'}
+            </div>
           )}
         </div>
 
@@ -1237,6 +1365,7 @@ export default function InformationDetail() {
                 const vpTags = parseTags(vp.tags);
                 const vpStatus = vp.status || 'ACTIVE';
                 const statusConfig = VP_STATUS_CONFIG[vpStatus] || VP_STATUS_CONFIG.ACTIVE;
+                const vpSyncMeta = getSyncStatusMeta(vp);
 
                 return (
                   <SwipeAction
@@ -1255,6 +1384,9 @@ export default function InformationDetail() {
                             }}
                           >
                             {statusConfig.label}
+                          </span>
+                          <span className={`vp-item__sync-badge ${vpSyncMeta.className}`}>
+                            {vpSyncMeta.label}
                           </span>
                           {vpTags.map((tag, i) => (
                             <span
@@ -1296,7 +1428,7 @@ export default function InformationDetail() {
         </div>
 
         {/* ── Add Viewpoint ── */}
-        <div className="info-detail__add-vp">
+        {!readOnly && <div className="info-detail__add-vp">
           <div className="info-detail__comment-tools">
             <div className="info-detail__author-field">
               <span className="info-detail__author-label">花名</span>
@@ -1367,14 +1499,16 @@ export default function InformationDetail() {
           >
             添加观点
           </Button>
-        </div>
+        </div>}
       </div>
 
-      <div className="info-detail__footer">
-        <Button block color="primary" size="large" onClick={handleCreateDecision}>
-          生成投资决策
-        </Button>
-      </div>
+      {!readOnly && (
+        <div className="info-detail__footer">
+          <Button block color="primary" size="large" onClick={handleCreateDecision}>
+            生成投资决策
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

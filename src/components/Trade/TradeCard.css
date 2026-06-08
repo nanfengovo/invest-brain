@@ -170,6 +170,49 @@
   display: none;
 }
 
+.trade-card__sync-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--sync-border, rgba(148, 163, 184, 0.2));
+  background: var(--sync-bg, rgba(148, 163, 184, 0.08));
+  color: var(--sync-color, var(--color-text-secondary));
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.trade-card__sync-tag--footer {
+  display: none;
+}
+
+.sync-status--local {
+  --sync-color: #f59e0b;
+  --sync-bg: rgba(245, 158, 11, 0.12);
+  --sync-border: rgba(245, 158, 11, 0.3);
+}
+
+.sync-status--backup {
+  --sync-color: #38bdf8;
+  --sync-bg: rgba(56, 189, 248, 0.12);
+  --sync-border: rgba(56, 189, 248, 0.3);
+}
+
+.sync-status--published {
+  --sync-color: #34d399;
+  --sync-bg: rgba(52, 211, 153, 0.12);
+  --sync-border: rgba(52, 211, 153, 0.3);
+}
+
+.sync-status--mirror {
+  --sync-color: #a78bfa;
+  --sync-bg: rgba(167, 139, 250, 0.12);
+  --sync-border: rgba(167, 139, 250, 0.3);
+}
+
 /* ── Right Side: Price, Total, Time ── */
 .trade-card__right {
   text-align: right;

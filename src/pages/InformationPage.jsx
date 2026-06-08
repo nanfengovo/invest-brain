@@ -12,11 +12,14 @@ import {
 } from 'antd-mobile-icons';
 import { useNavigate } from 'react-router-dom';
 import { useTradeStore } from '../stores/useTradeStore';
+import { useAppStore } from '../stores/useAppStore';
+import { db } from '../db/database';
 import InformationForm from '../components/Information/InformationForm';
 import InformationFilter from '../components/Information/InformationFilter';
 import AssetLogo from '../components/common/AssetLogo';
 import { FilterOutline } from 'antd-mobile-icons';
 import { toDateGroupKey } from '../utils/time';
+import { getSyncStatusMeta } from '../utils/syncStatus';
 import './InformationPage.css';
 
 const BookIcon = () => (
@@ -107,9 +110,15 @@ export default function InformationPage() {
   const informations = useTradeStore((s) => s.informations);
   const refreshInformations = useTradeStore((s) => s.refreshInformations);
   const deleteInformation = useTradeStore((s) => s.deleteInformation);
+  const workspaceScope = useAppStore((s) => s.workspaceScope);
+  const isTeamWorkspace = workspaceScope === 'team';
 
   const handleDeleteInformation = (event, info) => {
     event.stopPropagation();
+    if (isTeamWorkspace) {
+      Toast.show({ icon: 'fail', content: '团队工作区是只读镜像，不能删除团队情报' });
+      return;
+    }
     Modal.confirm({
       content: `确定删除「${info.title}」？关联观点会一起删除。`,
       confirmText: '删除',
@@ -123,6 +132,25 @@ export default function InformationPage() {
         }
       },
     });
+  };
+
+  const handleToggleTeamVisible = async (event, info) => {
+    event.stopPropagation();
+    if (isTeamWorkspace) {
+      Toast.show({ content: '团队镜像不能直接发布或撤回，请回到个人工作区操作' });
+      return;
+    }
+    const nextVisible = !(info.team_visible === 1 || info.team_visible === true);
+    try {
+      await db.setInformationTeamVisible(info.id, nextVisible);
+      await refreshInformations(viewMode === 'ARCHIVED' ? 'ARCHIVED' : null);
+      Toast.show({
+        icon: 'success',
+        content: nextVisible ? '已标记为可发布到团队' : '已撤回团队发布标记',
+      });
+    } catch (err) {
+      Toast.show({ icon: 'fail', content: err.message || '更新团队发布标记失败' });
+    }
   };
 
   const openInformation = (event, info) => {
@@ -232,6 +260,7 @@ export default function InformationPage() {
 
       <div className="info-page__stats">
         共 <span className="info-page__stats-highlight">{stats.total}</span> 条情报 · 文章 <span className="info-page__stats-highlight">{stats.articles}</span> · 视频 <span className="info-page__stats-highlight">{stats.videos}</span>
+        {isTeamWorkspace && <span className="info-page__workspace-note">团队镜像只读</span>}
       </div>
 
       <div className="info-page__list info-page__list--compact">
@@ -256,6 +285,8 @@ export default function InformationPage() {
                 {items.map(info => {
                   const infoAssets = splitList(info.asset_symbols || info.asset_symbol || info.asset_id);
                   const infoSectors = splitList(info.sectors || info.sector);
+                  const syncMeta = getSyncStatusMeta(info);
+                  const isTeamVisible = info.team_visible === 1 || info.team_visible === true;
 
                   return (
                     <div
@@ -299,6 +330,9 @@ export default function InformationPage() {
                               {info.decision_count}
                             </span>
                           )}
+                          <span className={`info-row__pill info-row__pill--sync ${syncMeta.className}`}>
+                            {syncMeta.label}
+                          </span>
                         </div>
                       </div>
                       <div className="info-row__side" onClick={(event) => event.stopPropagation()}>
@@ -306,12 +340,23 @@ export default function InformationPage() {
                           {TYPE_LABELS[info.type] || info.type}
                         </span>
                         <div className="info-row__actions">
+                          {!isTeamWorkspace && (
+                            <button
+                              type="button"
+                              className={`info-row__publish-btn ${isTeamVisible ? 'info-row__publish-btn--active' : ''}`}
+                              onClick={(event) => handleToggleTeamVisible(event, info)}
+                            >
+                              {isTeamVisible ? '撤回' : '发布'}
+                            </button>
+                          )}
                           <button type="button" className="info-row__icon-btn" onClick={(event) => openInformation(event, info)}>
                             <EyeOutline />
                           </button>
-                          <button type="button" className="info-row__icon-btn info-row__icon-btn--danger" onClick={(event) => handleDeleteInformation(event, info)}>
-                            <DeleteOutline />
-                          </button>
+                          {!isTeamWorkspace && (
+                            <button type="button" className="info-row__icon-btn info-row__icon-btn--danger" onClick={(event) => handleDeleteInformation(event, info)}>
+                              <DeleteOutline />
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -323,16 +368,18 @@ export default function InformationPage() {
         )}
       </div>
 
-      <FloatingBubble
-        style={{
-          '--initial-position-bottom': '80px',
-          '--initial-position-right': '24px',
-          '--edge-distance': '24px',
-        }}
-        onClick={() => setShowAdd(true)}
-      >
-        <AddOutline fontSize={28} />
-      </FloatingBubble>
+      {!isTeamWorkspace && (
+        <FloatingBubble
+          style={{
+            '--initial-position-bottom': '80px',
+            '--initial-position-right': '24px',
+            '--edge-distance': '24px',
+          }}
+          onClick={() => setShowAdd(true)}
+        >
+          <AddOutline fontSize={28} />
+        </FloatingBubble>
+      )}
 
       <Popup
         visible={showFilter}

@@ -13,7 +13,16 @@ const PERSONAL_SYNC_TABLES = new Set([
   'trades',
   'price_alerts',
 ]);
-const TEAM_SYNC_TABLES = new Set(['assets', 'trades']);
+const TEAM_SYNC_TABLES = new Set([
+  'assets',
+  'informations',
+  'information_asset_links',
+  'information_sector_links',
+  'decisions',
+  'decision_info_links',
+  'viewpoints',
+  'trades',
+]);
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -51,16 +60,34 @@ export default async function handler(req, res) {
       ? 'team'
       : 'personal';
 
-    if (!userId || !data) {
-      return res.status(400).json({ error: '缺少用户代号或同步数据' });
+    if (!userId) {
+      return res.status(400).json({ error: '缺少用户代号' });
     }
-
-    const normalizedData = normalizeSyncDump(data, userId, scope);
 
     const keyPrefix = scope === 'team' ? 'team_sync_data' : 'sync_data';
     const timePrefix = scope === 'team' ? 'team_sync_time' : 'sync_time';
     const key = `${keyPrefix}:${userId}`;
     const timeKey = `${timePrefix}:${userId}`;
+
+    if (action === 'withdraw-team') {
+      if (scope !== 'team') {
+        return res.status(400).json({ error: '撤回操作只支持团队空间' });
+      }
+      await redis.del(key);
+      await redis.del(timeKey);
+      return res.status(200).json({
+        success: true,
+        scope,
+        message: '已撤回我发布到团队空间的数据',
+      });
+    }
+
+    if (!data) {
+      return res.status(400).json({ error: '缺少同步数据' });
+    }
+
+    const normalizedData = normalizeSyncDump(data, userId, scope);
+
     const stringifiedData = JSON.stringify(normalizedData);
 
     await redis.set(key, stringifiedData);
@@ -95,37 +122,61 @@ function normalizeSyncDump(data, userId, scope) {
     }
   }
 
-  if (!Array.isArray(tables.trades)) {
-    return {
-      ...data,
-      workspaceScope: scope,
-      author: String(userId || '').trim(),
-      tables,
-    };
-  }
   const normalizedUserId = String(userId || '').trim();
-  const trades = tables.trades
-    .filter((trade) => {
-      const author = String(trade?.author || trade?.source_author || '').trim();
-      return !normalizedUserId || author === normalizedUserId;
-    })
-    .map((trade) => ({
-      ...trade,
-      author: String(trade.author || normalizedUserId || '未标记').trim() || '未标记',
-      source_author: String(trade.source_author || trade.author || normalizedUserId || '未标记').trim() || '未标记',
-      workspace_scope: scope,
-      source_scope: scope,
-      origin_id: trade.origin_id || trade.id,
-      sync_status: 'synced',
-    }));
+  const belongsToUser = (row) => {
+    const author = String(row?.author || row?.source_author || '').trim();
+    return !normalizedUserId || author === normalizedUserId;
+  };
+  const normalizeCollaborativeRow = (row) => ({
+    ...row,
+    author: String(row.author || normalizedUserId || '未标记').trim() || '未标记',
+    source_author: String(row.source_author || row.author || normalizedUserId || '未标记').trim() || '未标记',
+    workspace_scope: scope,
+    source_scope: scope,
+    origin_id: row.origin_id || row.id,
+    sync_status: scope === 'team' ? 'published' : 'backup',
+  });
+
+  if (Array.isArray(tables.trades)) {
+    tables.trades = tables.trades
+      .filter(belongsToUser)
+      .map((trade) => ({
+        ...trade,
+        author: String(trade.author || normalizedUserId || '未标记').trim() || '未标记',
+        source_author: String(trade.source_author || trade.author || normalizedUserId || '未标记').trim() || '未标记',
+        workspace_scope: scope,
+        source_scope: scope,
+        origin_id: trade.origin_id || trade.id,
+        sync_status: scope === 'team' ? 'published' : 'backup',
+      }));
+  }
+
+  for (const tableName of ['informations', 'decisions', 'viewpoints']) {
+    if (!Array.isArray(tables[tableName])) continue;
+    tables[tableName] = tables[tableName]
+      .filter((row) => belongsToUser(row))
+      .filter((row) => scope !== 'team' || row.team_visible === 1 || row.team_visible === true || row.team_visible === '1')
+      .map(normalizeCollaborativeRow);
+  }
+
+  if (scope === 'team') {
+    const infoIds = new Set((tables.informations || []).map((row) => row.id));
+    const decisionIds = new Set((tables.decisions || []).map((row) => row.id));
+    if (Array.isArray(tables.information_asset_links)) {
+      tables.information_asset_links = tables.information_asset_links.filter((row) => infoIds.has(row.info_id));
+    }
+    if (Array.isArray(tables.information_sector_links)) {
+      tables.information_sector_links = tables.information_sector_links.filter((row) => infoIds.has(row.info_id));
+    }
+    if (Array.isArray(tables.decision_info_links)) {
+      tables.decision_info_links = tables.decision_info_links.filter((row) => decisionIds.has(row.decision_id) && infoIds.has(row.info_id));
+    }
+  }
 
   return {
     ...data,
     workspaceScope: scope,
     author: normalizedUserId,
-    tables: {
-      ...tables,
-      trades,
-    },
+    tables,
   };
 }

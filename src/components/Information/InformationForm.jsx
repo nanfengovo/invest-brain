@@ -49,6 +49,7 @@ export default function InformationForm({ onClose }) {
   
   const addInformation = useTradeStore((s) => s.addInformation);
   const addMarketWatchItem = useAppStore((s) => s.addMarketWatchItem);
+  const syncUserId = useAppStore((s) => s.syncUserId);
 
   // Reset form state when component mounts (each time popup opens)
   useEffect(() => {
@@ -233,6 +234,9 @@ export default function InformationForm({ onClose }) {
         sector: sectors[0] || null,
         sectors,
         file_path: filePath,
+        author: syncUserId || localStorage.getItem('invest_sync_user_id') || '未标记',
+        workspace_scope: 'personal',
+        source_scope: 'personal',
       };
       
       const res = await addInformation(info);

@@ -42,6 +42,8 @@ const TYPE_OPTIONS = [
   { label: '书籍/研报', value: 'BOOK' },
 ];
 
+const BUILTIN_AI_API_BASE_URL = 'https://invest-brain.vercel.app';
+
 const SectorIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="1em" height="1em">
     <path d="M4 5h7v7H4z" />
@@ -135,13 +137,53 @@ function looksLikeHtml(content = '') {
 }
 
 function stripSourceScaffold(content = '') {
-  return String(content || '')
+  const original = String(content || '');
+  const normalized = original
     .replace(/^Title:\s*.*$/gim, '')
     .replace(/^Markdown Content:\s*/gim, '')
     .replace(/^视频嵌入:\s*\S+$/gim, '')
     .replace(/^视频地址:\s*\S+$/gim, '')
     .replace(/^封面地址:\s*\S+$/gim, '')
+    .replace(/\s+URL Source:\s*https?:\/\/\S+(?:\s+Published Time:\s*[^\n]+)?/gim, '')
+    .replace(/\s+Published Time:\s*[^\n]+/gim, '');
+
+  const cleaned = normalized
+    .split('\n')
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return true;
+      if (/^URL Source:\s*https?:\/\//i.test(trimmed)) return false;
+      if (/^Published Time:/i.test(trimmed)) return false;
+      if (/^(Post|Conversation|查看 X 原文)$/i.test(trimmed)) return false;
+      if (/^#+\s*(Post|Conversation)\s*$/i.test(trimmed)) return false;
+      if (/\s\/\s*X$/i.test(trimmed)) return false;
+      return true;
+    })
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
     .trim();
+
+  const meaningfulContent = cleaned.replace(/^作者:\s*.*$/gim, '').trim();
+  return meaningfulContent ? cleaned : original.trim();
+}
+
+function cleanContentForTranslation(content = '') {
+  return stripSourceScaffold(content)
+    .replace(/^作者:\s*$/gim, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function getSummarizeApiUrl(hasLocalApiKey) {
+  if (hasLocalApiKey) return '/api/summarize';
+  if (typeof window === 'undefined') return '/api/summarize';
+
+  const localHosts = new Set(['localhost', '127.0.0.1', '::1']);
+  if (localHosts.has(window.location.hostname)) {
+    return `${BUILTIN_AI_API_BASE_URL}/api/summarize`;
+  }
+
+  return '/api/summarize';
 }
 
 function getLabeledUrl(content = '', label) {
@@ -612,6 +654,7 @@ export default function InformationDetail() {
   const [translationModel, setTranslationModel] = useState('');
   const [translationLoading, setTranslationLoading] = useState(false);
   const [readerMode, setReaderMode] = useState('original');
+  const [actionSheetVisible, setActionSheetVisible] = useState(false);
 
   // Tag editing state
   const [editTypeVisible, setEditTypeVisible] = useState(false);
@@ -622,6 +665,8 @@ export default function InformationDetail() {
   const inlineSourceRef = useRef(null);
 
   const addViewpoint = useTradeStore(s => s.addViewpoint);
+  const deleteInformation = useTradeStore(s => s.deleteInformation);
+  const updateInformation = useTradeStore(s => s.updateInformation);
   const isTeamWorkspace = workspaceScope === 'team';
   const readOnly = isTeamWorkspace || isTeamMirrorRecord(info || {});
 
@@ -891,15 +936,18 @@ export default function InformationDetail() {
   const readerSourceUrl = fileUrl || validUrl;
   const hasInlineSource = readerKind !== 'webpage' && readerKind !== 'empty';
   const canTranslateReader = ['markdown', 'html', 'webpage'].includes(readerKind) && Boolean(cleanContent);
-  const activeReaderContent = readerMode === 'translated' && translationText ? translationText : cleanContent;
-
-  const [actionSheetVisible, setActionSheetVisible] = useState(false);
-  const deleteInformation = useTradeStore(s => s.deleteInformation);
-  const updateInformation = useTradeStore(s => s.updateInformation);
+  const translationSourceContent = cleanContentForTranslation(cleanContent);
+  const isTranslatedMode = readerMode === 'translated' && Boolean(translationText);
+  const activeReaderContent = isTranslatedMode ? translationText : cleanContent;
 
   const handleTranslateReader = async (force = false) => {
     if (!canTranslateReader) {
       Toast.show({ content: '当前材料没有可翻译的正文' });
+      return;
+    }
+
+    if (!translationSourceContent) {
+      Toast.show({ content: '当前材料清洗后没有可翻译正文' });
       return;
     }
 
@@ -916,18 +964,19 @@ export default function InformationDetail() {
     });
 
     try {
+      const localApiKey = String(geminiApiKey || '').trim();
       const headers = { 'Content-Type': 'application/json' };
-      if (geminiApiKey) {
-        headers['x-gemini-api-key'] = geminiApiKey;
+      if (localApiKey) {
+        headers['x-gemini-api-key'] = localApiKey;
       }
 
-      const response = await fetch('/api/summarize', {
+      const response = await fetch(getSummarizeApiUrl(Boolean(localApiKey)), {
         method: 'POST',
         headers,
         body: JSON.stringify({
           mode: 'translate',
           title: info?.title || '',
-          text: cleanContent,
+          text: translationSourceContent,
           sourceLanguage: 'auto',
         }),
       });
@@ -937,14 +986,20 @@ export default function InformationDetail() {
         throw new Error(result.error || `HTTP ${response.status}`);
       }
 
-      setTranslationText(result.translatedText || '');
+      const nextTranslationText = String(result.translatedText || '').trim();
+      if (!nextTranslationText) {
+        throw new Error('模型没有返回翻译正文，请稍后重试');
+      }
+
+      toast.close();
+      setTranslationText(nextTranslationText);
       setTranslationModel(result.model || '');
       setReaderMode('translated');
       Toast.show({ icon: 'success', content: result.truncated ? '已翻译前半部分正文' : '翻译完成' });
     } catch (error) {
+      toast.close();
       Toast.show({ icon: 'fail', content: error.message || '翻译失败' });
     } finally {
-      toast.close();
       setTranslationLoading(false);
     }
   };
@@ -1348,23 +1403,24 @@ export default function InformationDetail() {
             <div className="info-detail__reader-heading">
               <span>
                 {getReaderLabel(readerKind)}
-                {readerMode === 'translated' && translationText ? ' · 中文翻译' : ''}
+                {isTranslatedMode ? ' · 中文翻译' : ''}
               </span>
               {validUrl && <small>{extractDomain(validUrl)}</small>}
-              {readerMode === 'translated' && translationModel && <small>翻译模型 {translationModel}</small>}
+              {isTranslatedMode && translationModel && <small>翻译模型 {translationModel}</small>}
             </div>
             <div className="info-detail__reader-actions">
+              {isTranslatedMode && <span className="info-detail__reader-mode-badge">中文</span>}
               {canTranslateReader && (
-                readerMode === 'translated' && translationText ? (
+                isTranslatedMode ? (
                   <>
                     <Button size="mini" fill="outline" onClick={() => setReaderMode('original')}>原文</Button>
                     <Button size="mini" fill="outline" disabled={translationLoading} onClick={() => handleTranslateReader(true)}>
-                      重译
+                      {translationLoading ? '翻译中' : '重译'}
                     </Button>
                   </>
                 ) : (
                   <Button size="mini" fill="outline" disabled={translationLoading} onClick={() => handleTranslateReader(false)}>
-                    {translationLoading ? '翻译中' : '中文'}
+                    {translationLoading ? '翻译中' : '翻译中文'}
                   </Button>
                 )
               )}

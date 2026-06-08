@@ -1083,6 +1083,20 @@
   font-size: 11px;
 }
 
+.info-detail__reader-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 9px;
+  border: 1px solid rgba(59, 130, 246, 0.32);
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.13);
+  color: #93c5fd;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+
 .info-detail__article-body {
   max-height: 62vh;
   min-height: 220px;

@@ -18,6 +18,21 @@ test('information detail reader exposes Chinese and original toggles', () => {
   assert.match(source, /handleTranslateReader/);
   assert.match(source, /中文翻译/);
   assert.match(source, />原文</);
+  assert.match(source, /'翻译中文'/);
   assert.match(source, /mode: 'translate'/);
   assert.match(source, /readerContent=\{activeReaderContent\}/);
+  assert.match(source, /getSummarizeApiUrl\(Boolean\(localApiKey\)\)/);
+  assert.match(source, /BUILTIN_AI_API_BASE_URL/);
+  assert.match(source, /localHosts\.has\(window\.location\.hostname\)/);
+});
+
+test('information translation cleans source scaffold and reports failures clearly', () => {
+  const source = readFileSync(new URL('../src/pages/InformationDetail.jsx', import.meta.url), 'utf8');
+
+  assert.match(source, /cleanContentForTranslation/);
+  assert.match(source, /URL Source:/);
+  assert.match(source, /Published Time:/);
+  assert.match(source, /Post\|Conversation/);
+  assert.match(source, /模型没有返回翻译正文，请稍后重试/);
+  assert.match(source, /toast\.close\(\);\s*Toast\.show\(\{ icon: 'fail'/);
 });

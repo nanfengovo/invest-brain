@@ -335,29 +335,31 @@ export default function InformationPage() {
                               {info.decision_count}
                             </span>
                           )}
+                        </div>
+                        <div className="info-row__footer">
                           <span className={`info-row__pill info-row__pill--sync ${syncMeta.className}`}>
                             {syncMeta.label}
                           </span>
-                        </div>
-                        <div className="info-row__actions" onClick={(event) => event.stopPropagation()}>
-                          {!isTeamWorkspace && (
-                            <button
-                              type="button"
-                              className={`info-row__publish-btn ${isTeamVisible ? 'info-row__publish-btn--active' : ''}`}
-                              onClick={(event) => handleToggleTeamVisible(event, info)}
-                              title={isTeamVisible ? '取消团队可见标记' : '标记为团队可见'}
-                            >
-                              {isTeamVisible ? '已可见' : '团队可见'}
+                          <div className="info-row__actions" onClick={(event) => event.stopPropagation()}>
+                            {!isTeamWorkspace && (
+                              <button
+                                type="button"
+                                className={`info-row__publish-btn ${isTeamVisible ? 'info-row__publish-btn--active' : ''}`}
+                                onClick={(event) => handleToggleTeamVisible(event, info)}
+                                title={isTeamVisible ? '取消团队可见标记' : '标记为团队可见'}
+                              >
+                                {isTeamVisible ? '已可见' : '团队可见'}
+                              </button>
+                            )}
+                            <button type="button" className="info-row__icon-btn" onClick={(event) => openInformation(event, info)}>
+                              <EyeOutline />
                             </button>
-                          )}
-                          <button type="button" className="info-row__icon-btn" onClick={(event) => openInformation(event, info)}>
-                            <EyeOutline />
-                          </button>
-                          {!isTeamWorkspace && (
-                            <button type="button" className="info-row__icon-btn info-row__icon-btn--danger" onClick={(event) => handleDeleteInformation(event, info)}>
-                              <DeleteOutline />
-                            </button>
-                          )}
+                            {!isTeamWorkspace && (
+                              <button type="button" className="info-row__icon-btn info-row__icon-btn--danger" onClick={(event) => handleDeleteInformation(event, info)}>
+                                <DeleteOutline />
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>

@@ -137,7 +137,7 @@ export default function InformationPage() {
   const handleToggleTeamVisible = async (event, info) => {
     event.stopPropagation();
     if (isTeamWorkspace) {
-      Toast.show({ content: '团队镜像不能直接发布或撤回，请回到个人工作区操作' });
+      Toast.show({ content: '团队镜像不能修改团队可见状态，请回到个人工作区操作' });
       return;
     }
     const nextVisible = !(info.team_visible === 1 || info.team_visible === true);
@@ -146,10 +146,10 @@ export default function InformationPage() {
       await refreshInformations(viewMode === 'ARCHIVED' ? 'ARCHIVED' : null);
       Toast.show({
         icon: 'success',
-        content: nextVisible ? '已标记为可发布到团队' : '已撤回团队发布标记',
+        content: nextVisible ? '已标记为团队可见' : '已取消团队可见',
       });
     } catch (err) {
-      Toast.show({ icon: 'fail', content: err.message || '更新团队发布标记失败' });
+      Toast.show({ icon: 'fail', content: err.message || '更新团队可见状态失败' });
     }
   };
 
@@ -298,7 +298,12 @@ export default function InformationPage() {
                         <span className="info-row__type-icon">{TYPE_ICONS[info.type] || <LinkOutline />}</span>
                       </div>
                       <div className="info-row__main">
-                        <div className="info-row__title">{info.title}</div>
+                        <div className="info-row__headline">
+                          <div className="info-row__title">{info.title}</div>
+                          <span className={`info-row__badge badge-${String(info.type || 'ARTICLE').toLowerCase()}`}>
+                            {TYPE_LABELS[info.type] || info.type}
+                          </span>
+                        </div>
                         <div className="info-row__meta">
                           {infoAssets.slice(0, 2).map((asset) => (
                             <span
@@ -334,19 +339,15 @@ export default function InformationPage() {
                             {syncMeta.label}
                           </span>
                         </div>
-                      </div>
-                      <div className="info-row__side" onClick={(event) => event.stopPropagation()}>
-                        <span className={`info-row__badge badge-${String(info.type || 'ARTICLE').toLowerCase()}`}>
-                          {TYPE_LABELS[info.type] || info.type}
-                        </span>
-                        <div className="info-row__actions">
+                        <div className="info-row__actions" onClick={(event) => event.stopPropagation()}>
                           {!isTeamWorkspace && (
                             <button
                               type="button"
                               className={`info-row__publish-btn ${isTeamVisible ? 'info-row__publish-btn--active' : ''}`}
                               onClick={(event) => handleToggleTeamVisible(event, info)}
+                              title={isTeamVisible ? '取消团队可见标记' : '标记为团队可见'}
                             >
-                              {isTeamVisible ? '撤回' : '发布'}
+                              {isTeamVisible ? '已可见' : '团队可见'}
                             </button>
                           )}
                           <button type="button" className="info-row__icon-btn" onClick={(event) => openInformation(event, info)}>

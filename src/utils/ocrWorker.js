@@ -108,7 +108,30 @@ export function normalizeOcrResult(result = {}) {
   // Build candidates for the smart suggestion UI
   const candidates = extractCandidates(trades);
 
-  return { trades, candidates };
+  return {
+    trades,
+    candidates,
+    meta: normalizeOcrMeta(result),
+  };
+}
+
+export function normalizeOcrMeta(result = {}) {
+  const modelUsed = result.model_used || result.modelUsed || null;
+  const requestedModel = result.requested_model || result.requestedModel || null;
+  const fallbackValue = result.fallback_used ?? result.fallbackUsed;
+  const retryCount = Number(result.retry_count ?? result.retryCount ?? 0);
+
+  return {
+    modelUsed,
+    requestedModel,
+    fallbackUsed: Boolean(
+      fallbackValue ?? (modelUsed && requestedModel && modelUsed !== requestedModel)
+    ),
+    retryCount: Number.isFinite(retryCount) ? retryCount : 0,
+    attemptedModels: Array.isArray(result.attempted_models)
+      ? result.attempted_models
+      : (Array.isArray(result.attemptedModels) ? result.attemptedModels : []),
+  };
 }
 
 /**

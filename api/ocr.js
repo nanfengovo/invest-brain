@@ -73,19 +73,19 @@ export default async function handler(req, res) {
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    return res.status(405).json({ error: '仅支持 POST 请求' });
   }
 
   const apiKey = req.headers['x-gemini-api-key'] || process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return res.status(500).json({ error: 'Gemini API Key is not configured. Please add one in Vercel or locally in settings.' });
+    return res.status(500).json({ error: 'Gemini API Key 未配置，请先在 Vercel 或本地设置中添加。' });
   }
 
   try {
     const { image, mimeType = 'image/png', model: requestedModel } = req.body;
 
     if (!image) {
-      return res.status(400).json({ error: 'No image provided' });
+      return res.status(400).json({ error: '请先上传需要识别的截图' });
     }
 
     // Validate and select preferred model
@@ -160,18 +160,30 @@ export default async function handler(req, res) {
 
     // Strategy: Retry preferred model up to 3 times (with 3s delays), then try fallbacks
     let lastError = null;
+    let retryCount = 0;
+    const attemptedModels = [];
     const MAX_PREFERRED_RETRIES = 3;
+
+    const withOcrMeta = (data, modelUsed) => ({
+      ...data,
+      model_used: modelUsed,
+      requested_model: preferredModel,
+      fallback_used: modelUsed !== preferredModel,
+      retry_count: retryCount,
+      attempted_models: attemptedModels,
+    });
 
     for (let attempt = 0; attempt < MAX_PREFERRED_RETRIES; attempt++) {
       try {
+        attemptedModels.push(preferredModel);
         const result = await tryModel(preferredModel);
         if (result.success) {
-          result.data.modelUsed = result.modelUsed;
-          return res.status(200).json(result.data);
+          return res.status(200).json(withOcrMeta(result.data, result.modelUsed));
         }
         lastError = result.error;
         // If 503/429, wait 3 seconds before retry
-        if (result.status === 503 || result.status === 429) {
+        if ((result.status === 503 || result.status === 429) && attempt < MAX_PREFERRED_RETRIES - 1) {
+          retryCount++;
           console.log(`[OCR API] Preferred model ${preferredModel} overloaded, retrying in 3s (attempt ${attempt + 1}/${MAX_PREFERRED_RETRIES})`);
           await sleep(3000);
         } else {
@@ -188,10 +200,10 @@ export default async function handler(req, res) {
     // Fallback to alternative models (no retries, just try each once)
     for (const fbModel of fallbackModels) {
       try {
+        attemptedModels.push(fbModel);
         const result = await tryModel(fbModel);
         if (result.success) {
-          result.data.modelUsed = result.modelUsed;
-          return res.status(200).json(result.data);
+          return res.status(200).json(withOcrMeta(result.data, result.modelUsed));
         }
         lastError = result.error;
       } catch (err) {
@@ -201,11 +213,11 @@ export default async function handler(req, res) {
     }
 
     return res.status(502).json({
-      error: 'Gemini API error',
-      details: typeof lastError === 'string' ? lastError : 'All models failed after retries'
+      error: 'Gemini API 调用失败',
+      details: typeof lastError === 'string' ? lastError : '所有模型重试后仍失败'
     });
   } catch (err) {
     console.error('[OCR API] Error:', err);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message || 'OCR 识别服务异常' });
   }
 }

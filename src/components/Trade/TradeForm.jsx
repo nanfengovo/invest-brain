@@ -14,6 +14,7 @@ import { useTradeStore } from '../../stores/useTradeStore';
 import { useAppStore } from '../../stores/useAppStore';
 import { parseTradeImage } from '../../utils/ocrWorker';
 import { getAiErrorMessage, getEmptyOcrMessage } from '../../utils/aiErrorMessages';
+import { OCR_PROGRESS_PHASES, buildOcrSuccessMessage } from '../../utils/ocrStatus';
 import { recommendDecisionForTrade, attachDecisionRecommendations } from '../../utils/decisionMatcher';
 import { parseDateTime } from '../../utils/time';
 import {
@@ -171,7 +172,7 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
   }, [decisions, form, formDraft, ignoredRecommendationId, initialData, selectedDecision, tradeTime]);
 
   /** Fill form with a single OCR trade result */
-  const applyOcrTrade = (data) => {
+  const applyOcrTrade = (data, options = {}) => {
     const updates = {};
     if (data.symbol) updates.symbol = data.symbol;
     if (data.asset_name) updates.asset_name = data.asset_name;
@@ -206,7 +207,7 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
       form.setFieldsValue(updates);
       setFormDraft((prev) => ({ ...prev, ...updates }));
       setIgnoredRecommendationId(null);
-      Toast.show({ icon: 'success', content: '已填入表单' });
+      Toast.show({ icon: 'success', content: options.successMessage || '已填入表单' });
     }
   };
 
@@ -218,15 +219,10 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
     if (referenceImage) URL.revokeObjectURL(referenceImage);
     setReferenceImage(URL.createObjectURL(file));
 
-    // 分阶段 loading 动画：让用户感知 AI 在做什么
-    const phases = [
-      '🔍 AI 识别提取中...',
-      '🧠 深度分析截图内容...',
-      '⏳ 模型繁忙，排队等待中...',
-      '🔄 尝试备用模型...',
-    ];
+    // 等待阶段只展示确定正在发生的步骤；重试/备用模型由接口返回后再提示。
+    const phases = OCR_PROGRESS_PHASES;
     let currentPhase = 0;
-    const toastHandler = Toast.show({
+    let toastHandler = Toast.show({
       icon: 'loading',
       content: phases[0],
       duration: 0,
@@ -235,16 +231,16 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
       currentPhase++;
       if (currentPhase < phases.length) {
         toastHandler.close();
-        Object.assign(toastHandler, Toast.show({
+        toastHandler = Toast.show({
           icon: 'loading',
           content: phases[currentPhase],
           duration: 0,
-        }));
+        });
       }
     }, 3500);
 
     try {
-      const { trades, candidates } = await parseTradeImage(file, ocrModel);
+      const { trades, candidates, meta } = await parseTradeImage(file, ocrModel);
       clearInterval(phaseInterval);
       toastHandler.close();
       
@@ -257,9 +253,11 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
         return;
       }
 
+      const successMessage = buildOcrSuccessMessage({ trades, meta });
       if (trades.length === 1) {
-        applyOcrTrade(trades[0]);
+        applyOcrTrade(trades[0], { successMessage });
       } else {
+        Toast.show({ icon: 'success', content: successMessage });
         setOcrTrades(trades);
         setOcrSheetVisible(true);
       }

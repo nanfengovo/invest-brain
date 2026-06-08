@@ -73,6 +73,7 @@ export default function DashboardPage() {
       ? `有 ${strayTradesCount} 笔交易未关联决策，优先补齐执行闭环。`
       : '当前没有未关联交易，执行闭环保持完整。';
   const funnelBadge = isWarning ? '待补齐' : tradeCount > 0 ? '已闭环' : '未开始';
+  const funnelBadgeIcon = isWarning ? '!' : tradeCount > 0 ? '✓' : '·';
   const activeDecisionCount = activeDecisionPool.length;
   const actionItems = [
     {
@@ -180,8 +181,13 @@ export default function DashboardPage() {
             <span className="dashboard-home-eyebrow text-[10px] mb-0.5">执行闭环</span>
             <span className="dashboard-home-title text-sm font-medium">决策执行漏斗</span>
           </div>
-          <div className={`dashboard-risk-badge ${isWarning ? 'is-risk' : 'is-calm'} text-[10px] font-medium px-2 py-1 rounded-full cursor-pointer`}>
-            {funnelBadge}
+          <div
+            className={`dashboard-risk-badge ${
+              isWarning ? 'is-risk' : tradeCount > 0 ? 'is-calm' : 'is-idle'
+            }`}
+          >
+            <span className="dashboard-risk-badge__icon">{funnelBadgeIcon}</span>
+            <span>{funnelBadge}</span>
           </div>
         </div>
 

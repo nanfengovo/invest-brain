@@ -7,6 +7,7 @@ import {
   getTradeAssetDisplay,
   getTradeQuantityUnit,
   getTradeSymbolDisplay,
+  shouldShowOptionExpirationLabel,
 } from '../../utils/tradeLifecycle';
 import { getSyncStatusMeta } from '../../utils/syncStatus';
 import './TradeCard.css';
@@ -129,8 +130,10 @@ export default function TradeCard({ trade, index = 0, onEdit, compactMode = fals
   const authorLabel = String(trade.author || '').trim() || '未标记';
   const syncMeta = getSyncStatusMeta(trade);
   const titleText = isOption && optionTitle ? optionTitle : displaySymbol;
-  const hasOptionExpiration = isOption && trade.option_expiration_label;
-  const hasAssetMeta = hasOptionExpiration || Boolean(assetDisplay);
+  const showOptionExpiration = shouldShowOptionExpirationLabel(trade);
+  const hasOptionExpiration = isOption && showOptionExpiration && trade.option_expiration_label;
+  const hasStockAssetMeta = !isOption && Boolean(assetDisplay);
+  const hasAssetMeta = hasOptionExpiration || hasStockAssetMeta;
 
   const total = useMemo(() => {
     const qty = parseFloat(trade.quantity) || 0;
@@ -219,7 +222,7 @@ export default function TradeCard({ trade, index = 0, onEdit, compactMode = fals
                   <div className={`trade-card__asset-name trade-card__asset-name--option trade-card__asset-name--option-${expirationTone}`}>
                     {trade.option_expiration_label}
                   </div>
-                ) : assetDisplay ? (
+                ) : hasStockAssetMeta ? (
                   <div className="trade-card__asset-name">{assetDisplay}</div>
                 ) : null}
               </div>

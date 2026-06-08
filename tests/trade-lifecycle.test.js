@@ -9,6 +9,7 @@ import {
   getTradeOptionDisplay,
   getOptionExpirationLabel,
   getOptionExpirationRisk,
+  shouldShowOptionExpirationLabel,
 } from '../src/utils/tradeLifecycle.js';
 
 test('formats option labels from broker contract text', () => {
@@ -80,6 +81,54 @@ test('calculates realized pnl for closed buy and sell pairs', () => {
   assert.equal(trades[0].lifecycle.status, 'CLOSED');
   assert.equal(trades[1].lifecycle.status, 'CLOSED');
   assert.equal(trades[0].lifecycle.realizedPnl, 370);
+  assert.equal(shouldShowOptionExpirationLabel(trades[0]), false);
+  assert.equal(shouldShowOptionExpirationLabel(trades[1]), false);
+});
+
+test('shows option expiration only for open buy exposure', () => {
+  const [openBuy, closedBuy, closeSell, orphanSell] = annotateTradesWithLifecycle([
+    {
+      id: 'open-buy',
+      symbol: 'BB',
+      asset_type: 'OPTION',
+      contract_symbol: 'BB 260821 13 C',
+      direction: 'BUY',
+      quantity: 1,
+      price: 1.71,
+    },
+    {
+      id: 'closed-buy',
+      symbol: 'STM',
+      asset_type: 'OPTION',
+      contract_symbol: 'STM 260618 72 C',
+      direction: 'BUY',
+      quantity: 1,
+      price: 4.3,
+    },
+    {
+      id: 'close-sell',
+      symbol: 'STM',
+      asset_type: 'OPTION',
+      contract_symbol: 'STM 260618 72 C',
+      direction: 'SELL',
+      quantity: 1,
+      price: 8,
+    },
+    {
+      id: 'orphan-sell',
+      symbol: 'NOK',
+      asset_type: 'OPTION',
+      contract_symbol: 'NOK 260618 15 C',
+      direction: 'SELL',
+      quantity: 1,
+      price: 1.53,
+    },
+  ]);
+
+  assert.equal(shouldShowOptionExpirationLabel(openBuy), true);
+  assert.equal(shouldShowOptionExpirationLabel(closedBuy), false);
+  assert.equal(shouldShowOptionExpirationLabel(closeSell), false);
+  assert.equal(shouldShowOptionExpirationLabel(orphanSell), false);
 });
 
 test('summarizes closed option trades with contract multiplier', () => {

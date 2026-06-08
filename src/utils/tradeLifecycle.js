@@ -312,6 +312,20 @@ export function getTradeDirectionKind(direction) {
   return 'OTHER';
 }
 
+export function shouldShowOptionExpirationLabel(trade = {}) {
+  if (!isOptionTrade(trade)) return false;
+  if (getTradeDirectionKind(trade.direction) !== 'BUY') return false;
+
+  const lifecycle = trade.lifecycle;
+  if (!lifecycle) return true;
+
+  const ownOpenQty = Number(lifecycle.ownOpenQty);
+  if (Number.isFinite(ownOpenQty)) return ownOpenQty > 0;
+
+  return ['OPEN_ONLY', 'PARTIAL', 'EXPIRED_WORTHLESS'].includes(lifecycle.status)
+    && Number(lifecycle.openQty || 0) > 0;
+}
+
 export function getTradeNotional(trade = {}) {
   const qty = Math.max(Number(trade.quantity) || 0, 0);
   const price = Number(trade.price) || 0;

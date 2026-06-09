@@ -327,6 +327,128 @@
   letter-spacing: 0.02em;
 }
 
+/* ── Options Live Radar ── */
+.holdings-page__option-radar {
+  position: relative;
+  padding: 16px;
+  margin-bottom: 16px;
+  overflow: hidden;
+  border-color: rgba(45, 212, 191, 0.2);
+  background:
+    radial-gradient(circle at 8% 0%, rgba(45, 212, 191, 0.16), transparent 32%),
+    radial-gradient(circle at 90% 16%, rgba(59, 130, 246, 0.18), transparent 34%),
+    linear-gradient(145deg, rgba(8, 22, 34, 0.95), rgba(11, 18, 31, 0.9));
+}
+
+.holdings-page__option-radar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(120deg, transparent 0%, rgba(45, 212, 191, 0.08) 38%, transparent 72%);
+  opacity: 0.86;
+}
+
+.holdings-page__option-radar-head,
+.holdings-page__option-radar-grid {
+  position: relative;
+  z-index: 1;
+}
+
+.holdings-page__option-radar-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.holdings-page__option-radar-eyebrow {
+  display: inline-flex;
+  color: #5eead4;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.holdings-page__option-radar h3 {
+  margin: 7px 0 0;
+  color: var(--color-text-primary);
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+}
+
+.holdings-page__option-radar-status {
+  flex: 0 0 auto;
+  padding: 6px 9px;
+  border: 1px solid rgba(45, 212, 191, 0.24);
+  border-radius: var(--radius-full);
+  background: rgba(45, 212, 191, 0.1);
+  color: #99f6e4;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.holdings-page__option-radar-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.holdings-page__option-radar-item {
+  min-width: 0;
+  padding: 11px 10px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 15px;
+  background: rgba(2, 6, 23, 0.28);
+}
+
+.holdings-page__option-radar-item span,
+.holdings-page__option-radar-item em {
+  display: block;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.holdings-page__option-radar-item strong {
+  display: block;
+  overflow: hidden;
+  margin-top: 5px;
+  color: var(--color-text-primary);
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.holdings-page__option-radar-item em {
+  margin-top: 5px;
+  font-size: 9px;
+}
+
+.holdings-page__option-radar-value--profit {
+  color: var(--color-profit) !important;
+}
+
+.holdings-page__option-radar-value--loss {
+  color: var(--color-loss) !important;
+}
+
+.holdings-page__option-radar-value--neutral {
+  color: var(--color-neutral) !important;
+}
+
 /* ── Author Filter ── */
 .holdings-page__author-filter {
   padding: 14px;
@@ -535,6 +657,63 @@
 
 [data-theme='light'] .holdings-page__summary-item-value--loss {
   color: #e11d48;
+}
+
+[data-theme='light'] .holdings-page__option-radar {
+  border-color: rgba(20, 184, 166, 0.18);
+  background:
+    radial-gradient(circle at 8% 0%, rgba(20, 184, 166, 0.14), transparent 32%),
+    radial-gradient(circle at 92% 14%, rgba(37, 99, 235, 0.12), transparent 34%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(236, 254, 255, 0.9));
+  box-shadow:
+    0 16px 38px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.96);
+}
+
+[data-theme='light'] .holdings-page__option-radar::before {
+  background:
+    linear-gradient(120deg, transparent 0%, rgba(20, 184, 166, 0.08) 38%, transparent 72%);
+}
+
+[data-theme='light'] .holdings-page__option-radar-eyebrow {
+  color: #0f766e;
+}
+
+[data-theme='light'] .holdings-page__option-radar h3 {
+  color: #0f172a;
+}
+
+[data-theme='light'] .holdings-page__option-radar-status {
+  border-color: rgba(13, 148, 136, 0.22);
+  background: rgba(204, 251, 241, 0.78);
+  color: #0f766e;
+}
+
+[data-theme='light'] .holdings-page__option-radar-item {
+  border-color: rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.74);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+[data-theme='light'] .holdings-page__option-radar-item span,
+[data-theme='light'] .holdings-page__option-radar-item em {
+  color: #64748b;
+}
+
+[data-theme='light'] .holdings-page__option-radar-item strong {
+  color: #1e293b;
+}
+
+[data-theme='light'] .holdings-page__option-radar-value--profit {
+  color: #059669 !important;
+}
+
+[data-theme='light'] .holdings-page__option-radar-value--loss {
+  color: #e11d48 !important;
+}
+
+[data-theme='light'] .holdings-page__option-radar-value--neutral {
+  color: #2563eb !important;
 }
 
 [data-theme='light'] .holdings-page__author-filter {

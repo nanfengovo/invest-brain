@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Toast } from 'antd-mobile';
 import { useTradeStore } from '../stores/useTradeStore';
 import { useAppStore } from '../stores/useAppStore';
@@ -8,7 +8,9 @@ import HoldingCard from '../components/Holdings/HoldingCard';
 import { parseOptionAlertInput } from '../utils/optionMonitoring';
 import { getTradeOptionDisplay } from '../utils/tradeLifecycle';
 import { buildOCCContractSymbol } from '../utils/optionsMarket';
+import { buildOptionRealtimeSummary } from '../utils/optionPortfolio';
 import { syncCloudAlerts } from '../utils/cloudAlerts';
+import { buildApiCacheKey, fetchJsonWithCache } from '../utils/apiCache';
 import './HoldingsPage.css';
 
 const formatCurrency = (num) => {
@@ -19,6 +21,13 @@ const formatCurrency = (num) => {
   });
 };
 
+const formatSignedCurrency = (num) => {
+  const value = Number(num);
+  if (!Number.isFinite(value)) return '--';
+  const prefix = value > 0 ? '+' : value < 0 ? '-' : '';
+  return `${prefix}$${formatCurrency(Math.abs(value))}`;
+};
+
 const buildMarketDataHeaders = (marketDataConfig = {}) => ({
   ...(marketDataConfig.tradierToken ? { 'X-Tradier-Token': marketDataConfig.tradierToken } : {}),
   ...(marketDataConfig.polygonToken ? { 'X-Polygon-Token': marketDataConfig.polygonToken } : {}),
@@ -27,6 +36,45 @@ const buildMarketDataHeaders = (marketDataConfig = {}) => ({
   ...(marketDataConfig.longbridgeAppSecret ? { 'X-Longbridge-App-Secret': marketDataConfig.longbridgeAppSecret } : {}),
   ...(marketDataConfig.longbridgeAccessToken ? { 'X-Longbridge-Access-Token': marketDataConfig.longbridgeAccessToken } : {}),
 });
+
+const hashCredential = (value) => {
+  const text = String(value || '');
+  if (!text) return '';
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `${text.length}:${(hash >>> 0).toString(36)}`;
+};
+
+const getMarketDataConfigFingerprint = (marketDataConfig = {}) => [
+  marketDataConfig.optionProvider || 'auto',
+  marketDataConfig.tradierToken ? `tradier:${hashCredential(marketDataConfig.tradierToken)}` : '',
+  marketDataConfig.polygonToken ? `polygon:${hashCredential(marketDataConfig.polygonToken)}` : '',
+  marketDataConfig.marketDataToken ? `marketdata:${hashCredential(marketDataConfig.marketDataToken)}` : '',
+  marketDataConfig.longbridgeAppKey && marketDataConfig.longbridgeAccessToken
+    ? `longbridge:${hashCredential(`${marketDataConfig.longbridgeAppKey}:${marketDataConfig.longbridgeAccessToken}`)}`
+    : '',
+].filter(Boolean).join(':') || 'public';
+
+const normalizeOptionQuoteError = (message) => {
+  const text = String(message || '').trim();
+  if (!text) return '期权报价加载失败，请稍后重试。';
+  if (/MarketData\.app quotes responded with 429/i.test(text)) {
+    return 'MarketData.app 期权报价请求过于频繁或额度已用尽，请稍后重试或降低刷新频率。';
+  }
+  if (/MarketData\.app quotes responded with (401|403)/i.test(text)) {
+    return 'MarketData.app 期权报价权限不足或 Token 不可用，请检查 Token、试用额度、套餐和 OPRA 授权。';
+  }
+  if (/responded with 429/i.test(text)) {
+    return '行情数据源请求过于频繁或额度已用尽，请稍后重试。';
+  }
+  if (/responded with (401|403)/i.test(text)) {
+    return '行情数据源权限不足或 Token 不可用，请检查设置中的数据源配置。';
+  }
+  return text;
+};
 
 const getHoldingOptionContract = (holding) => {
   const display = getTradeOptionDisplay({
@@ -49,12 +97,29 @@ const getHoldingOptionContract = (holding) => {
     || String(holding.asset_id || '').replace(/^OPTION_/i, '').trim().toUpperCase();
 };
 
+const getOptionHoldingSignature = (holdings = []) => holdings
+  .filter((holding) => String(holding.type || '').toUpperCase() === 'OPTION')
+  .map((holding) => [
+    holding.asset_id,
+    holding.symbol,
+    holding.underlying_symbol,
+    holding.expiry_date,
+    holding.option_type,
+    holding.strike_price,
+    holding.contract_symbol,
+    holding.broker,
+    holding.author,
+  ].map((item) => String(item || '').trim()).join(':'))
+  .sort()
+  .join('|');
+
 export default function HoldingsPage() {
   const { holdings, summary, holdingsLoading, refreshHoldings } =
     useTradeStore();
   const workspaceScope = useAppStore((s) => s.workspaceScope);
   const notificationConfig = useAppStore((s) => s.notificationConfig);
   const marketDataConfig = useAppStore((s) => s.marketDataConfig);
+  const marketDataFingerprint = getMarketDataConfigFingerprint(marketDataConfig);
   const isTeamWorkspace = workspaceScope === 'team';
 
   const [expandedId, setExpandedId] = useState(null);
@@ -72,6 +137,7 @@ export default function HoldingsPage() {
   const [selectedAuthor, setSelectedAuthor] = useState('');
   const [underlyingQuotes, setUnderlyingQuotes] = useState({});
   const [optionQuotes, setOptionQuotes] = useState({});
+  const optionHoldingSignature = useMemo(() => getOptionHoldingSignature(holdings), [holdings]);
 
   const activeAuthor = selectedAuthor || null;
   const filteredAuthors = authors.filter((author) =>
@@ -105,8 +171,15 @@ export default function HoldingsPage() {
       }
 
       try {
-        const res = await fetch(`/api/market?symbols=${encodeURIComponent(symbols.join(','))}`);
-        const json = await res.json();
+        const url = `/api/market?symbols=${encodeURIComponent(symbols.join(','))}`;
+        const { data: json } = await fetchJsonWithCache(url, {
+          headers: buildMarketDataHeaders(marketDataConfig),
+        }, {
+          cacheKey: buildApiCacheKey(['holdings-underlying', symbols.sort().join(','), marketDataFingerprint]),
+          ttlMs: 5_000,
+          staleTtlMs: 60_000,
+          timeoutMs: 6_000,
+        });
         if (cancelled) return;
         const nextQuotes = {};
         symbols.forEach((symbol) => {
@@ -126,7 +199,7 @@ export default function HoldingsPage() {
     return () => {
       cancelled = true;
     };
-  }, [holdings]);
+  }, [optionHoldingSignature, marketDataConfig, marketDataFingerprint]);
 
   useEffect(() => {
     let cancelled = false;
@@ -152,19 +225,72 @@ export default function HoldingsPage() {
 
       try {
         const headers = buildMarketDataHeaders(marketDataConfig);
-        const entries = await Promise.all(candidates.map(async (candidate) => {
+        const uniqueCandidates = Array.from(
+          candidates
+            .reduce((map, candidate) => {
+              const quoteKey = `${candidate.underlying}:${candidate.contract}`;
+              const entry = map.get(quoteKey) || {
+                quoteKey,
+                underlying: candidate.underlying,
+                contract: candidate.contract,
+                keys: [],
+              };
+              entry.keys.push(candidate.key);
+              map.set(quoteKey, entry);
+              return map;
+            }, new Map())
+            .values()
+        );
+        const quoteEntries = await Promise.all(uniqueCandidates.map(async (candidate) => {
           const params = new URLSearchParams({
             symbol: candidate.underlying,
             provider: marketDataConfig.optionProvider || 'auto',
             contract: candidate.contract,
+            includePrevious: '1',
           });
-          const res = await fetch(`/api/options-chain?${params.toString()}`, { headers });
-          const json = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error(json.error || '期权报价加载失败');
-          const quote = json?.options?.[0] || null;
-          return [candidate.key, quote ? { ...quote, provider: json.provider || quote.provider, generatedAt: json.generatedAt } : null];
+          try {
+            const url = `/api/options-chain?${params.toString()}`;
+            const { data: json } = await fetchJsonWithCache(url, { headers }, {
+              cacheKey: buildApiCacheKey([
+                'holdings-option-quote',
+                candidate.underlying,
+                candidate.contract,
+                marketDataFingerprint,
+              ]),
+              ttlMs: 30_000,
+              staleTtlMs: 5 * 60_000,
+              timeoutMs: 10_000,
+            });
+            const quote = json?.options?.[0] || null;
+            return [candidate.quoteKey, quote ? { ...quote, provider: json.provider || quote.provider, generatedAt: json.generatedAt } : {
+              provider: json.provider || marketDataConfig.optionProvider || '期权报价',
+              quoteUnavailable: true,
+              error: normalizeOptionQuoteError(json.message || '期权报价未返回，请检查合约、数据源权限或 OPRA 授权。'),
+              contractSymbol: candidate.contract,
+              generatedAt: json.generatedAt || new Date().toISOString(),
+            }];
+          } catch (error) {
+            return [candidate.quoteKey, {
+              provider: marketDataConfig.optionProvider || '期权报价',
+              quoteUnavailable: true,
+              error: normalizeOptionQuoteError(error.message || '期权报价加载失败'),
+              contractSymbol: candidate.contract,
+              generatedAt: new Date().toISOString(),
+            }];
+          }
         }));
         if (cancelled) return;
+        const quotesByContract = Object.fromEntries(quoteEntries.filter(([, quote]) => quote));
+        const entries = candidates.map((candidate) => {
+          const quoteKey = `${candidate.underlying}:${candidate.contract}`;
+          return [candidate.key, quotesByContract[quoteKey] || {
+            provider: marketDataConfig.optionProvider || '期权报价',
+            quoteUnavailable: true,
+            error: normalizeOptionQuoteError('期权报价加载失败'),
+            contractSymbol: candidate.contract,
+            generatedAt: new Date().toISOString(),
+          }];
+        });
         setOptionQuotes(Object.fromEntries(entries.filter(([, quote]) => quote)));
       } catch (err) {
         console.warn('Failed to load option holding quotes:', err);
@@ -178,7 +304,7 @@ export default function HoldingsPage() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [holdings, marketDataConfig]);
+  }, [optionHoldingSignature, marketDataFingerprint]);
 
   useEffect(() => {
     let cancelled = false;
@@ -312,6 +438,21 @@ export default function HoldingsPage() {
       : '从本地交易记录自动汇总，保持私有优先';
   const netFlow = totalBuys - totalSells;
   const netFlowLabel = netFlow >= 0 ? '净投入' : '净回收';
+  const optionRealtimeSummary = buildOptionRealtimeSummary(holdings, optionQuotes);
+  const hasOptionRealtimeSummary = optionRealtimeSummary.count > 0;
+  const optionRealtimePnlClass = optionRealtimeSummary.unrealizedPnl > 0
+    ? 'profit'
+    : optionRealtimeSummary.unrealizedPnl < 0
+      ? 'loss'
+      : 'neutral';
+  const optionRealtimeDayClass = optionRealtimeSummary.dayPnl > 0
+    ? 'profit'
+    : optionRealtimeSummary.dayPnl < 0
+      ? 'loss'
+      : 'neutral';
+  const optionRealtimeCoverage = optionRealtimeSummary.count
+    ? `${optionRealtimeSummary.quoted}/${optionRealtimeSummary.count}`
+    : '0/0';
 
   return (
     <div className="holdings-page">
@@ -393,6 +534,53 @@ export default function HoldingsPage() {
           </div>
         </div>
       </div>
+
+      {hasOptionRealtimeSummary && (
+        <div className="holdings-page__section">
+          <div className="holdings-page__option-radar glass-card">
+            <div className="holdings-page__option-radar-head">
+              <div>
+                <span className="holdings-page__option-radar-eyebrow">Options Live Radar</span>
+                <h3>期权实时收益</h3>
+              </div>
+              <span className="holdings-page__option-radar-status">
+                报价覆盖 {optionRealtimeCoverage}
+              </span>
+            </div>
+
+            <div className="holdings-page__option-radar-grid">
+              <div className="holdings-page__option-radar-item">
+                <span>Mark 估值</span>
+                <strong className="text-mono">${formatCurrency(optionRealtimeSummary.marketValue)}</strong>
+                <em>{optionRealtimeSummary.contracts.toLocaleString()} 张合约</em>
+              </div>
+              <div className="holdings-page__option-radar-item">
+                <span>未实现盈亏</span>
+                <strong className={`text-mono holdings-page__option-radar-value--${optionRealtimePnlClass}`}>
+                  {formatSignedCurrency(optionRealtimeSummary.unrealizedPnl)}
+                </strong>
+                <em>成本 ${formatCurrency(optionRealtimeSummary.costBasis)}</em>
+              </div>
+              <div className="holdings-page__option-radar-item">
+                <span>今日收益</span>
+                <strong className={`text-mono holdings-page__option-radar-value--${optionRealtimeDayClass}`}>
+                  {formatSignedCurrency(optionRealtimeSummary.dayPnl)}
+                </strong>
+                <em>{optionRealtimeSummary.dayPnlQuoted} 张有前收基准</em>
+              </div>
+              <div className="holdings-page__option-radar-item">
+                <span>数据缺口</span>
+                <strong className="text-mono">
+                  {optionRealtimeSummary.pending + optionRealtimeSummary.unavailable + optionRealtimeSummary.dayPnlMissing}
+                </strong>
+                <em>
+                  {optionRealtimeSummary.pending} 刷新中 · {optionRealtimeSummary.unavailable} 报价不可用 · {optionRealtimeSummary.dayPnlMissing} 缺前收
+                </em>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="holdings-page__section">
         <div className="holdings-page__author-filter glass-card">

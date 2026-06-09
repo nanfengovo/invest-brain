@@ -75,6 +75,7 @@ function localApiPlugin() {
     '/api/share-background': './api/summarize.js',
     '/api/options-chain': './api/options-chain.js',
     '/api/stock-snapshot': './api/stock-snapshot.js',
+    '/api/kline': './api/kline.js',
   };
 
   return {

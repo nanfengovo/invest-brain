@@ -24,6 +24,17 @@ function conditionLabel(condition) {
   return condition === 'ABOVE' ? '高于或等于' : '低于或等于';
 }
 
+function buildMarketDataHeaders(marketDataConfig = {}) {
+  return {
+    ...(marketDataConfig.tradierToken ? { 'X-Tradier-Token': marketDataConfig.tradierToken } : {}),
+    ...(marketDataConfig.polygonToken ? { 'X-Polygon-Token': marketDataConfig.polygonToken } : {}),
+    ...(marketDataConfig.marketDataToken ? { 'X-MarketData-Token': marketDataConfig.marketDataToken } : {}),
+    ...(marketDataConfig.longbridgeAppKey ? { 'X-Longbridge-App-Key': marketDataConfig.longbridgeAppKey } : {}),
+    ...(marketDataConfig.longbridgeAppSecret ? { 'X-Longbridge-App-Secret': marketDataConfig.longbridgeAppSecret } : {}),
+    ...(marketDataConfig.longbridgeAccessToken ? { 'X-Longbridge-Access-Token': marketDataConfig.longbridgeAccessToken } : {}),
+  };
+}
+
 async function notify(alert, price, notificationConfig) {
   const title = `价格提醒触发：${alert.asset_id || alert.symbol}`;
   const body = [
@@ -65,31 +76,36 @@ async function notify(alert, price, notificationConfig) {
   });
 }
 
-async function fetchStockPrices(symbols) {
+async function fetchStockPrices(symbols, marketDataConfig = {}) {
   if (!symbols.length) return {};
-  const response = await fetch(`/api/market?symbols=${encodeURIComponent(symbols.join(','))}`);
+  const response = await fetch(`/api/market?symbols=${encodeURIComponent(symbols.join(','))}`, {
+    headers: buildMarketDataHeaders(marketDataConfig),
+  });
   const json = await response.json();
   return json?.data || {};
 }
 
+function normalizeOptionContractKey(value) {
+  return String(value || '')
+    .replace(/^OPTION_/i, '')
+    .replace(/^O:/i, '')
+    .replace(/\s+/g, '')
+    .trim()
+    .toUpperCase();
+}
+
 async function fetchOptionPrice(alert, marketDataConfig) {
+  const contract = normalizeOptionContractKey(alert.asset_id);
   const params = new URLSearchParams({
     symbol: alert.symbol,
     provider: marketDataConfig.optionProvider || 'auto',
-    contract: alert.asset_id,
+    contract,
   });
   const response = await fetch(`/api/options-chain?${params.toString()}`, {
-    headers: {
-      ...(marketDataConfig.tradierToken ? { 'X-Tradier-Token': marketDataConfig.tradierToken } : {}),
-      ...(marketDataConfig.polygonToken ? { 'X-Polygon-Token': marketDataConfig.polygonToken } : {}),
-      ...(marketDataConfig.marketDataToken ? { 'X-MarketData-Token': marketDataConfig.marketDataToken } : {}),
-      ...(marketDataConfig.longbridgeAppKey ? { 'X-Longbridge-App-Key': marketDataConfig.longbridgeAppKey } : {}),
-      ...(marketDataConfig.longbridgeAppSecret ? { 'X-Longbridge-App-Secret': marketDataConfig.longbridgeAppSecret } : {}),
-      ...(marketDataConfig.longbridgeAccessToken ? { 'X-Longbridge-Access-Token': marketDataConfig.longbridgeAccessToken } : {}),
-    },
+    headers: buildMarketDataHeaders(marketDataConfig),
   });
   const json = await response.json();
-  const match = (json.options || []).find((item) => item.contractSymbol === alert.asset_id);
+  const match = (json.options || []).find((item) => normalizeOptionContractKey(item.contractSymbol) === contract);
   return Number(match?.mark ?? match?.last);
 }
 
@@ -99,7 +115,7 @@ export async function checkPriceAlerts(notificationConfig, marketDataConfig = {}
   const stockAlerts = alerts.filter((alert) => alert.asset_type !== 'OPTION');
   const optionAlerts = alerts.filter((alert) => alert.asset_type === 'OPTION');
   const symbols = Array.from(new Set(stockAlerts.map((alert) => alert.symbol)));
-  const stockPrices = await fetchStockPrices(symbols);
+  const stockPrices = await fetchStockPrices(symbols, marketDataConfig);
   const triggered = [];
 
   for (const alert of stockAlerts) {

@@ -5,6 +5,7 @@ const POSTER_HEIGHT = 1440;
 const POSTER_PADDING = 72;
 const SHARE_BRAND = 'InvestBrain';
 const TEMPLATE_POOL = ['signal-card', 'badge-card', 'ledger-clean', 'pop-profit'];
+const EXPLICIT_TEMPLATE_POOL = ['stock-snapshot', ...TEMPLATE_POOL];
 
 function getCanvasScale() {
   if (typeof window === 'undefined') return 2;
@@ -72,7 +73,7 @@ function hashString(value = '') {
 
 function pickTemplate(config = {}) {
   const explicit = String(config.template || config.posterStyle || '').trim();
-  if (TEMPLATE_POOL.includes(explicit)) return explicit;
+  if (EXPLICIT_TEMPLATE_POOL.includes(explicit)) return explicit;
 
   const type = String(config.typeLabel || '').toLowerCase();
   const hasProfitLoss = (config.metrics || []).some((metric) => ['profit', 'loss'].includes(metric?.tone));
@@ -99,6 +100,30 @@ function getMainMetric(config = {}) {
   if (config.mainMetric?.value) return config.mainMetric;
   const metrics = Array.isArray(config.metrics) ? config.metrics : [];
   return metrics.find((metric) => ['profit', 'loss'].includes(metric?.tone)) || metrics[0] || null;
+}
+
+function toFiniteNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function formatPosterNumber(value, digits = 2) {
+  const number = toFiniteNumber(value);
+  if (number === null) return '--';
+  return number.toLocaleString('en-US', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
+function formatPosterCompact(value) {
+  const number = toFiniteNumber(value);
+  if (number === null) return '--';
+  if (Math.abs(number) >= 1e12) return `${(number / 1e12).toFixed(2)}T`;
+  if (Math.abs(number) >= 1e9) return `${(number / 1e9).toFixed(2)}B`;
+  if (Math.abs(number) >= 1e6) return `${(number / 1e6).toFixed(2)}M`;
+  if (Math.abs(number) >= 1e3) return `${(number / 1e3).toFixed(2)}K`;
+  return formatPosterNumber(number, 0);
 }
 
 function setFittedFont(ctx, text, maxWidth, {
@@ -157,6 +182,299 @@ function drawMetricCard(ctx, metric, x, y, width, height, accent) {
     ctx.font = '500 23px "PingFang SC", sans-serif';
     ctx.fillText(String(metric.hint), x + 28, y + height - 26);
   }
+  ctx.restore();
+}
+
+function drawStockMiniChart(ctx, chartData, x, y, width, height, colors = {}) {
+  const rows = Array.isArray(chartData)
+    ? chartData
+      .map((item) => ({
+        date: item?.[0],
+        open: toFiniteNumber(item?.[1]),
+        close: toFiniteNumber(item?.[2]),
+        low: toFiniteNumber(item?.[3]),
+        high: toFiniteNumber(item?.[4]),
+        volume: toFiniteNumber(item?.[5]),
+      }))
+      .filter((item) => [item.open, item.close, item.low, item.high].every((value) => value !== null))
+    : [];
+
+  ctx.save();
+  roundRect(ctx, x, y, width, height, 34);
+  ctx.fillStyle = 'rgba(248, 250, 252, 0.92)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(15, 23, 42, 0.08)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.fillStyle = '#0f172a';
+  ctx.font = '900 30px "PingFang SC", sans-serif';
+  ctx.fillText('价格轨迹', x + 34, y + 54);
+
+  if (rows.length < 2) {
+    ctx.fillStyle = 'rgba(100, 116, 139, 0.72)';
+    ctx.font = '600 28px "PingFang SC", sans-serif';
+    ctx.fillText('K 线数据加载后会显示趋势摘要', x + 34, y + height / 2);
+    ctx.restore();
+    return;
+  }
+
+  const chartX = x + 34;
+  const chartY = y + 96;
+  const chartW = width - 68;
+  const priceH = height - 178;
+  const volumeY = y + height - 66;
+  const maxVolume = Math.max(...rows.map((item) => item.volume || 0), 1);
+  const minPrice = Math.min(...rows.map((item) => item.low));
+  const maxPrice = Math.max(...rows.map((item) => item.high));
+  const priceRange = Math.max(maxPrice - minPrice, 1);
+  const xStep = chartW / Math.max(rows.length - 1, 1);
+  const mapY = (price) => chartY + priceH - ((price - minPrice) / priceRange) * priceH;
+
+  ctx.strokeStyle = 'rgba(148, 163, 184, 0.22)';
+  ctx.lineWidth = 1.5;
+  ctx.fillStyle = 'rgba(100, 116, 139, 0.72)';
+  ctx.font = '600 20px "DIN Alternate", "PingFang SC", sans-serif';
+  for (let i = 0; i < 4; i += 1) {
+    const lineY = chartY + (priceH / 3) * i;
+    ctx.beginPath();
+    ctx.moveTo(chartX, lineY);
+    ctx.lineTo(chartX + chartW, lineY);
+    ctx.stroke();
+    const label = maxPrice - (priceRange / 3) * i;
+    ctx.fillText(formatPosterNumber(label, 0), chartX + chartW - 54, lineY - 7);
+  }
+
+  const upColor = colors.up || '#10b981';
+  const downColor = colors.down || '#fb7185';
+  const sampleEvery = Math.max(1, Math.ceil(rows.length / 54));
+  const candleWidth = Math.max(5, Math.min(12, xStep * 0.58));
+
+  rows.forEach((item, index) => {
+    const cx = chartX + index * xStep;
+    const isUp = item.close >= item.open;
+    const color = isUp ? upColor : downColor;
+    const highY = mapY(item.high);
+    const lowY = mapY(item.low);
+    const openY = mapY(item.open);
+    const closeY = mapY(item.close);
+
+    if (index % sampleEvery !== 0 && index !== rows.length - 1) return;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(cx, highY);
+    ctx.lineTo(cx, lowY);
+    ctx.stroke();
+
+    roundRect(ctx, cx - candleWidth / 2, Math.min(openY, closeY), candleWidth, Math.max(Math.abs(closeY - openY), 4), 3);
+    ctx.fillStyle = color;
+    ctx.fill();
+  });
+
+  ctx.beginPath();
+  rows.forEach((item, index) => {
+    const px = chartX + index * xStep;
+    const py = mapY(item.close);
+    if (index === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  });
+  ctx.strokeStyle = 'rgba(37, 99, 235, 0.62)';
+  ctx.lineWidth = 4;
+  ctx.stroke();
+
+  rows.forEach((item, index) => {
+    if (index % sampleEvery !== 0 && index !== rows.length - 1) return;
+    const barH = Math.max(4, Math.min(52, ((item.volume || 0) / maxVolume) * 52));
+    const cx = chartX + index * xStep;
+    ctx.fillStyle = item.close >= item.open ? 'rgba(16, 185, 129, 0.72)' : 'rgba(251, 113, 133, 0.72)';
+    roundRect(ctx, cx - candleWidth / 2, volumeY + 52 - barH, candleWidth, barH, 2);
+    ctx.fill();
+  });
+
+  const first = rows[0];
+  const last = rows[rows.length - 1];
+  ctx.fillStyle = 'rgba(100, 116, 139, 0.78)';
+  ctx.font = '600 20px "PingFang SC", sans-serif';
+  ctx.fillText(String(first.date || '').slice(0, 10), chartX, y + height - 18);
+  ctx.textAlign = 'right';
+  ctx.fillText(String(last.date || '').slice(0, 10), chartX + chartW, y + height - 18);
+  ctx.textAlign = 'left';
+  ctx.restore();
+}
+
+function drawStockSnapshotTemplate(ctx, config) {
+  const stock = config.stock || {};
+  const symbol = String(stock.symbol || config.title || '').toUpperCase();
+  const name = stock.name || config.subtitle || symbol;
+  const price = toFiniteNumber(stock.price);
+  const change = toFiniteNumber(stock.change);
+  const changePct = toFiniteNumber(stock.changePct);
+  const isUp = change === null ? true : change >= 0;
+  const upColor = stock.upColor || '#10b981';
+  const downColor = stock.downColor || '#f43f5e';
+  const toneColor = isUp ? upColor : downColor;
+  const softTone = isUp ? 'rgba(16, 185, 129, 0.15)' : 'rgba(244, 63, 94, 0.15)';
+  const seed = hashString(`${symbol}|${stock.generatedAt || config.generatedAt || ''}`);
+  const bgAccent = seed % 2 === 0 ? '#38bdf8' : '#22c55e';
+  const bgAccent2 = seed % 3 === 0 ? '#f59e0b' : '#6366f1';
+
+  const bg = ctx.createLinearGradient(0, 0, POSTER_WIDTH, POSTER_HEIGHT);
+  bg.addColorStop(0, '#f8fafc');
+  bg.addColorStop(0.42, '#eef6ff');
+  bg.addColorStop(1, '#f4f7fb');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, POSTER_WIDTH, POSTER_HEIGHT);
+
+  const glow = ctx.createRadialGradient(140, 120, 0, 140, 120, 560);
+  glow.addColorStop(0, `${bgAccent}42`);
+  glow.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, POSTER_WIDTH, POSTER_HEIGHT);
+
+  const glow2 = ctx.createRadialGradient(930, 1260, 0, 930, 1260, 620);
+  glow2.addColorStop(0, `${bgAccent2}26`);
+  glow2.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = glow2;
+  ctx.fillRect(0, 0, POSTER_WIDTH, POSTER_HEIGHT);
+
+  ctx.save();
+  ctx.globalAlpha = 0.24;
+  ctx.strokeStyle = '#cbd5e1';
+  ctx.lineWidth = 1;
+  for (let x = 0; x < POSTER_WIDTH; x += 48) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x + 160, POSTER_HEIGHT);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  ctx.save();
+  ctx.shadowColor = 'rgba(15, 23, 42, 0.16)';
+  ctx.shadowBlur = 50;
+  ctx.shadowOffsetY = 22;
+  roundRect(ctx, 70, 64, POSTER_WIDTH - 140, POSTER_HEIGHT - 128, 52);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  roundRect(ctx, 70, 64, POSTER_WIDTH - 140, POSTER_HEIGHT - 128, 52);
+  ctx.strokeStyle = 'rgba(15, 23, 42, 0.08)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.clip();
+
+  const headerGradient = ctx.createLinearGradient(70, 64, POSTER_WIDTH - 70, 270);
+  headerGradient.addColorStop(0, 'rgba(14, 165, 233, 0.15)');
+  headerGradient.addColorStop(0.56, 'rgba(255, 255, 255, 0.2)');
+  headerGradient.addColorStop(1, `${toneColor}18`);
+  ctx.fillStyle = headerGradient;
+  ctx.fillRect(70, 64, POSTER_WIDTH - 140, 260);
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '900 24px "DIN Alternate", "PingFang SC", sans-serif';
+  ctx.fillText('MARKET SNAPSHOT', 112, 128);
+  ctx.font = '600 22px "PingFang SC", sans-serif';
+  ctx.fillText(`${SHARE_BRAND} · 股票快照`, 112, 162);
+
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#0f172a';
+  setFittedFont(ctx, symbol, 360, { size: 58, min: 38, weight: 900 });
+  ctx.fillText(symbol, POSTER_WIDTH - 112, 138);
+  ctx.fillStyle = '#64748b';
+  ctx.font = '600 22px "PingFang SC", sans-serif';
+  ctx.fillText(stock.currency || 'USD', POSTER_WIDTH - 112, 172);
+  ctx.textAlign = 'left';
+
+  ctx.fillStyle = '#0f172a';
+  ctx.font = '900 40px "PingFang SC", "Noto Sans CJK SC", sans-serif';
+  clampText(ctx, name, POSTER_WIDTH - 224, 1).forEach((line) => ctx.fillText(line, 112, 246));
+
+  ctx.fillStyle = toneColor;
+  setFittedFont(ctx, price === null ? '--.--' : formatPosterNumber(price, 2), 560, { size: 120, min: 72, weight: 900 });
+  ctx.fillText(price === null ? '--.--' : formatPosterNumber(price, 2), 112, 382);
+
+  const changeText = `${isUp ? '+' : ''}${formatPosterNumber(change || 0, 2)}  ${isUp ? '+' : ''}${formatPosterNumber(changePct || 0, 2)}%`;
+  roundRect(ctx, 112, 416, 310, 62, 999);
+  ctx.fillStyle = softTone;
+  ctx.fill();
+  ctx.strokeStyle = `${toneColor}55`;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.fillStyle = toneColor;
+  ctx.font = '900 34px "DIN Alternate", "PingFang SC", sans-serif';
+  ctx.fillText(changeText, 138, 457);
+
+  const statusItems = [
+    { label: '趋势', value: stock.trendLabel || '--' },
+    { label: '风险', value: stock.riskLabel || '--' },
+    { label: '52周位置', value: stock.week52Position || '--' },
+  ];
+  statusItems.forEach((item, index) => {
+    const x = 512 + index * 150;
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '700 20px "PingFang SC", sans-serif';
+    ctx.fillText(item.label, x, 420);
+    ctx.fillStyle = '#0f172a';
+    ctx.font = '900 28px "PingFang SC", sans-serif';
+    ctx.fillText(item.value, x, 458);
+  });
+
+  drawStockMiniChart(ctx, stock.chartData, 112, 522, POSTER_WIDTH - 224, 430, {
+    up: upColor,
+    down: downColor,
+  });
+
+  const metrics = [
+    { label: '最高', value: stock.high },
+    { label: '最低', value: stock.low },
+    { label: '昨收', value: stock.previousClose },
+    { label: '成交量', value: stock.volume, compact: true },
+    { label: '市值', value: stock.marketCap, compact: true },
+    { label: 'PE', value: stock.trailingPE },
+  ];
+  const metricY = 990;
+  metrics.forEach((metric, index) => {
+    const col = index % 3;
+    const row = Math.floor(index / 3);
+    const x = 112 + col * 292;
+    const y = metricY + row * 126;
+    roundRect(ctx, x, y, 260, 96, 24);
+    ctx.fillStyle = 'rgba(248, 250, 252, 0.88)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(15, 23, 42, 0.07)';
+    ctx.stroke();
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '700 21px "PingFang SC", sans-serif';
+    ctx.fillText(metric.label, x + 22, y + 34);
+    ctx.fillStyle = '#0f172a';
+    setFittedFont(ctx, metric.compact ? formatPosterCompact(metric.value) : formatPosterNumber(metric.value, metric.label === 'PE' ? 2 : 2), 214, { size: 34, min: 24, weight: 900 });
+    ctx.fillText(metric.compact ? formatPosterCompact(metric.value) : formatPosterNumber(metric.value, metric.label === 'PE' ? 2 : 2), x + 22, y + 72);
+  });
+
+  roundRect(ctx, 112, 1230, POSTER_WIDTH - 224, 134, 30);
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+  ctx.fill();
+  ctx.fillStyle = '#cbd5e1';
+  ctx.font = '800 22px "PingFang SC", sans-serif';
+  ctx.fillText('公司画像', 146, 1276);
+  ctx.fillText('期权链', 610, 1276);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '900 28px "PingFang SC", sans-serif';
+  clampText(ctx, `${stock.sector || '行业待补充'} · ${stock.industry || '细分待补充'}`, 390, 1)
+    .forEach((line) => ctx.fillText(line, 146, 1320));
+  ctx.fillText(stock.optionSummary || '期权数据待返回', 610, 1320);
+  ctx.fillStyle = 'rgba(203, 213, 225, 0.72)';
+  ctx.font = '600 20px "PingFang SC", sans-serif';
+  ctx.fillText(stock.sourceLabel || 'Yahoo / Longbridge / MarketData.app', 146, 1350);
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '600 20px "PingFang SC", sans-serif';
+  ctx.fillText(config.footer || '仅供复盘参考，不构成投资建议', 112, 1406);
+  ctx.textAlign = 'right';
+  ctx.fillText(config.generatedAt || new Date().toLocaleString('zh-CN'), POSTER_WIDTH - 112, 1406);
   ctx.restore();
 }
 

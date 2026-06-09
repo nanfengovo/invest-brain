@@ -120,6 +120,12 @@ const writeCachedMarketData = (data) => {
   }
 };
 
+const buildMarketDataHeaders = (marketDataConfig = {}) => ({
+  ...(marketDataConfig.longbridgeAppKey ? { 'X-Longbridge-App-Key': marketDataConfig.longbridgeAppKey } : {}),
+  ...(marketDataConfig.longbridgeAppSecret ? { 'X-Longbridge-App-Secret': marketDataConfig.longbridgeAppSecret } : {}),
+  ...(marketDataConfig.longbridgeAccessToken ? { 'X-Longbridge-Access-Token': marketDataConfig.longbridgeAccessToken } : {}),
+});
+
 export default function MarketPage() {
   const {
     colorConvention,
@@ -217,19 +223,26 @@ export default function MarketPage() {
     };
 
     const fetchSymbolGroup = async (symbols, signal, { extended = false } = {}) => {
-      if (!symbols.length) return {};
+      if (!symbols.length) return { data: {}, errors: {}, meta: {} };
 
       const symbolParam = symbols.join(',');
       const params = new URLSearchParams({ symbols: symbolParam });
       if (extended) params.set('extended', '1');
 
-      const res = await fetch(`/api/market?${params.toString()}`, { signal });
-      if (!res.ok) throw new Error('Network response was not ok');
+      const res = await fetch(`/api/market?${params.toString()}`, {
+        signal,
+        headers: buildMarketDataHeaders(marketDataConfig),
+      });
+      if (!res.ok) throw new Error('行情接口暂不可用');
 
       const json = await res.json();
-      if (!json.success) return {};
+      if (!json.success) return { data: {}, errors: json.errors || {}, meta: json.meta || {} };
 
-      return json.data || {};
+      return {
+        data: json.data || {},
+        errors: json.errors || {},
+        meta: json.meta || {},
+      };
     };
 
     const fetchMarketData = async (isInitial = false) => {
@@ -242,7 +255,8 @@ export default function MarketPage() {
       const secondaryRequest = fetchSymbolGroup(secondarySymbols, signal);
 
       try {
-        mergeMarketData(await primaryRequest);
+        const primaryResult = await primaryRequest;
+        mergeMarketData(primaryResult.data);
       } catch (err) {
         if (err.name !== 'AbortError') {
           console.error('Failed to fetch primary market data:', err);
@@ -252,7 +266,8 @@ export default function MarketPage() {
       }
 
       try {
-        mergeMarketData(await secondaryRequest);
+        const secondaryResult = await secondaryRequest;
+        mergeMarketData(secondaryResult.data);
       } catch (err) {
         if (err.name !== 'AbortError') {
           console.error('Failed to fetch secondary market data:', err);
@@ -272,7 +287,7 @@ export default function MarketPage() {
       activeController?.abort();
       clearInterval(intervalId);
     };
-  }, [marketWatchlist, optionUnderlyingSymbols]);
+  }, [marketWatchlist, optionUnderlyingSymbols, marketDataConfig]);
 
   useEffect(() => {
     let mounted = true;

@@ -2,11 +2,11 @@ import { parseDateTime } from '../../utils/time';
 import {
   getOptionExpirationLabel,
   getOptionExpirationRisk,
-  getTradeMultiplier,
   getTradeOptionDisplay,
   getTradeQuantityUnit,
 } from '../../utils/tradeLifecycle';
 import { getDteMonitor, getMoneynessMonitor } from '../../utils/optionMonitoring';
+import { buildOptionHoldingMetrics } from '../../utils/optionPortfolio';
 import './HoldingCard.css';
 
 const TYPE_LABELS = {
@@ -18,18 +18,32 @@ const TYPE_LABELS = {
 };
 
 const formatCurrency = (num) => {
-  const val = Number(num) || 0;
+  const val = toFiniteNumberOrNull(num);
+  if (val === null) return '--';
   return val.toLocaleString('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
 };
 
+function toFiniteNumberOrNull(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
 const formatSignedCurrency = (num) => {
   const value = Number(num);
   if (!Number.isFinite(value)) return '--';
   const prefix = value > 0 ? '+' : value < 0 ? '-' : '';
   return `${prefix}$${formatCurrency(Math.abs(value))}`;
+};
+
+const formatPercent = (value) => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return '--';
+  const prefix = num > 0 ? '+' : '';
+  return `${prefix}${num.toFixed(2)}%`;
 };
 
 const formatDate = (dateStr) => {
@@ -58,6 +72,8 @@ export default function HoldingCard({
 }) {
   const assetType = String(holding.type || 'STOCK').toUpperCase();
   const isOption = assetType === 'OPTION';
+  const optionMetrics = buildOptionHoldingMetrics(holding, optionQuote);
+  const quoteUnavailable = optionMetrics.quoteUnavailable;
   const optionDisplay = isOption ? getTradeOptionDisplay({
     asset_type: 'OPTION',
     symbol: holding.symbol,
@@ -83,20 +99,21 @@ export default function HoldingCard({
     optionType: holding.option_type,
   }) : null;
   const quantityUnit = getTradeQuantityUnit({ asset_type: holding.type });
-  const quantity = Number(holding.total_quantity) || 0;
-  const avgCost = Number(holding.avg_cost) || 0;
-  const multiplier = getTradeMultiplier({ asset_type: holding.type, multiplier: holding.multiplier });
-  const liveOptionPrice = isOption ? Number(optionQuote?.mark ?? optionQuote?.last ?? optionQuote?.bid) : null;
-  const hasLiveOptionPrice = isOption && Number.isFinite(liveOptionPrice) && liveOptionPrice >= 0;
-  const unitPrice = hasLiveOptionPrice ? liveOptionPrice : avgCost;
-  const costBasis = quantity * avgCost * multiplier;
-  const positionValue = quantity * unitPrice * multiplier;
-  const unrealizedPnl = hasLiveOptionPrice ? positionValue - costBasis : null;
-  const unrealizedPnlPct = hasLiveOptionPrice && costBasis > 0 ? unrealizedPnl / costBasis : null;
-  const optionDayChange = hasLiveOptionPrice && Number.isFinite(Number(optionQuote?.change))
-    ? Number(optionQuote.change) * quantity * multiplier
-    : null;
-  const pnlTone = unrealizedPnl > 0 ? 'profit' : unrealizedPnl < 0 ? 'loss' : 'neutral';
+  const {
+    quantity,
+    liveOptionPrice,
+    hasLiveOptionPrice,
+    positionValue,
+    unrealizedPnl,
+    unrealizedPnlPct,
+    optionDayChangePct,
+    optionPreviousClose,
+    hasOptionDailyChange,
+    optionDayChange,
+    optionDayTone,
+    optionDailyMissingReason,
+    pnlTone,
+  } = optionMetrics;
   const title = isOption && optionDisplay?.title ? optionDisplay.title : holding.symbol;
   const typeLabel = TYPE_LABELS[assetType] || assetType;
   const hasMeta = Boolean(isOption ? optionExpirationLabel : (holding.name || holding.symbol));
@@ -179,7 +196,9 @@ export default function HoldingCard({
           </div>
           {isOption && (
             <div className={`holding-card__live-pnl holding-card__live-pnl--${pnlTone} text-mono`}>
-              {hasLiveOptionPrice
+              {quoteUnavailable
+                ? '报价不可用'
+                : hasLiveOptionPrice
                 ? `${formatSignedCurrency(unrealizedPnl)} · ${Number.isFinite(unrealizedPnlPct) ? `${(unrealizedPnlPct * 100).toFixed(1)}%` : '--'}`
                 : '等待期权报价'}
             </div>
@@ -226,11 +245,41 @@ export default function HoldingCard({
       )}
 
       {isOption && optionQuote && (
-        <div className="holding-card__quote-strip">
-          <span>{optionQuote.provider || '期权报价'}</span>
-          <span>Last ${formatCurrency(optionQuote.last)}</span>
-          <span>Bid/Ask {formatCurrency(optionQuote.bid)} / {formatCurrency(optionQuote.ask)}</span>
-          <span>{optionDayChange === null ? '日变动 --' : `日变动 ${formatSignedCurrency(optionDayChange)}`}</span>
+        <div className={`holding-card__quote-panel ${quoteUnavailable ? 'holding-card__quote-panel--unavailable' : ''}`}>
+          <div className="holding-card__quote-head">
+            <span>{optionQuote.provider || '期权报价'}</span>
+            <strong>
+              {quoteUnavailable
+                ? '报价不可用'
+                : optionQuote.quoteDate
+                ? `报价日 ${optionQuote.quoteDate}`
+                : optionQuote.generatedAt
+                  ? '刚刚更新'
+                  : '等待刷新'}
+            </strong>
+          </div>
+          {!quoteUnavailable && (
+            <div className="holding-card__quote-strip">
+              <span>Mark ${formatCurrency(liveOptionPrice)}</span>
+              <span>Last ${formatCurrency(optionQuote.last)}</span>
+              <span>Bid/Ask {formatCurrency(optionQuote.bid)} / {formatCurrency(optionQuote.ask)}</span>
+              {optionPreviousClose !== null ? (
+                <span>前收 ${formatCurrency(optionPreviousClose)}</span>
+              ) : (
+                <span className="holding-card__quote-chip--muted">前收缺失</span>
+              )}
+              <span className={`holding-card__quote-chip--${hasOptionDailyChange ? optionDayTone : 'muted'}`}>
+                {hasOptionDailyChange
+                  ? `今日 ${formatSignedCurrency(optionDayChange)} · ${optionDayChangePct !== null ? formatPercent(optionDayChangePct) : '--'}`
+                  : '今日收益待基准'}
+              </span>
+            </div>
+          )}
+          {(quoteUnavailable || (!hasOptionDailyChange && optionDailyMissingReason)) && (
+            <div className="holding-card__quote-note">
+              {optionDailyMissingReason}
+            </div>
+          )}
         </div>
       )}
 

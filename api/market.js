@@ -1,12 +1,20 @@
-import { fetchYahooChart } from './_lib/yahoo.js';
+import { fetchWithTimeout, fetchYahooChart, YAHOO_HEADERS } from './_lib/yahoo.js';
+import {
+  fetchLongbridgeMarketQuote,
+  getLongbridgeCredentials,
+  hasLongbridgeCredentials,
+} from './_lib/longbridge.js';
 
 const CACHE_TTL_MS = 5_000;
 const STALE_TTL_MS = 30_000;
 const YAHOO_TIMEOUT_MS = 2_600;
 const YAHOO_EXTENDED_TIMEOUT_MS = 4_500;
+const STOOQ_TIMEOUT_MS = 4_500;
 
 const marketCache = globalThis.__INVEST_BRAIN_MARKET_CACHE__ || new Map();
 globalThis.__INVEST_BRAIN_MARKET_CACHE__ = marketCache;
+const pendingMarketRefreshes = globalThis.__INVEST_BRAIN_MARKET_PENDING__ || new Map();
+globalThis.__INVEST_BRAIN_MARKET_PENDING__ = pendingMarketRefreshes;
 
 const getCachedQuote = (symbol, now, maxAge = CACHE_TTL_MS) => {
   const cached = marketCache.get(symbol);
@@ -77,6 +85,79 @@ const fetchExtendedQuote = async (originalSymbol, referencePrice) => {
   }
 };
 
+const toStooqSymbol = (symbol) => {
+  const clean = String(symbol || '').trim();
+  if (!clean) return '';
+  const normalized = clean.replace(/^(gb_|us|stock_)/i, '').toLowerCase();
+  if (/^hf_/i.test(clean)) return '';
+  if (normalized.startsWith('^')) return normalized;
+  if (/^\d{5}$/.test(normalized)) return `${normalized}.hk`;
+  if (/\.(us|hk|cn|sh|sz)$/i.test(normalized)) return normalized;
+  return `${normalized}.us`;
+};
+
+const parseCsvRows = (text = '') => {
+  return String(text || '')
+    .trim()
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => line.split(',').map((value) => value.trim()));
+};
+
+const fetchStooqQuote = async (originalSymbol) => {
+  const stooqSymbol = toStooqSymbol(originalSymbol);
+  if (!stooqSymbol) return null;
+
+  const url = new URL('https://stooq.com/q/d/l/');
+  url.searchParams.set('s', stooqSymbol);
+  url.searchParams.set('i', 'd');
+  const response = await fetchWithTimeout(url.toString(), { headers: YAHOO_HEADERS }, STOOQ_TIMEOUT_MS);
+  if (!response.ok) {
+    throw new Error(`Stooq 行情响应 ${response.status}`);
+  }
+
+  const rows = parseCsvRows(await response.text());
+  const dataRows = rows.slice(1).filter((row) => row.length >= 6 && !row.some((value) => /^N\/D$/i.test(value)));
+  const latest = dataRows.at(-1);
+  const previous = dataRows.length > 1 ? dataRows.at(-2) : null;
+  if (!latest) return null;
+
+  const [date, open, high, low, close, volume] = latest;
+  const price = Number(close);
+  const previousClose = previous ? Number(previous[4]) : null;
+  if (!Number.isFinite(price)) return null;
+
+  const { absChange, pctChange } = getChange(price, previousClose);
+  const cleanSymbol = String(originalSymbol || '').replace(/^(gb_|us|stock_)/i, '').toUpperCase();
+  return {
+    symbol: originalSymbol,
+    name: cleanSymbol,
+    price,
+    regularMarketPrice: price,
+    displayPrice: price,
+    pctChange,
+    absChange,
+    displayPctChange: pctChange,
+    displayAbsChange: absChange,
+    prevClose: Number.isFinite(previousClose) ? previousClose : null,
+    extendedMarket: null,
+    hasPrePostMarketData: false,
+    regularMarketDayHigh: Number.isFinite(Number(high)) ? Number(high) : null,
+    regularMarketDayLow: Number.isFinite(Number(low)) ? Number(low) : null,
+    regularMarketOpen: Number.isFinite(Number(open)) ? Number(open) : null,
+    regularMarketVolume: Number.isFinite(Number(volume)) ? Number(volume) : null,
+    currency: stooqSymbol.endsWith('.hk') ? 'HKD' : 'USD',
+    exchangeName: 'Stooq',
+    instrumentType: null,
+    yahooSymbol: cleanSymbol,
+    type: originalSymbol.startsWith('hf_') ? 'futures' : 'us',
+    provider: 'Stooq delayed daily',
+    timestamp: date || null,
+    fallbackFrom: 'Yahoo Finance',
+    fallbackReason: 'Yahoo 实时行情暂不可用，使用 Stooq 日线兜底。',
+  };
+};
+
 const fetchQuote = async (originalSymbol, { includeExtended = false } = {}) => {
   const { result, yahooSymbol } = await fetchYahooChart(originalSymbol, {
     interval: '1d',
@@ -126,6 +207,80 @@ const fetchQuote = async (originalSymbol, { includeExtended = false } = {}) => {
   };
 };
 
+const fetchQuoteWithFallback = async (originalSymbol, { includeExtended = false, longbridgeCredentials = null } = {}) => {
+  try {
+    return await fetchQuote(originalSymbol, { includeExtended });
+  } catch (yahooError) {
+    let stooqFailure = null;
+    try {
+      const stooqQuote = await fetchStooqQuote(originalSymbol);
+      if (stooqQuote) {
+        return {
+          ...stooqQuote,
+          fallbackReason: yahooError?.message
+            ? `Yahoo 行情失败：${yahooError.message}；已使用 Stooq 延迟日线兜底。`
+          : stooqQuote.fallbackReason,
+        };
+      }
+    } catch (error) {
+      stooqFailure = error;
+      if (!hasLongbridgeCredentials(longbridgeCredentials)) {
+        const error = new Error(
+          `Yahoo 行情失败：${yahooError?.message || '未知错误'}；Stooq 兜底失败：${stooqFailure?.message || '未知错误'}`
+        );
+        error.yahooError = yahooError;
+        error.stooqError = stooqFailure;
+        throw error;
+      }
+    }
+
+    if (hasLongbridgeCredentials(longbridgeCredentials)) {
+      try {
+        const longbridgeQuote = await fetchLongbridgeMarketQuote(originalSymbol, longbridgeCredentials);
+        if (longbridgeQuote) {
+          return {
+            ...longbridgeQuote,
+            fallbackFrom: 'Yahoo Finance',
+            fallbackReason: yahooError?.message || 'Yahoo 行情暂不可用',
+          };
+        }
+      } catch (longbridgeError) {
+        const error = new Error(
+          `Yahoo 行情失败：${yahooError?.message || '未知错误'}；Stooq 兜底失败：${stooqFailure?.message || '未返回可用数据'}；长桥兜底失败：${longbridgeError?.message || '未知错误'}`
+        );
+        error.yahooError = yahooError;
+        error.stooqError = stooqFailure;
+        error.longbridgeError = longbridgeError;
+        throw error;
+      }
+    }
+
+    throw yahooError;
+  }
+};
+
+const refreshMarketQuote = async (originalSymbol, cacheKey, { includeExtended = false, longbridgeCredentials = null } = {}) => {
+  if (pendingMarketRefreshes.has(cacheKey)) {
+    return pendingMarketRefreshes.get(cacheKey);
+  }
+
+  const promise = (async () => {
+    const quote = await fetchQuoteWithFallback(originalSymbol, { includeExtended, longbridgeCredentials });
+    if (quote) {
+      marketCache.set(cacheKey, {
+        fetchedAt: Date.now(),
+        data: quote,
+      });
+    }
+    return quote;
+  })().finally(() => {
+    pendingMarketRefreshes.delete(cacheKey);
+  });
+
+  pendingMarketRefreshes.set(cacheKey, promise);
+  return promise;
+};
+
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method Not Allowed' });
@@ -152,11 +307,15 @@ export default async function handler(req, res) {
       )
     );
     const results = {};
+    const errors = {};
     const now = Date.now();
     const pendingSymbols = [];
+    const backgroundSymbols = [];
+    const longbridgeCredentials = getLongbridgeCredentials(req.headers || {});
+    const credentialKey = hasLongbridgeCredentials(longbridgeCredentials) ? ':lb' : ':no-lb';
 
     for (const symbol of symbolsArray) {
-      const cacheKey = includeExtended ? `${symbol}::extended` : `${symbol}::regular`;
+      const cacheKey = `${symbol}::${includeExtended ? 'extended' : 'regular'}${credentialKey}`;
       const fresh = getCachedQuote(cacheKey, now);
       if (fresh) {
         results[symbol] = fresh;
@@ -166,26 +325,28 @@ export default async function handler(req, res) {
       const stale = getCachedQuote(cacheKey, now, STALE_TTL_MS);
       if (stale) {
         results[symbol] = stale;
+        backgroundSymbols.push({ symbol, cacheKey });
+        continue;
       }
       pendingSymbols.push({ symbol, cacheKey });
     }
 
     const promises = pendingSymbols.map(async ({ symbol: originalSymbol, cacheKey }) => {
       try {
-        const quote = await fetchQuote(originalSymbol, { includeExtended });
+        const quote = await refreshMarketQuote(originalSymbol, cacheKey, { includeExtended, longbridgeCredentials });
         if (!quote) return;
 
-        marketCache.set(cacheKey, {
-          fetchedAt: Date.now(),
-          data: quote,
-        });
         results[originalSymbol] = quote;
       } catch (err) {
+        errors[originalSymbol] = err?.message || '行情请求失败';
         // Return any stale quote already placed in results and skip only this symbol.
       }
     });
 
     await Promise.all(promises);
+    backgroundSymbols.forEach(({ symbol: originalSymbol, cacheKey }) => {
+      refreshMarketQuote(originalSymbol, cacheKey, { includeExtended, longbridgeCredentials }).catch(() => {});
+    });
 
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Cache-Control', 's-maxage=5, stale-while-revalidate=15');
@@ -195,9 +356,14 @@ export default async function handler(req, res) {
     return res.status(200).json({
       success: true,
       data: results,
+      errors,
       meta: {
         requested: symbolsArray.length,
+        returned: Object.keys(results).length,
         refreshed: pendingSymbols.length,
+        staleReturned: backgroundSymbols.length,
+        longbridgeFallbackEnabled: hasLongbridgeCredentials(longbridgeCredentials),
+        partial: Object.keys(results).length < symbolsArray.length,
         durationMs: Date.now() - startedAt,
       },
     });

@@ -7,10 +7,41 @@ export const config = {
 
 const SNAPSHOT_TIMEOUT_MS = 5_000;
 const CACHE_TTL_MS = 10 * 60 * 1000;
+const STALE_CACHE_TTL_MS = 60 * 60 * 1000;
+const STOCK_SNAPSHOT_SCHEMA_VERSION = 'longbridge-profile-v5';
 const snapshotCache = globalThis.__INVEST_BRAIN_STOCK_SNAPSHOT_CACHE__ || new Map();
 globalThis.__INVEST_BRAIN_STOCK_SNAPSHOT_CACHE__ = snapshotCache;
+const pendingSnapshotRequests = globalThis.__INVEST_BRAIN_STOCK_SNAPSHOT_PENDING__ || new Map();
+globalThis.__INVEST_BRAIN_STOCK_SNAPSHOT_PENDING__ = pendingSnapshotRequests;
 
 const last = (items) => items[items.length - 1];
+
+function getCachedSnapshot(cacheKey, maxAgeMs = CACHE_TTL_MS) {
+  const cached = snapshotCache.get(cacheKey);
+  if (!cached || Date.now() - cached.fetchedAt > maxAgeMs) return null;
+  return cached;
+}
+
+function markSnapshotCache(payload, cacheMeta = {}) {
+  return {
+    ...payload,
+    source: {
+      ...(payload?.source || {}),
+      cache: cacheMeta,
+    },
+  };
+}
+
+function hashCredential(value) {
+  const text = String(value || '');
+  if (!text) return '';
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `${text.length}:${(hash >>> 0).toString(36)}`;
+}
 
 function average(values) {
   const clean = values.filter((value) => Number.isFinite(value));
@@ -114,7 +145,41 @@ function pickText(...values) {
     .find(Boolean) || null;
 }
 
-function classifyIndustryRank({ marketCap, revenueGrowth, profitMargins, returnOnEquity, beta }) {
+function pickIndustryText(...values) {
+  const invalidBoardCodes = new Set([
+    'USMAIN',
+    'USPINK',
+    'USSECTOR',
+    'USOPTION',
+    'USOPTIONS',
+    'HKSECTOR',
+    'HKEQUITY',
+    'SHMAINCONNECT',
+    'SZMAINCONNECT',
+  ]);
+  return values
+    .map((value) => String(value || '').trim())
+    .find((value) => value && !invalidBoardCodes.has(value.replace(/[\s_-]/g, '').toUpperCase())) || null;
+}
+
+const LOCAL_CLASSIFICATION = {
+  AAPL: { sector: '科技', industry: '消费电子' },
+  AMD: { sector: '科技', industry: '半导体' },
+  ASTS: { sector: '通信服务', industry: '卫星通信' },
+  BB: { sector: '科技', industry: '软件与网络安全' },
+  HIMX: { sector: '科技', industry: '半导体' },
+  MSFT: { sector: '科技', industry: '软件基础设施' },
+  NVDA: { sector: '科技', industry: '半导体' },
+  STM: { sector: '科技', industry: '半导体' },
+  TSLA: { sector: '可选消费', industry: '汽车制造' },
+};
+
+function getLocalClassification(symbol) {
+  return LOCAL_CLASSIFICATION[String(symbol || '').trim().toUpperCase()] || {};
+}
+
+function classifyIndustryRank({ marketCap, revenueGrowth, profitMargins, returnOnEquity, beta, longbridgeRank = null }) {
+  if (longbridgeRank?.source === 'longbridge') return longbridgeRank;
   let score = 0;
   if (Number(marketCap) >= 50_000_000_000) score += 24;
   else if (Number(marketCap) >= 10_000_000_000) score += 18;
@@ -171,21 +236,33 @@ function buildCompanyProfile(symbol, summary = {}, dailyMeta = {}, intradayMeta 
   const lbStatic = longbridgeSnapshot?.staticInfo || {};
   const lbFundamentals = longbridgeSnapshot?.fundamentals || {};
   const lbCompany = longbridgeSnapshot?.company || {};
+  const localClass = getLocalClassification(symbol);
   const yahooProfileAvailable = Boolean(
     profile.industry
       || rawValue(price.marketCap)
       || rawValue(details.marketCap)
       || rawValue(financial.totalRevenue)
   );
+  const derivedMarketCap = lbStatic.totalShares && (longbridgeSnapshot?.quote?.price ?? intradayMeta.regularMarketPrice ?? dailyMeta.regularMarketPrice)
+    ? lbStatic.totalShares * (longbridgeSnapshot?.quote?.price ?? intradayMeta.regularMarketPrice ?? dailyMeta.regularMarketPrice)
+    : null;
   const marketCap = lbFundamentals.marketCap
     ?? rawValue(price.marketCap)
     ?? rawValue(details.marketCap)
-    ?? rawValue(stats.enterpriseValue);
-  const revenueGrowth = rawValue(financial.revenueGrowth);
-  const profitMargins = rawValue(financial.profitMargins);
-  const returnOnEquity = rawValue(financial.returnOnEquity);
+    ?? rawValue(stats.enterpriseValue)
+    ?? derivedMarketCap;
+  const revenueGrowth = lbFundamentals.revenueGrowth ?? rawValue(financial.revenueGrowth);
+  const profitMargins = lbFundamentals.profitMargins ?? rawValue(financial.profitMargins);
+  const returnOnEquity = lbFundamentals.returnOnEquity ?? rawValue(financial.returnOnEquity);
   const beta = rawValue(details.beta) ?? rawValue(stats.beta);
-  const ranking = classifyIndustryRank({ marketCap, revenueGrowth, profitMargins, returnOnEquity, beta });
+  const ranking = classifyIndustryRank({
+    marketCap,
+    revenueGrowth,
+    profitMargins,
+    returnOnEquity,
+    beta,
+    longbridgeRank: lbCompany.industryRank,
+  });
 
   return {
     name: pickText(lbStatic.nameCn, price.longName, lbStatic.nameEn, price.shortName, dailyMeta.longName, dailyMeta.shortName, intradayMeta.longName, intradayMeta.shortName, symbol),
@@ -195,8 +272,8 @@ function buildCompanyProfile(symbol, summary = {}, dailyMeta = {}, intradayMeta 
     currency: pickText(lbStatic.currency, price.currency, dailyMeta.currency, intradayMeta.currency, 'USD'),
     country: pickText(profile.country),
     city: pickText(profile.city),
-    sector: pickText(profile.sector, lbStatic.board, lbCompany.sector),
-    industry: pickText(profile.industry, lbStatic.board),
+    sector: pickIndustryText(profile.sector, lbCompany.sector, localClass.sector),
+    industry: pickIndustryText(profile.industry, lbCompany.industryName, localClass.industry),
     website: pickText(lbCompany.website, profile.website),
     employees: rawValue(profile.fullTimeEmployees) ?? lbCompany.employees ?? null,
     businessSummary: pickText(lbCompany.profile, profile.longBusinessSummary),
@@ -217,12 +294,13 @@ function buildCompanyProfile(symbol, summary = {}, dailyMeta = {}, intradayMeta 
     trailingPE: lbFundamentals.trailingPE ?? rawValue(details.trailingPE) ?? rawValue(stats.trailingPE),
     forwardPE: rawValue(stats.forwardPE),
     priceToBook: lbFundamentals.priceToBook ?? rawValue(stats.priceToBook),
+    priceToSales: lbFundamentals.priceToSales ?? rawValue(stats.priceToSalesTrailing12Months),
     beta,
     dividendYield: lbFundamentals.dividendYield ?? rawValue(details.dividendYield),
     dividendPerShare: lbStatic.dividendPerShare ?? null,
-    eps: lbStatic.eps ?? null,
-    epsTtm: lbStatic.epsTtm ?? null,
-    bps: lbStatic.bps ?? null,
+    eps: lbFundamentals.eps ?? lbStatic.eps ?? null,
+    epsTtm: lbStatic.epsTtm ?? lbFundamentals.eps ?? null,
+    bps: lbFundamentals.bps ?? lbStatic.bps ?? null,
     lotSize: lbStatic.lotSize ?? null,
     totalShares: lbStatic.totalShares ?? null,
     circulatingShares: lbStatic.circulatingShares ?? null,
@@ -234,13 +312,43 @@ function buildCompanyProfile(symbol, summary = {}, dailyMeta = {}, intradayMeta 
     revenueGrowth,
     earningsGrowth: rawValue(financial.earningsGrowth),
     returnOnEquity,
-    totalRevenue: rawValue(financial.totalRevenue),
+    totalRevenue: lbFundamentals.totalRevenue ?? rawValue(financial.totalRevenue),
+    netIncome: lbFundamentals.netIncome ?? null,
+    netIncomeGrowth: lbFundamentals.netIncomeGrowth ?? null,
     grossProfits: rawValue(financial.grossProfits),
-    freeCashflow: rawValue(financial.freeCashflow),
+    freeCashflow: lbFundamentals.operatingCashflow ?? rawValue(financial.freeCashflow),
+    totalAssets: lbFundamentals.totalAssets ?? null,
+    totalLiabilities: lbFundamentals.totalLiabilities ?? null,
+    debtToAssets: lbFundamentals.debtToAssets ?? null,
     targetMeanPrice: rawValue(financial.targetMeanPrice),
+    targetPrice: lbFundamentals.targetPrice ?? null,
+    forecastEpsMean: lbFundamentals.forecastEpsMean ?? null,
     recommendationKey: pickText(financial.recommendationKey),
     recommendationMean: rawValue(financial.recommendationMean),
     industryRank: ranking,
+    valuationSummary: lbCompany.valuationSummary || null,
+    earningsSummary: lbCompany.earningsSummary || null,
+    financialPeriod: lbCompany.financialPeriod || null,
+    ratings: lbCompany.ratings || null,
+    industryDistribution: lbCompany.industryDistribution || null,
+    industryPeers: lbCompany.industryPeers || null,
+    shareholders: lbCompany.shareholders || null,
+    executives: lbCompany.executives || null,
+    operating: lbCompany.operating || null,
+    forecastEps: lbCompany.forecastEps || null,
+    consensus: lbCompany.consensus || null,
+    financialReports: lbCompany.financialReports || null,
+    dividends: lbCompany.dividends || null,
+    fundHolders: lbCompany.fundHolders || null,
+    corpActions: lbCompany.corpActions || null,
+    investRelations: lbCompany.investRelations || null,
+    buyback: lbCompany.buyback || null,
+    valuationComparison: lbCompany.valuationComparison || null,
+    classificationSource: profile.sector || profile.industry
+      ? 'Yahoo Profile'
+      : (lbCompany.industryName ? 'Longbridge 行业评级' : (localClass.sector ? '本地分类兜底' : null)),
+    longbridgeDataSources: lbCompany.dataSources || null,
+    longbridgeDataErrors: lbCompany.dataErrors || null,
     providers: {
       longbridge: longbridgeSnapshot ? 'ok' : 'missing',
       yahooProfile: yahooProfileAvailable ? 'ok' : 'fallback',
@@ -406,6 +514,9 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
+  let cacheKey = '';
+  let staleCached = null;
+
   try {
     const { searchParams } = new URL(req.url, `http://${req.headers.host}`);
     const symbol = searchParams.get('symbol');
@@ -415,58 +526,89 @@ export default async function handler(req, res) {
     }
 
     const longbridgeCredentials = getLongbridgeCredentials(req.headers || {});
-    const cacheKey = [
+    cacheKey = [
+      STOCK_SNAPSHOT_SCHEMA_VERSION,
       String(symbol).trim().toUpperCase(),
-      hasLongbridgeCredentials(longbridgeCredentials) ? 'longbridge' : 'public',
+      hasLongbridgeCredentials(longbridgeCredentials)
+        ? `longbridge:${hashCredential(`${longbridgeCredentials.appKey}:${longbridgeCredentials.accessToken}`)}`
+        : 'public',
     ].join(':');
-    const cached = snapshotCache.get(cacheKey);
-    if (cached && Date.now() - cached.fetchedAt <= CACHE_TTL_MS) {
+    const cached = getCachedSnapshot(cacheKey, CACHE_TTL_MS);
+    if (cached) {
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600');
       res.setHeader('X-IB-Stock-Snapshot-Cache', 'hit');
-      return res.status(200).json(cached.payload);
+      return res.status(200).json(markSnapshotCache(cached.payload, {
+        status: 'hit',
+        ageMs: Date.now() - cached.fetchedAt,
+      }));
     }
 
-    const [daily, intraday, quoteSummaryResult, longbridgeResult] = await Promise.allSettled([
-      fetchYahooChart(symbol, { interval: '1d', range: '1y', timeoutMs: SNAPSHOT_TIMEOUT_MS }),
-      fetchYahooChart(symbol, { interval: '1d', range: '1d', timeoutMs: SNAPSHOT_TIMEOUT_MS }),
-      fetchQuoteSummary(symbol),
-      hasLongbridgeCredentials(longbridgeCredentials)
-        ? fetchLongbridgeStockSnapshot(symbol, longbridgeCredentials)
-        : Promise.resolve(null),
-    ]);
-    const longbridgeSnapshot = longbridgeResult.status === 'fulfilled' ? longbridgeResult.value : null;
-    let payload;
-    if (daily.status === 'fulfilled' && intraday.status === 'fulfilled') {
-      payload = buildSnapshot(
-        symbol,
-        daily.value.result,
-        intraday.value.result,
-        quoteSummaryResult.status === 'fulfilled' ? quoteSummaryResult.value : null,
-        quoteSummaryResult.status === 'rejected' ? quoteSummaryResult.reason : null,
-        longbridgeSnapshot,
-        longbridgeResult.status === 'rejected' ? longbridgeResult.reason : null
-      );
-    } else if (longbridgeSnapshot) {
-      payload = buildLongbridgeFallbackSnapshot(symbol, longbridgeSnapshot, {
-        chartError: daily.status === 'rejected' ? daily.reason : intraday.reason,
-        profileError: quoteSummaryResult.status === 'rejected' ? quoteSummaryResult.reason : null,
+    staleCached = getCachedSnapshot(cacheKey, STALE_CACHE_TTL_MS);
+    let pending = pendingSnapshotRequests.get(cacheKey);
+    if (!pending) {
+      pending = (async () => {
+        const [daily, intraday, quoteSummaryResult, longbridgeResult] = await Promise.allSettled([
+          fetchYahooChart(symbol, { interval: '1d', range: '1y', timeoutMs: SNAPSHOT_TIMEOUT_MS }),
+          fetchYahooChart(symbol, { interval: '1d', range: '1d', timeoutMs: SNAPSHOT_TIMEOUT_MS }),
+          fetchQuoteSummary(symbol),
+          hasLongbridgeCredentials(longbridgeCredentials)
+            ? fetchLongbridgeStockSnapshot(symbol, longbridgeCredentials)
+            : Promise.resolve(null),
+        ]);
+        const longbridgeSnapshot = longbridgeResult.status === 'fulfilled' ? longbridgeResult.value : null;
+        let payload;
+        if (daily.status === 'fulfilled' && intraday.status === 'fulfilled') {
+          payload = buildSnapshot(
+            symbol,
+            daily.value.result,
+            intraday.value.result,
+            quoteSummaryResult.status === 'fulfilled' ? quoteSummaryResult.value : null,
+            quoteSummaryResult.status === 'rejected' ? quoteSummaryResult.reason : null,
+            longbridgeSnapshot,
+            longbridgeResult.status === 'rejected' ? longbridgeResult.reason : null
+          );
+        } else if (longbridgeSnapshot) {
+          payload = buildLongbridgeFallbackSnapshot(symbol, longbridgeSnapshot, {
+            chartError: daily.status === 'rejected' ? daily.reason : intraday.reason,
+            profileError: quoteSummaryResult.status === 'rejected' ? quoteSummaryResult.reason : null,
+          });
+        } else {
+          throw daily.status === 'rejected' ? daily.reason : intraday.reason;
+        }
+
+        snapshotCache.set(cacheKey, {
+          fetchedAt: Date.now(),
+          payload,
+        });
+        return payload;
+      })().finally(() => {
+        pendingSnapshotRequests.delete(cacheKey);
       });
-    } else {
-      throw daily.status === 'rejected' ? daily.reason : intraday.reason;
+      pendingSnapshotRequests.set(cacheKey, pending);
     }
 
-    snapshotCache.set(cacheKey, {
-      fetchedAt: Date.now(),
-      payload,
-    });
+    const payload = await pending;
 
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600');
     res.setHeader('X-IB-Stock-Snapshot-Cache', 'miss');
-    return res.status(200).json(payload);
+    return res.status(200).json(markSnapshotCache(payload, {
+      status: staleCached ? 'refreshed-from-stale' : 'miss',
+      ageMs: 0,
+    }));
   } catch (error) {
     console.error('Stock Snapshot Proxy Error:', error);
+    if (staleCached) {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=600');
+      res.setHeader('X-IB-Stock-Snapshot-Cache', 'stale');
+      return res.status(200).json(markSnapshotCache(staleCached.payload, {
+        status: 'stale-error',
+        ageMs: Date.now() - staleCached.fetchedAt,
+        error: error.message,
+      }));
+    }
     return res.status(500).json({ error: error.message });
   }
 }

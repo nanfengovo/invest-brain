@@ -943,11 +943,11 @@ function SettingsPage() {
               />
             </div>
             <Button
+              className="settings-card__primary-action"
               color="primary"
               size="small"
               fill="solid"
               onClick={handleSaveApiKey}
-              style={{ borderRadius: '6px' }}
             >
               保存
             </Button>
@@ -963,56 +963,86 @@ function SettingsPage() {
               </div>
             </div>
           </div>
-          <div className="settings-card__input-row settings-card__input-row--stacked">
-            <Selector
-              options={AI_PROVIDER_OPTIONS}
-              value={[aiProviderInput.provider || 'auto']}
-              onChange={(value) => {
-                if (!value.length) return;
-                setAiProviderInput((current) => ({ ...current, provider: value[0] }));
-              }}
-            />
-            <Selector
-              options={AI_TEXT_MODEL_OPTIONS.map((item) => ({
-                label: item.label,
-                value: item.value,
-                description: `${item.provider} · ${item.description}`,
-              }))}
-              value={[aiProviderInput.textModel || DEFAULT_AI_PROVIDER_CONFIG.textModel]}
-              onChange={(value) => {
-                if (!value.length) return;
-                setAiProviderInput((current) => ({ ...current, textModel: value[0] }));
-              }}
-            />
-            <Selector
-              options={AI_VISION_MODEL_OPTIONS.map((item) => ({
-                label: item.label,
-                value: item.value,
-                description: `${item.provider} · ${item.description}`,
-              }))}
-              value={[aiProviderInput.visionModel || DEFAULT_AI_PROVIDER_CONFIG.visionModel]}
-              onChange={(value) => {
-                if (!value.length) return;
-                setAiProviderInput((current) => ({ ...current, visionModel: value[0] }));
-              }}
-            />
-            <div className="settings-card__input-wrapper">
-              <Input
-                placeholder="NVIDIA API Key（nvapi-...；留空则使用内置/服务端 Key）"
-                value={nvidiaApiKeyInput}
-                onChange={setNvidiaApiKeyInput}
-                type="password"
-                clearable
+          <div className="settings-card__input-row settings-card__input-row--stacked settings-ai-router">
+            <div className="settings-ai-router__group settings-ai-router__group--provider">
+              <div className="settings-ai-router__group-head">
+                <span>路由策略</span>
+                <em>{getProviderDisplayName(aiProviderInput.provider || 'auto')}</em>
+              </div>
+              <Selector
+                className="settings-ai-router__selector settings-ai-router__selector--provider"
+                columns={3}
+                options={AI_PROVIDER_OPTIONS}
+                value={[aiProviderInput.provider || 'auto']}
+                onChange={(value) => {
+                  if (!value.length) return;
+                  setAiProviderInput((current) => ({ ...current, provider: value[0] }));
+                }}
               />
+            </div>
+            <div className="settings-ai-router__group">
+              <div className="settings-ai-router__group-head">
+                <span>文本 / 翻译 / 诊断</span>
+                <em>{getModelDisplayName(aiProviderInput.textModel || DEFAULT_AI_PROVIDER_CONFIG.textModel)}</em>
+              </div>
+              <Selector
+                className="settings-ai-router__selector settings-ai-router__selector--model"
+                columns={2}
+                options={AI_TEXT_MODEL_OPTIONS.map((item) => ({
+                  label: item.label,
+                  value: item.value,
+                  description: `${item.provider} · ${item.description}`,
+                }))}
+                value={[aiProviderInput.textModel || DEFAULT_AI_PROVIDER_CONFIG.textModel]}
+                onChange={(value) => {
+                  if (!value.length) return;
+                  setAiProviderInput((current) => ({ ...current, textModel: value[0] }));
+                }}
+              />
+            </div>
+            <div className="settings-ai-router__group">
+              <div className="settings-ai-router__group-head">
+                <span>视觉 / OCR</span>
+                <em>{getModelDisplayName(aiProviderInput.visionModel || DEFAULT_AI_PROVIDER_CONFIG.visionModel)}</em>
+              </div>
+              <Selector
+                className="settings-ai-router__selector settings-ai-router__selector--model"
+                columns={2}
+                options={AI_VISION_MODEL_OPTIONS.map((item) => ({
+                  label: item.label,
+                  value: item.value,
+                  description: `${item.provider} · ${item.description}`,
+                }))}
+                value={[aiProviderInput.visionModel || DEFAULT_AI_PROVIDER_CONFIG.visionModel]}
+                onChange={(value) => {
+                  if (!value.length) return;
+                  setAiProviderInput((current) => ({ ...current, visionModel: value[0] }));
+                }}
+              />
+            </div>
+            <div className="settings-ai-router__group settings-ai-router__group--key">
+              <div className="settings-ai-router__group-head">
+                <span>NVIDIA API Key</span>
+                <em>{nvidiaApiKeyInput ? '本地 Key 优先' : '内置 / 服务端 Key'}</em>
+              </div>
+              <div className="settings-card__input-wrapper">
+                <Input
+                  placeholder="nvapi-...（留空则使用内置/服务端 Key）"
+                  value={nvidiaApiKeyInput}
+                  onChange={setNvidiaApiKeyInput}
+                  type="password"
+                  clearable
+                />
+              </div>
             </div>
           </div>
           <div className="settings-card__actions-row">
             <Button
+              className="settings-card__primary-action"
               color="primary"
               size="small"
               fill="solid"
               onClick={handleSaveAiProviderConfig}
-              style={{ borderRadius: '6px' }}
             >
               保存 AI 路由
             </Button>
@@ -1045,6 +1075,7 @@ function SettingsPage() {
               />
             </div>
             <Button
+              className="settings-card__primary-action"
               color="primary"
               size="small"
               fill="solid"
@@ -1052,7 +1083,6 @@ function SettingsPage() {
                 setStreamlitUrl(streamlitUrlInput);
                 Toast.show({ icon: 'success', content: '引擎地址已保存' });
               }}
-              style={{ borderRadius: '6px' }}
             >
               保存
             </Button>
@@ -1109,7 +1139,7 @@ function SettingsPage() {
             </div>
           </div>
           <div className="settings-card__actions-row">
-            <Button color="primary" size="small" fill="solid" onClick={handleSaveShareBackgroundConfig} style={{ borderRadius: '6px' }}>
+            <Button className="settings-card__primary-action" color="primary" size="small" fill="solid" onClick={handleSaveShareBackgroundConfig}>
               保存背景配置
             </Button>
           </div>
@@ -1205,7 +1235,7 @@ function SettingsPage() {
             </div>
           </div>
           <div className="settings-card__actions-row">
-            <Button color="primary" size="small" fill="solid" onClick={handleSaveMarketDataConfig} style={{ borderRadius: '6px' }}>
+            <Button className="settings-card__primary-action" color="primary" size="small" fill="solid" onClick={handleSaveMarketDataConfig}>
               保存数据源
             </Button>
           </div>
@@ -1278,10 +1308,10 @@ function SettingsPage() {
             </div>
           </div>
           <div className="settings-card__actions-row">
-            <Button color="primary" size="small" fill="solid" onClick={handleSaveNotificationConfig} style={{ borderRadius: '6px' }}>
+            <Button className="settings-card__primary-action" color="primary" size="small" fill="solid" onClick={handleSaveNotificationConfig}>
               保存提醒配置
             </Button>
-            <Button color="primary" size="small" fill="outline" onClick={handleTestNotification} style={{ borderRadius: '6px' }}>
+            <Button color="primary" size="small" fill="outline" onClick={handleTestNotification}>
               测试通道
             </Button>
           </div>
@@ -1350,11 +1380,11 @@ function SettingsPage() {
           </div>
           <div className="settings-card__actions-row">
             <Button
+              className="settings-card__primary-action"
               color="primary"
               size="small"
               fill="solid"
               onClick={handleSaveSyncConfig}
-              style={{ borderRadius: '6px' }}
             >
               保存凭证
             </Button>
@@ -1363,7 +1393,6 @@ function SettingsPage() {
               size="small"
               fill="outline"
               onClick={handleTestSyncConnection}
-              style={{ borderRadius: '6px' }}
             >
               测试连接
             </Button>

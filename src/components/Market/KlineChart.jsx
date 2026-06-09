@@ -1,9 +1,12 @@
-import React, { useMemo } from 'react';
-import ReactECharts from 'echarts-for-react';
+import React, { useEffect, useMemo, useRef } from 'react';
+import * as echarts from 'echarts';
 import { useAppStore } from '../../stores/useAppStore';
 
 export default function KlineChart({ data, interval }) {
   const { colorConvention, theme } = useAppStore();
+  const chartRef = useRef(null);
+  const chartInstanceRef = useRef(null);
+  const hasData = Boolean(data && data.length > 0);
   
   // data format from api: [dateStr, open, close, low, high, volume]
   const option = useMemo(() => {
@@ -284,16 +287,52 @@ export default function KlineChart({ data, interval }) {
     };
   }, [data, colorConvention, theme, interval]);
 
+  useEffect(() => {
+    if (!hasData || !chartRef.current) return undefined;
+
+    const chart = echarts.init(chartRef.current, null, { renderer: 'canvas' });
+    chartInstanceRef.current = chart;
+
+    const resize = () => {
+      if (!chart.isDisposed()) chart.resize();
+    };
+    const resizeObserver = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(resize)
+      : null;
+
+    resizeObserver?.observe(chartRef.current);
+    window.addEventListener('resize', resize);
+    requestAnimationFrame(resize);
+
+    return () => {
+      window.removeEventListener('resize', resize);
+      resizeObserver?.disconnect();
+      if (!chart.isDisposed()) chart.dispose();
+      chartInstanceRef.current = null;
+    };
+  }, [hasData]);
+
+  useEffect(() => {
+    const chart = chartInstanceRef.current;
+    if (!hasData || !chart || chart.isDisposed() || !option || Object.keys(option).length === 0) {
+      return;
+    }
+
+    chart.hideLoading();
+    chart.setOption(option, { notMerge: true, lazyUpdate: false });
+    requestAnimationFrame(() => {
+      if (!chart.isDisposed()) chart.resize();
+    });
+  }, [hasData, option]);
+
   if (!data || data.length === 0) {
-    return <div className="kline-placeholder">Loading chart...</div>;
+    return (
+      <div className="kline-placeholder">
+        <strong>暂无可用图表数据</strong>
+        <span>行情源未返回 K 线，稍后会自动重试。</span>
+      </div>
+    );
   }
 
-  return (
-    <ReactECharts 
-      option={option} 
-      style={{ height: '350px', width: '100%' }} 
-      notMerge={true}
-      lazyUpdate={true}
-    />
-  );
+  return <div ref={chartRef} className="kline-chart" aria-label="K 线图" />;
 }

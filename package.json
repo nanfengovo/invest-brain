@@ -1,7 +1,7 @@
 {
   "name": "invest-brain",
   "private": true,
-  "version": "1.0.195",
+  "version": "1.0.197",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -32,6 +32,7 @@
     "iconv-lite": "^0.7.2",
     "ioredis": "^5.11.1",
     "jszip": "^3.10.1",
+    "longbridge": "^4.3.0",
     "pdfjs-dist": "^6.0.227",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

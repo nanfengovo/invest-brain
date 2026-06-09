@@ -2,6 +2,10 @@ import crypto from 'node:crypto';
 
 const LONGBRIDGE_HTTP_URL = process.env.LONGBRIDGE_HTTP_URL || 'https://openapi.longbridge.com';
 const LONGBRIDGE_HTTP_TIMEOUT_MS = 6_000;
+const LONGBRIDGE_SDK_TIMEOUT_MS = 14_000;
+const LONGBRIDGE_SDK_BATCH_SIZE = 5;
+
+let longbridgeSdkPromise = null;
 
 function pickCredential(headers = {}, key, fallback = '') {
   const normalizedKey = key.toLowerCase();
@@ -29,6 +33,10 @@ export function hasLongbridgeCredentials(credentials = {}) {
 
 function toNumber(value) {
   if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'object') {
+    if (typeof value.toString === 'function') return toNumber(value.toString());
+    if ('value' in value) return toNumber(value.value);
+  }
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
@@ -37,6 +45,153 @@ function pickText(...values) {
   return values
     .map((value) => String(value || '').trim())
     .find(Boolean) || null;
+}
+
+function cleanHtmlText(value) {
+  return String(value || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function pickNonNumericText(...values) {
+  return values
+    .map((value) => String(value ?? '').trim())
+    .filter((value) => value && !/^-?\d+(?:\.\d+)?$/.test(value))
+    .find(Boolean) || null;
+}
+
+function firstArray(...values) {
+  return values.find((value) => Array.isArray(value) && value.length) || [];
+}
+
+function toPlainJson(value) {
+  if (value === null || value === undefined) return value;
+  if (typeof value?.toJSON === 'function') return value.toJSON();
+  if (Array.isArray(value)) return value.map(toPlainJson);
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'object' && typeof value.toString === 'function' && value.constructor?.name === 'Decimal') {
+    return value.toString();
+  }
+  return value;
+}
+
+function parseJsonMaybe(value, fallback = null) {
+  if (!value) return fallback;
+  if (typeof value === 'object') return value;
+  try {
+    return JSON.parse(String(value));
+  } catch {
+    return fallback;
+  }
+}
+
+function normalizeSdkError(error, scope = '长桥数据') {
+  const message = String(error?.message || error || '请求失败');
+  if (/permission|not.?authorized|unauthor|forbidden|no access|auth/i.test(message)) {
+    return `${scope}权限不足或当前账号未开通对应行情/基本面权限。`;
+  }
+  if (/timeout|aborted|deadline/i.test(message)) {
+    return `${scope}请求超时，请稍后重试。`;
+  }
+  if (/OPRA|option/i.test(message) && /quote|permission|access|auth/i.test(message)) {
+    return `${scope}需要开通 OPRA US Options Quotes（OpenAPI）权限。`;
+  }
+  return message.replace(/^Error:\s*/i, '');
+}
+
+async function loadLongbridgeSdk() {
+  if (!longbridgeSdkPromise) {
+    longbridgeSdkPromise = import('longbridge').catch((error) => {
+      longbridgeSdkPromise = null;
+      throw error;
+    });
+  }
+  return longbridgeSdkPromise;
+}
+
+function withTimeout(promise, ms, label) {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(`${label}请求超时`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
+}
+
+async function callSettled(label, task) {
+  try {
+    return { label, status: 'fulfilled', value: await task() };
+  } catch (error) {
+    return { label, status: 'rejected', reason: normalizeSdkError(error, `长桥${label}`) };
+  }
+}
+
+async function callSettledBatches(items, batchSize = LONGBRIDGE_SDK_BATCH_SIZE) {
+  const results = [];
+  for (let index = 0; index < items.length; index += batchSize) {
+    const batch = items.slice(index, index + batchSize);
+    const settled = await Promise.all(batch.map((item) => callSettled(item.label, item.task)));
+    results.push(...settled);
+  }
+  return results;
+}
+
+function callFirstAvailable(context, names, ...args) {
+  const method = names.find((name) => typeof context?.[name] === 'function');
+  if (!method) {
+    throw new Error(`当前 Longbridge SDK 未提供 ${names.join(' / ')} 方法`);
+  }
+  return context[method](...args);
+}
+
+function createLongbridgeConfig(sdk, credentials) {
+  return sdk.Config.fromApikey(
+    credentials.appKey,
+    credentials.appSecret,
+    credentials.accessToken,
+    {
+      language: sdk.Language?.ZH_CN ?? 0,
+      enablePrintQuotePackages: false,
+      ...(process.env.LONGBRIDGE_HTTP_URL ? { httpUrl: process.env.LONGBRIDGE_HTTP_URL } : {}),
+    }
+  );
+}
+
+function percentToRatio(value) {
+  const number = toNumber(value);
+  return number === null ? null : number / 100;
+}
+
+function pickNumber(...values) {
+  for (const value of values) {
+    const number = toNumber(value);
+    if (number !== null) return number;
+  }
+  return null;
+}
+
+function normalizePercent(value) {
+  const number = toNumber(value);
+  if (number === null) return null;
+  return Math.abs(number) > 1 ? number / 100 : number;
+}
+
+function hasPayload(value) {
+  if (!value) return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') {
+    return Object.values(value).some((item) => {
+      if (Array.isArray(item)) return item.length > 0;
+      if (item && typeof item === 'object') return Object.keys(item).length > 0;
+      return item !== null && item !== undefined && item !== '';
+    });
+  }
+  return true;
+}
+
+function unwrapMetricValue(metric) {
+  if (metric === null || metric === undefined) return null;
+  if (typeof metric === 'object') {
+    return toNumber(metric.value ?? metric.raw ?? metric.current);
+  }
+  return toNumber(metric);
 }
 
 function sha1(value) {
@@ -130,6 +285,14 @@ function toLongbridgeCounterId(symbol) {
   return `ST/${market}/${code}`;
 }
 
+function getDefaultCurrencyForLongbridgeSymbol(symbol) {
+  const market = String(symbol || '').split('.').pop()?.toUpperCase();
+  if (market === 'HK') return 'HKD';
+  if (market === 'SH' || market === 'SZ' || market === 'CN') return 'CNY';
+  if (market === 'SG') return 'SGD';
+  return 'USD';
+}
+
 export function toLongbridgeStockSymbol(symbol) {
   const text = String(symbol || '').trim().toUpperCase();
   if (!text) return '';
@@ -156,39 +319,885 @@ function latestValuationValue(metric) {
   return toNumber(metric?.value);
 }
 
-function normalizeLongbridgeCompany(symbol, company = {}, valuation = null) {
+function parseIndustryRankFromText(...values) {
+  const text = values
+    .map((value) => String(value || ''))
+    .join(' ')
+    .replace(/<[^>]*>/g, ' ');
+  const match = text.match(/(?:行业排名|rank)\s*(\d+)\s*\/\s*(\d+)/i);
+  if (!match) return null;
+  const position = Number(match[1]);
+  const total = Number(match[2]);
+  if (!Number.isFinite(position) || !Number.isFinite(total) || position <= 0 || total <= 0) return null;
+  const percentile = Math.max(1, Math.min(100, Math.round((1 - ((position - 1) / total)) * 100)));
+  let tier = 'D';
+  if (percentile >= 78) tier = 'A';
+  else if (percentile >= 58) tier = 'B';
+  else if (percentile >= 36) tier = 'C';
+  return {
+    tier,
+    label: `行业排名 ${position}/${total}`,
+    percentile,
+    position,
+    total,
+    source: 'longbridge',
+  };
+}
+
+function pickValuationSummary(detail = {}, valuation = null) {
+  const overviewMetrics = detail?.overview?.metrics || {};
+  const overviewDescriptions = Object.values(overviewMetrics)
+    .map((metric) => metric?.desc)
+    .filter(Boolean);
+  const historyMetrics = detail?.history?.metrics || {};
+  const historyDescriptions = Object.values(historyMetrics)
+    .map((metric) => metric?.desc)
+    .filter(Boolean);
+  const valuationMetrics = valuation?.metrics || {};
+  const valuationDescriptions = Object.values(valuationMetrics)
+    .map((metric) => metric?.desc)
+    .filter(Boolean);
+  return cleanHtmlText(pickText(
+    detail?.overview?.ai_summary,
+    detail?.ai_summary,
+    ...overviewDescriptions,
+    ...historyDescriptions,
+    ...valuationDescriptions,
+    detail?.desc,
+    detail?.description
+  ));
+}
+
+function findSymbolRecord(payload, symbol) {
+  const cleanSymbol = String(symbol || '').replace(/\.(US|HK|SH|SZ|CN|SG)$/i, '').toUpperCase();
+  const candidates = firstArray(
+    payload?.list,
+    payload?.items,
+    payload?.data,
+    payload?.comparisons,
+    payload?.securities,
+    Array.isArray(payload) ? payload : []
+  );
+  return candidates.find((item) => {
+    const itemSymbol = String(item?.symbol || item?.ticker || item?.code || '').replace(/\.(US|HK|SH|SZ|CN|SG)$/i, '').toUpperCase();
+    return itemSymbol === cleanSymbol;
+  }) || candidates[0] || null;
+}
+
+function normalizeIndustryValuation(payload, symbol) {
+  const record = findSymbolRecord(payload, symbol) || payload || {};
+  return {
+    marketCap: toNumber(record.marketValue ?? record.market_value ?? record.market_cap),
+    floatMarketCap: toNumber(record.floatMarketValue ?? record.float_market_value ?? record.float_market_cap),
+    trailingPE: toNumber(record.pe ?? record.pettm ?? record.ttm_pe),
+    priceToBook: toNumber(record.pb),
+    priceToSales: toNumber(record.ps),
+    eps: toNumber(record.eps),
+    bps: toNumber(record.bps),
+    dividendYield: percentToRatio(record.divYld ?? record.div_yld ?? record.dividend_yield),
+    returnOnEquity: percentToRatio(record.roe),
+    profitMargins: percentToRatio(record.net_margin ?? record.profit_margin),
+    totalRevenue: toNumber(record.sales ?? record.revenue ?? record.total_revenue),
+    netIncome: toNumber(record.net_income ?? record.profit),
+  };
+}
+
+function normalizeFinancialSnapshot(payload) {
+  const revenue = payload?.fr_revenue || payload?.fo_revenue || {};
+  const profit = payload?.fr_profit || {};
+  return {
+    reportSummary: pickText(payload?.report_desc, payload?.summary),
+    financialPeriod: [payload?.fp_start, payload?.fp_end].filter(Boolean).join(' - ') || null,
+    revenue: unwrapMetricValue(revenue),
+    revenueGrowth: percentToRatio(revenue?.yoy),
+    netIncome: unwrapMetricValue(profit),
+    netIncomeGrowth: percentToRatio(profit?.yoy),
+    operatingCashflow: unwrapMetricValue(payload?.fr_operate_cash),
+    totalAssets: unwrapMetricValue(payload?.fr_total_assets),
+    totalLiabilities: unwrapMetricValue(payload?.fr_total_liability),
+    returnOnEquity: percentToRatio(payload?.fr_roe_ttm),
+    profitMargins: percentToRatio(payload?.fr_profit_margin_ttm ?? payload?.fr_profit_margin),
+    debtToAssets: percentToRatio(payload?.fr_debt_assets_ratio),
+    eps: unwrapMetricValue(payload?.fo_eps),
+  };
+}
+
+function normalizeLongbridgeQuote(quote) {
+  if (!quote) return null;
+  return {
+    symbol: pickText(quote.symbol),
+    name: pickText(quote.nameCn, quote.name_cn, quote.nameZhCN, quote.nameEn, quote.name_en, quote.name),
+    price: toNumber(quote.lastDone ?? quote.last_done),
+    previousClose: toNumber(quote.prevClose ?? quote.prev_close),
+    dayOpen: toNumber(quote.open),
+    dayHigh: toNumber(quote.high),
+    dayLow: toNumber(quote.low),
+    dayVolume: toNumber(quote.volume),
+    turnover: toNumber(quote.turnover),
+    currency: pickText(quote.currency),
+    timestamp: quote.timestamp ? new Date(quote.timestamp).toISOString() : null,
+    tradeStatus: quote.tradeStatus ?? quote.trade_status ?? null,
+    provider: 'Longbridge SDK',
+  };
+}
+
+function formatLongbridgeCandleDate(timestamp, interval) {
+  const date = timestamp instanceof Date ? timestamp : new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return '';
+  return String(interval || '').includes('m') || String(interval || '').includes('h')
+    ? `${date.getMonth() + 1}-${date.getDate()} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`
+    : `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+}
+
+function getLongbridgePeriod(sdk, interval) {
+  const text = String(interval || '').toLowerCase();
+  if (text === '1m') return sdk.Period?.Min_1 ?? 1;
+  if (text === '2m') return sdk.Period?.Min_2 ?? 2;
+  if (text === '3m') return sdk.Period?.Min_3 ?? 3;
+  if (text === '5m') return sdk.Period?.Min_5 ?? 4;
+  if (text === '10m') return sdk.Period?.Min_10 ?? 5;
+  if (text === '15m') return sdk.Period?.Min_15 ?? 6;
+  if (text === '30m') return sdk.Period?.Min_30 ?? 8;
+  if (text === '60m' || text === '1h') return sdk.Period?.Min_60 ?? 10;
+  if (text === '1wk' || text === '1w') return sdk.Period?.Week ?? 15;
+  if (text === '1mo') return sdk.Period?.Month ?? 16;
+  if (text === '3mo' || text === '1q') return sdk.Period?.Quarter ?? 17;
+  if (text === '1y') return sdk.Period?.Year ?? 18;
+  return sdk.Period?.Day ?? 14;
+}
+
+function getLongbridgeKlineCount({ interval, range }) {
+  const intervalText = String(interval || '').toLowerCase();
+  const rangeText = String(range || '').toLowerCase();
+  if (intervalText.includes('m')) {
+    if (rangeText === '1d') return 420;
+    if (rangeText === '5d') return 500;
+    return 800;
+  }
+  if (intervalText === '1wk' || intervalText === '1w') {
+    if (rangeText === '6mo') return 30;
+    if (rangeText === '1y') return 60;
+    if (rangeText === '2y') return 110;
+    if (rangeText === '5y') return 270;
+    return 160;
+  }
+  if (intervalText === '1mo') {
+    if (rangeText === '1y') return 14;
+    if (rangeText === '2y') return 26;
+    if (rangeText === '5y') return 62;
+    if (rangeText === '10y') return 122;
+    return 62;
+  }
+  if (intervalText === '3mo' || intervalText === '1y') {
+    if (rangeText === '5y') return 22;
+    if (rangeText === '10y') return 42;
+    return 42;
+  }
+  if (rangeText === '1d' || rangeText === '5d') return 10;
+  if (rangeText === '1mo') return 25;
+  if (rangeText === '3mo') return 66;
+  if (rangeText === '6mo') return 132;
+  if (rangeText === '1y') return 260;
+  if (rangeText === '2y') return 520;
+  if (rangeText === '5y') return 1000;
+  return 260;
+}
+
+function normalizeLongbridgeCandle(candle, interval) {
+  if (!candle) return null;
+  const plain = toPlainJson(candle) || {};
+  const timestamp = plain.timestamp ?? candle.timestamp;
+  const open = toNumber(plain.open ?? candle.open);
+  const close = toNumber(plain.close ?? candle.close);
+  const low = toNumber(plain.low ?? candle.low);
+  const high = toNumber(plain.high ?? candle.high);
+  const volume = toNumber(plain.volume ?? candle.volume) ?? 0;
+  const date = formatLongbridgeCandleDate(timestamp, interval);
+
+  if (!date || [open, close, low, high].some((value) => value === null || value <= 0)) return null;
+  return [date, open, close, low, high, volume];
+}
+
+export async function fetchLongbridgeCandlesticks(symbol, credentials, { interval = '1d', range = '6mo' } = {}) {
+  if (!hasLongbridgeCredentials(credentials)) return null;
+  const cleanSymbol = String(symbol || '')
+    .trim()
+    .replace(/^(gb_|us|stock_)/i, '')
+    .toUpperCase();
+  if (
+    !cleanSymbol
+    || /^hf_/i.test(symbol)
+    || cleanSymbol.startsWith('^')
+    || ['IXIC', 'NDX', 'INX', 'DJI', 'NQ', 'ES', 'YM', 'CL'].includes(cleanSymbol)
+  ) {
+    return null;
+  }
+
+  const sdk = await loadLongbridgeSdk();
+  const config = createLongbridgeConfig(sdk, credentials);
+  const quoteContext = sdk.QuoteContext.new(config);
+  const lbSymbol = toLongbridgeStockSymbol(cleanSymbol);
+  const rawCandles = await withTimeout(
+    quoteContext.candlesticks(
+      lbSymbol,
+      getLongbridgePeriod(sdk, interval),
+      getLongbridgeKlineCount({ interval, range }),
+      sdk.AdjustType?.NoAdjust ?? 0,
+      sdk.TradeSessions?.All ?? 1
+    ),
+    LONGBRIDGE_SDK_TIMEOUT_MS,
+    '长桥K线'
+  );
+  const data = (Array.isArray(rawCandles) ? rawCandles : [])
+    .map((candle) => normalizeLongbridgeCandle(candle, interval))
+    .filter(Boolean);
+  if (!data.length) return null;
+
+  return {
+    success: true,
+    meta: {
+      symbol,
+      currency: getDefaultCurrencyForLongbridgeSymbol(lbSymbol),
+      exchangeName: 'Longbridge',
+      dataSource: 'Longbridge candlesticks',
+      chartPreviousClose: data.length > 1 ? data.at(-2)?.[2] : null,
+      regularMarketPrice: data.at(-1)?.[2] ?? null,
+      regularMarketDayHigh: data.at(-1)?.[4] ?? null,
+      regularMarketDayLow: data.at(-1)?.[3] ?? null,
+      regularMarketOpen: data.at(-1)?.[1] ?? null,
+      regularMarketVolume: data.at(-1)?.[5] ?? null,
+    },
+    data,
+    dataSource: {
+      provider: 'Longbridge candlesticks',
+      realtime: String(interval || '').includes('m'),
+      fallback: true,
+      schema: 'real-ohlc-v2',
+      note: 'Yahoo K 线不可用，当前使用长桥真实 K 线兜底。',
+    },
+  };
+}
+
+export async function fetchLongbridgeMarketQuote(symbol, credentials) {
+  if (!hasLongbridgeCredentials(credentials)) return null;
+  const cleanSymbol = String(symbol || '')
+    .trim()
+    .replace(/^(gb_|us|stock_)/i, '')
+    .toUpperCase();
+  if (
+    !cleanSymbol
+    || /^hf_/i.test(symbol)
+    || cleanSymbol.startsWith('^')
+    || ['IXIC', 'NDX', 'INX', 'DJI', 'NQ', 'ES', 'YM', 'CL'].includes(cleanSymbol)
+  ) {
+    return null;
+  }
+
+  const sdk = await loadLongbridgeSdk();
+  const config = createLongbridgeConfig(sdk, credentials);
+  const quoteContext = sdk.QuoteContext.new(config);
+  const lbSymbol = toLongbridgeStockSymbol(cleanSymbol);
+  const [rawQuote] = await withTimeout(
+    quoteContext.quote([lbSymbol]),
+    LONGBRIDGE_HTTP_TIMEOUT_MS,
+    '长桥行情'
+  );
+  const quote = normalizeLongbridgeQuote(toPlainJson(rawQuote));
+  if (!quote?.price) return null;
+
+  const absChange = quote.previousClose ? quote.price - quote.previousClose : null;
+  const pctChange = absChange !== null && quote.previousClose
+    ? (absChange / quote.previousClose) * 100
+    : null;
+
+  return {
+    symbol,
+    name: quote.name || cleanSymbol,
+    price: quote.price,
+    regularMarketPrice: quote.price,
+    displayPrice: quote.price,
+    pctChange,
+    absChange,
+    displayPctChange: pctChange,
+    displayAbsChange: absChange,
+    prevClose: quote.previousClose,
+    extendedMarket: null,
+    hasPrePostMarketData: false,
+    regularMarketDayHigh: quote.dayHigh,
+    regularMarketDayLow: quote.dayLow,
+    regularMarketOpen: quote.dayOpen,
+    regularMarketVolume: quote.dayVolume,
+    currency: quote.currency || getDefaultCurrencyForLongbridgeSymbol(lbSymbol),
+    exchangeName: 'Longbridge',
+    instrumentType: null,
+    yahooSymbol: cleanSymbol,
+    type: 'us',
+    provider: 'Longbridge OpenAPI',
+    timestamp: quote.timestamp,
+  };
+}
+
+function normalizeLongbridgeStatic(staticInfo) {
+  if (!staticInfo) return {};
+  return {
+    symbol: pickText(staticInfo.symbol),
+    nameCn: pickText(staticInfo.nameCn, staticInfo.name_cn),
+    nameEn: pickText(staticInfo.nameEn, staticInfo.name_en),
+    nameHk: pickText(staticInfo.nameHk, staticInfo.name_hk),
+    exchange: pickText(staticInfo.exchange),
+    currency: pickText(staticInfo.currency),
+    lotSize: toNumber(staticInfo.lotSize ?? staticInfo.lot_size),
+    totalShares: toNumber(staticInfo.totalShares ?? staticInfo.total_shares),
+    circulatingShares: toNumber(staticInfo.circulatingShares ?? staticInfo.circulating_shares),
+    eps: toNumber(staticInfo.eps),
+    epsTtm: toNumber(staticInfo.epsTtm ?? staticInfo.eps_ttm),
+    bps: toNumber(staticInfo.bps),
+    dividendPerShare: toNumber(staticInfo.dividendYield ?? staticInfo.dividend_yield),
+    stockDerivatives: firstArray(staticInfo.stockDerivatives, staticInfo.stock_derivatives),
+    board: pickText(staticInfo.board),
+  };
+}
+
+function normalizeRatingRank(rating, institutionRating) {
+  const latest = institutionRating?.latest || {};
+  const stockRank = toNumber(rating?.industryRank);
+  const latestRank = toNumber(latest.industryRank);
+  const total = toNumber(latest.industryTotal);
+  const position = stockRank || latestRank;
+  if (!position) return null;
+  const rankTotal = total || null;
+  const percentile = rankTotal
+    ? Math.max(1, Math.min(100, Math.round((1 - ((position - 1) / rankTotal)) * 100)))
+    : null;
+  let tier = 'D';
+  if ((percentile ?? 0) >= 78) tier = 'A';
+  else if ((percentile ?? 0) >= 58) tier = 'B';
+  else if ((percentile ?? 0) >= 36) tier = 'C';
+  return {
+    tier,
+    label: rankTotal ? `行业排名 ${position}/${rankTotal}` : `行业排名 ${position}`,
+    percentile,
+    position,
+    total: rankTotal,
+    industryName: pickText(rating?.industryName, latest.industryName),
+    source: 'longbridge',
+  };
+}
+
+function normalizeLongbridgeRatings(ratings, institutionRating, institutionRatingDetail) {
+  const summary = institutionRating?.summary || {};
+  const latest = institutionRating?.latest || {};
+  const evaluate = summary.evaluate || latest.evaluate || {};
+  const target = summary.target || institutionRatingDetail?.target?.list?.[0]?.avgTarget;
+  const distributionValues = [evaluate.strongBuy, evaluate.over, evaluate.buy, evaluate.hold, evaluate.under, evaluate.sell, evaluate.noOpinion]
+    .map(toNumber)
+    .filter((value) => value !== null);
+  return {
+    style: pickText(ratings?.styleTxtName),
+    scale: pickText(ratings?.scaleTxtName),
+    reportPeriod: pickText(ratings?.reportPeriodTxt),
+    compositeLetter: pickText(ratings?.multiLetter),
+    compositeScore: toNumber(ratings?.multiScore),
+    compositeScoreChange: toNumber(ratings?.multiScoreChange),
+    industryName: pickText(ratings?.industryName, latest.industryName),
+    industryRank: normalizeRatingRank(ratings, institutionRating),
+    recommendation: summary.recommend ?? null,
+    targetPrice: toNumber(target),
+    targetCurrency: pickText(summary.ccySymbol),
+    updatedAt: pickText(summary.updatedAt, institutionRatingDetail?.target?.updatedAt),
+    predictionAccuracy: pickText(institutionRatingDetail?.target?.predictionAccuracy),
+    analystCount: toNumber(evaluate.total)
+      ?? (distributionValues.length ? distributionValues.reduce((sum, value) => sum + value, 0) : null),
+    distribution: {
+      strongBuy: toNumber(evaluate.strongBuy ?? evaluate.over),
+      buy: toNumber(evaluate.buy),
+      hold: toNumber(evaluate.hold),
+      underperform: toNumber(evaluate.under),
+      sell: toNumber(evaluate.sell),
+      noOpinion: toNumber(evaluate.noOpinion),
+    },
+    rawRatings: parseJsonMaybe(ratings?.ratingsJson, null),
+  };
+}
+
+function normalizeIndustryDistribution(dist) {
+  const metric = dist?.pe || dist?.pb || dist?.ps || null;
+  return {
+    pe: dist?.pe ? {
+      current: toNumber(dist.pe.value),
+      median: toNumber(dist.pe.median),
+      low: toNumber(dist.pe.low),
+      high: toNumber(dist.pe.high),
+      ranking: pickText(dist.pe.ranking),
+      rankIndex: toNumber(dist.pe.rankIndex),
+      rankTotal: toNumber(dist.pe.rankTotal),
+    } : null,
+    pb: dist?.pb ? {
+      current: toNumber(dist.pb.value),
+      median: toNumber(dist.pb.median),
+      low: toNumber(dist.pb.low),
+      high: toNumber(dist.pb.high),
+      ranking: pickText(dist.pb.ranking),
+      rankIndex: toNumber(dist.pb.rankIndex),
+      rankTotal: toNumber(dist.pb.rankTotal),
+    } : null,
+    ps: dist?.ps ? {
+      current: toNumber(dist.ps.value),
+      median: toNumber(dist.ps.median),
+      low: toNumber(dist.ps.low),
+      high: toNumber(dist.ps.high),
+      ranking: pickText(dist.ps.ranking),
+      rankIndex: toNumber(dist.ps.rankIndex),
+      rankTotal: toNumber(dist.ps.rankTotal),
+    } : null,
+    primaryMetric: metric ? {
+      ranking: pickText(metric.ranking),
+      rankIndex: toNumber(metric.rankIndex),
+      rankTotal: toNumber(metric.rankTotal),
+    } : null,
+  };
+}
+
+function normalizeIndustryPeers(payload, symbol) {
+  const cleanSymbol = String(symbol || '').replace(/\.(US|HK|SH|SZ|CN|SG)$/i, '').toUpperCase();
+  const peers = firstArray(payload?.list)
+    .map((item) => ({
+      symbol: pickText(item.symbol),
+      name: pickText(item.name),
+      currency: pickText(item.currency),
+      marketCap: toNumber(item.marketValue ?? item.market_value),
+      price: toNumber(item.priceClose ?? item.price_close),
+      pe: toNumber(item.pe),
+      pb: toNumber(item.pb),
+      ps: toNumber(item.ps),
+      roe: percentToRatio(item.roe),
+      eps: toNumber(item.eps),
+      bps: toNumber(item.bps),
+      dividendYield: percentToRatio(item.divYld ?? item.div_yld),
+    }))
+    .filter((item) => item.symbol || item.name);
+  const current = peers.find((item) => String(item.symbol || '').replace(/\.(US|HK|SH|SZ|CN|SG)$/i, '').toUpperCase() === cleanSymbol)
+    || peers[0]
+    || null;
+  return {
+    current,
+    peers: peers.slice(0, 6),
+    count: peers.length,
+  };
+}
+
+function normalizeShareholders(shareholder, topShareholder) {
+  const topRaw = parseJsonMaybe(topShareholder?.data, null);
+  const directList = firstArray(shareholder?.shareholderList)
+    .map((item) => ({
+      name: pickText(item.shareholderName),
+      type: pickText(item.institutionType),
+      percent: percentToRatio(item.percentOfShares),
+      sharesChanged: toNumber(item.sharesChanged),
+      reportDate: pickText(item.reportDate),
+    }))
+    .filter((item) => item.name);
+  const topList = firstArray(topRaw?.list, topRaw?.data, Array.isArray(topRaw) ? topRaw : [])
+    .map((item) => ({
+      name: pickText(item.name, item.shareholder_name, item.shareholderName),
+      percent: percentToRatio(pickNumber(item.percent, item.percent_of_shares)),
+      rank: toNumber(item.rank),
+      marketValue: pickNumber(item.market_value, item.shares_value),
+    }))
+    .filter((item) => item.name);
+  const list = directList.length ? directList : topList;
+  return {
+    total: toNumber(shareholder?.total) ?? list.length,
+    forwardUrl: pickText(shareholder?.forwardUrl),
+    top: list.slice(0, 5),
+    rawTop: topRaw,
+  };
+}
+
+function normalizeExecutives(executive) {
+  const group = firstArray(executive?.professionalList)[0] || {};
+  return {
+    total: toNumber(group.total),
+    forwardUrl: pickText(group.forwardUrl),
+    people: firstArray(group.professionals)
+      .map((person) => ({
+        name: pickText(person.nameZhcn, person.name, person.nameEn),
+        title: pickText(person.title),
+        biography: pickText(person.biography),
+        photo: pickText(person.photo),
+        wikiUrl: pickText(person.wikiUrl),
+      }))
+      .filter((person) => person.name || person.title)
+      .slice(0, 5),
+  };
+}
+
+function normalizeOperating(operating) {
+  const latest = firstArray(operating?.list).find((item) => item.latest) || firstArray(operating?.list)[0] || null;
+  if (!latest) return null;
+  return {
+    report: pickText(latest.report),
+    title: pickText(latest.title),
+    summary: cleanHtmlText(latest.txt),
+    webUrl: pickText(latest.webUrl),
+    indicators: firstArray(latest.financial?.indicators)
+      .map((item) => ({
+        key: pickText(item.fieldName),
+        name: pickText(item.indicatorName),
+        value: pickText(item.indicatorValue),
+        yoy: pickText(item.yoy),
+      }))
+      .filter((item) => item.name || item.value)
+      .slice(0, 8),
+  };
+}
+
+function normalizeForecastEps(payload) {
+  const item = firstArray(payload?.items)[0] || null;
+  if (!item) return null;
+  return {
+    mean: toNumber(item.forecastEpsMean),
+    median: toNumber(item.forecastEpsMedian),
+    low: toNumber(item.forecastEpsLowest),
+    high: toNumber(item.forecastEpsHighest),
+    institutionTotal: toNumber(item.institutionTotal),
+    institutionUp: toNumber(item.institutionUp),
+    institutionDown: toNumber(item.institutionDown),
+    startDate: item.forecastStartDate ? new Date(Number(item.forecastStartDate)).toISOString().slice(0, 10) : null,
+    endDate: item.forecastEndDate ? new Date(Number(item.forecastEndDate)).toISOString().slice(0, 10) : null,
+  };
+}
+
+function normalizeConsensus(payload) {
+  const current = firstArray(payload?.list)[toNumber(payload?.currentIndex) ?? 0] || firstArray(payload?.list)[0] || null;
+  if (!current) return null;
+  return {
+    currency: pickText(payload.currency),
+    period: pickText(current.periodText, `${current.fiscalYear || ''}${current.fiscalPeriod || ''}`.trim()),
+    details: firstArray(current.details)
+      .map((item) => ({
+        key: pickText(item.key),
+        name: pickText(item.name),
+        estimate: toNumber(item.estimate),
+        actual: toNumber(item.actual),
+        compDesc: pickText(item.compDesc),
+        isReleased: Boolean(item.isReleased),
+      }))
+      .filter((item) => item.name)
+      .slice(0, 8),
+  };
+}
+
+function pickLatestFinancialValue(account) {
+  const value = firstArray(account?.values)[0] || {};
+  const raw = pickNumber(value.value, value.raw, value.amount, value.current, value.val);
+  return {
+    value: raw,
+    display: pickText(value.value, value.raw, value.amount, value.current, value.val),
+    period: pickText(value.period, value.report, value.fiscalPeriod),
+    year: toNumber(value.year),
+    ratio: normalizePercent(value.ratio),
+    yoy: normalizePercent(value.yoy),
+    fpEnd: value.fp_end ? new Date(Number(value.fp_end) * 1000).toISOString().slice(0, 10) : null,
+  };
+}
+
+function normalizeReportKind(payload, kind, fallbackTitle) {
+  const report = payload?.list?.[kind] || payload?.list?.[fallbackTitle] || payload?.[kind] || payload || {};
+  const indicators = firstArray(report?.indicators, report?.list, report?.items, Array.isArray(report) ? report : []);
+  const accounts = indicators.flatMap((indicator) => firstArray(indicator?.accounts, indicator?.items, indicator?.children));
+  const rows = accounts
+    .map((account) => {
+      const latest = pickLatestFinancialValue(account);
+      return {
+        field: pickText(account.field, account.key, account.code),
+        name: pickText(account.name, account.title, account.label, account.field),
+        value: latest.value,
+        display: latest.display,
+        period: latest.period,
+        year: latest.year,
+        yoy: latest.yoy,
+        percent: Boolean(account.percent),
+        tip: cleanHtmlText(account.tip),
+      };
+    })
+    .filter((item) => item.name || item.field);
+  const primaryIndicator = indicators[0] || {};
+  return {
+    kind,
+    title: pickText(primaryIndicator.title, fallbackTitle),
+    shortTitle: pickText(primaryIndicator.short_title, kind),
+    currency: pickText(primaryIndicator.currency),
+    periods: firstArray(primaryIndicator.periods).slice(0, 6),
+    rows: rows.slice(0, 14),
+  };
+}
+
+function findFinancialMetric(reports, patterns) {
+  const regexes = patterns.map((pattern) => new RegExp(pattern, 'i'));
+  const rows = Object.values(reports || {}).flatMap((report) => report?.rows || []);
+  const found = rows.find((row) => {
+    const text = [row.field, row.name].filter(Boolean).join(' ');
+    return regexes.some((regex) => regex.test(text));
+  });
+  return found?.value ?? null;
+}
+
+function normalizeFinancialReports(payload) {
+  if (!payload) return null;
+  const reports = {
+    incomeStatement: normalizeReportKind(payload, 'IS', '利润表'),
+    balanceSheet: normalizeReportKind(payload, 'BS', '资产负债表'),
+    cashFlow: normalizeReportKind(payload, 'CF', '现金流量表'),
+  };
+  const cards = [
+    {
+      key: 'revenue',
+      label: '营业收入',
+      value: findFinancialMetric(reports, ['revenue', 'total.*revenue', '营业收入', '收入']),
+      type: 'money',
+    },
+    {
+      key: 'netIncome',
+      label: '净利润',
+      value: findFinancialMetric(reports, ['net.*income', 'net.*profit', 'profit.*attributable', '净利润', '净收入']),
+      type: 'money',
+    },
+    {
+      key: 'eps',
+      label: 'EPS',
+      value: findFinancialMetric(reports, ['^eps$', 'earnings.*share', '每股收益']),
+      type: 'money',
+    },
+    {
+      key: 'totalAssets',
+      label: '总资产',
+      value: findFinancialMetric(reports, ['total.*assets', '总资产']),
+      type: 'money',
+    },
+    {
+      key: 'totalLiabilities',
+      label: '总负债',
+      value: findFinancialMetric(reports, ['total.*liabil', '总负债']),
+      type: 'money',
+    },
+    {
+      key: 'operatingCashflow',
+      label: '经营现金流',
+      value: findFinancialMetric(reports, ['operat.*cash', 'cash.*operat', '经营.*现金']),
+      type: 'money',
+    },
+  ].filter((item) => item.value !== null);
+  return {
+    reports,
+    cards,
+    periods: firstArray(
+      reports.incomeStatement?.periods,
+      reports.balanceSheet?.periods,
+      reports.cashFlow?.periods
+    ),
+    hasReports: Object.values(reports).some((report) => report.rows.length > 0),
+  };
+}
+
+function normalizeDividends(payload) {
+  const items = firstArray(payload?.list, payload?.items, Array.isArray(payload) ? payload : [])
+    .map((item) => ({
+      id: pickText(item.id, `${item.exDate || ''}-${item.paymentDate || ''}`),
+      desc: cleanHtmlText(pickText(item.desc, item.description, item.title)),
+      recordDate: pickText(item.recordDate, item.record_date),
+      exDate: pickText(item.exDate, item.ex_date),
+      paymentDate: pickText(item.paymentDate, item.payment_date),
+    }))
+    .filter((item) => item.desc || item.exDate || item.paymentDate);
+  return {
+    total: items.length,
+    latest: items[0] || null,
+    items: items.slice(0, 5),
+  };
+}
+
+function normalizeFundHolders(payload) {
+  const items = firstArray(payload?.lists, payload?.list, payload?.items, Array.isArray(payload) ? payload : [])
+    .map((item) => ({
+      symbol: pickText(item.symbol, item.code),
+      name: pickText(item.name),
+      currency: pickText(item.currency),
+      positionRatio: normalizePercent(item.positionRatio ?? item.position_ratio),
+      reportDate: pickText(item.reportDate, item.report_date),
+    }))
+    .filter((item) => item.name || item.symbol);
+  return {
+    total: items.length,
+    items: items.slice(0, 5),
+  };
+}
+
+function normalizeCorpActions(payload) {
+  const items = firstArray(payload?.items, payload?.list, Array.isArray(payload) ? payload : [])
+    .map((item) => ({
+      id: pickText(item.id, item.date),
+      date: pickText(item.date, item.dateStr, item.exDate),
+      dateText: pickText(item.dateStr, item.dateType),
+      type: pickText(item.actType, item.action, item.type),
+      desc: cleanHtmlText(pickText(item.actDesc, item.desc, item.description, item.action)),
+      recent: Boolean(item.recent),
+      liveTitle: pickText(item.live?.name),
+    }))
+    .filter((item) => item.date || item.desc || item.type);
+  return {
+    total: items.length,
+    items: items.slice(0, 6),
+  };
+}
+
+function normalizeInvestRelations(payload) {
+  const items = firstArray(payload?.investSecurities, payload?.list, payload?.items, Array.isArray(payload) ? payload : [])
+    .map((item) => ({
+      symbol: pickText(item.symbol),
+      name: pickText(item.companyNameZhcn, item.companyName, item.companyNameEn),
+      currency: pickText(item.currency),
+      percent: normalizePercent(item.percentOfShares ?? item.percent_of_shares),
+      rank: pickText(item.sharesRank, item.shares_rank),
+      marketValue: toNumber(item.sharesValue ?? item.shares_value),
+    }))
+    .filter((item) => item.name || item.symbol);
+  return {
+    forwardUrl: pickText(payload?.forwardUrl),
+    items: items.slice(0, 6),
+    total: items.length,
+  };
+}
+
+function normalizeBuyback(payload) {
+  const recent = payload?.recentBuybacks || payload?.recent_buybacks || {};
+  const history = firstArray(payload?.buybackHistory, payload?.buyback_history)
+    .map((item) => ({
+      fiscalYear: pickText(item.fiscalYear, item.fiscal_year),
+      fiscalYearRange: pickText(item.fiscalYearRange, item.fiscal_year_range),
+      currency: pickText(item.currency),
+      netBuyback: toNumber(item.netBuyback ?? item.net_buyback),
+      netBuybackYield: normalizePercent(item.netBuybackYield ?? item.net_buyback_yield),
+      netBuybackGrowthRate: normalizePercent(item.netBuybackGrowthRate ?? item.net_buyback_growth_rate),
+    }))
+    .filter((item) => item.fiscalYear || item.netBuyback !== null);
+  const ratios = firstArray(payload?.buybackRatios, payload?.buyback_ratios)
+    .map((item) => ({
+      payoutRatio: normalizePercent(item.netBuybackPayoutRatio ?? item.net_buyback_payout_ratio),
+      toCashflowRatio: normalizePercent(item.netBuybackToCashflowRatio ?? item.net_buyback_to_cashflow_ratio),
+    }));
+  return {
+    recent: {
+      currency: pickText(recent.currency),
+      netBuybackTtm: toNumber(recent.netBuybackTtm ?? recent.net_buyback_ttm),
+      netBuybackYieldTtm: normalizePercent(recent.netBuybackYieldTtm ?? recent.net_buyback_yield_ttm),
+    },
+    history: history.slice(0, 5),
+    ratios: ratios.slice(0, 3),
+  };
+}
+
+function normalizeValuationComparison(payload, symbol) {
+  const peers = normalizeIndustryPeers(payload, symbol);
+  return {
+    ...peers,
+    source: 'valuationComparison',
+  };
+}
+
+function normalizeLongbridgeCompany(symbol, company = {}, valuation = null, extras = {}) {
   const metrics = valuation?.metrics || {};
   const pe = latestValuationValue(metrics.pe);
   const pb = latestValuationValue(metrics.pb);
+  const ps = latestValuationValue(metrics.ps);
   const dividendYield = latestValuationValue(metrics.dvd_yld);
+  const industryValuation = normalizeIndustryValuation(extras.industryValuation, symbol);
+  const financialSnapshot = normalizeFinancialSnapshot(extras.financialSnapshot || {});
+  const sdkStatic = normalizeLongbridgeStatic(extras.staticInfo || null);
+  const sdkRatings = normalizeLongbridgeRatings(
+    extras.ratings,
+    extras.institutionRating,
+    extras.institutionRatingDetail
+  );
+  const industryDistribution = normalizeIndustryDistribution(extras.industryDistribution || null);
+  const industryPeers = normalizeIndustryPeers(extras.industryPeers || extras.industryValuation, symbol);
+  const shareholders = normalizeShareholders(extras.shareholder, extras.shareholderTop);
+  const executives = normalizeExecutives(extras.executive);
+  const operating = normalizeOperating(extras.operating);
+  const forecastEps = normalizeForecastEps(extras.forecastEps);
+  const consensus = normalizeConsensus(extras.consensus);
+  const financialReports = normalizeFinancialReports(extras.financialReport);
+  const dividends = normalizeDividends(extras.dividend || extras.dividendDetail);
+  const fundHolders = normalizeFundHolders(extras.fundHolder);
+  const corpActions = normalizeCorpActions(extras.corpAction);
+  const investRelations = normalizeInvestRelations(extras.investRelation);
+  const buyback = normalizeBuyback(extras.buyback);
+  const valuationComparison = normalizeValuationComparison(extras.valuationComparison, symbol);
+  const textIndustryRank = parseIndustryRankFromText(
+    extras.valuationDetail?.overview?.ai_summary,
+    ...Object.values(extras.valuationDetail?.overview?.metrics || {}).map((metric) => metric?.desc),
+    ...Object.values(extras.valuationDetail?.history?.metrics || {}).map((metric) => metric?.desc),
+    ...Object.values(valuation?.metrics || {}).map((metric) => metric?.desc),
+    extras.valuationDetail?.desc,
+    extras.valuationDetail?.description,
+    extras.valuationDetail?.summary
+  );
+  const valuationDistributionRank = industryDistribution.primaryMetric && {
+    tier: 'B',
+    label: industryDistribution.primaryMetric.rankTotal
+      ? `估值分位 ${industryDistribution.primaryMetric.rankIndex}/${industryDistribution.primaryMetric.rankTotal}`
+      : '估值分位',
+    percentile: industryDistribution.primaryMetric.ranking ? toNumber(industryDistribution.primaryMetric.ranking) : null,
+    position: industryDistribution.primaryMetric.rankIndex,
+    total: industryDistribution.primaryMetric.rankTotal,
+    source: 'longbridge',
+  };
+  const industryRank = sdkRatings.industryRank || textIndustryRank || valuationDistributionRank;
   const revenueGrowth = toNumber(company?.revenue_growth);
   const profileText = pickText(company.profile, company.business_scope, company.description);
+  const financialCards = financialReports?.cards || [];
+  const financialCardValue = (key) => financialCards.find((item) => item.key === key)?.value ?? null;
   return {
     symbol: toLongbridgeStockSymbol(symbol),
     staticInfo: {
       symbol: toLongbridgeStockSymbol(symbol),
-      nameCn: pickText(company.name, company.company_name),
-      nameEn: pickText(company.name_en, company.company_name_en),
-      nameHk: pickText(company.name_hk),
-      exchange: pickText(company.market, company.region),
-      currency: pickText(company.currency),
-      lotSize: toNumber(company.lot_size),
-      totalShares: toNumber(company.total_shares),
-      circulatingShares: toNumber(company.float_shares ?? company.circulating_shares),
-      eps: toNumber(company.eps),
-      epsTtm: toNumber(company.eps_ttm),
-      bps: toNumber(company.bps),
-      dividendPerShare: toNumber(company.dividend_per_share),
-      stockDerivatives: [],
-      board: pickText(company.category, company.sector),
+      nameCn: pickText(sdkStatic.nameCn, company.name, company.company_name),
+      nameEn: pickText(sdkStatic.nameEn, company.name_en, company.company_name_en),
+      nameHk: pickText(sdkStatic.nameHk, company.name_hk),
+      exchange: pickText(sdkStatic.exchange, company.market, company.region),
+      currency: pickText(sdkStatic.currency, company.currency),
+      lotSize: sdkStatic.lotSize ?? toNumber(company.lot_size),
+      totalShares: sdkStatic.totalShares ?? toNumber(company.total_shares),
+      circulatingShares: sdkStatic.circulatingShares ?? toNumber(company.float_shares ?? company.circulating_shares),
+      eps: sdkStatic.eps ?? toNumber(company.eps),
+      epsTtm: sdkStatic.epsTtm ?? toNumber(company.eps_ttm),
+      bps: sdkStatic.bps ?? toNumber(company.bps),
+      dividendPerShare: sdkStatic.dividendPerShare ?? toNumber(company.dividend_per_share),
+      stockDerivatives: sdkStatic.stockDerivatives || [],
+      board: pickNonNumericText(company.category, company.sector, sdkStatic.board),
     },
-    quote: null,
+    quote: normalizeLongbridgeQuote(extras.quote),
     fundamentals: {
-      marketCap: toNumber(company.market_cap),
-      floatMarketCap: toNumber(company.float_market_cap),
-      trailingPE: pe,
-      priceToBook: pb,
-      dividendYield,
+      marketCap: industryValuation.marketCap ?? toNumber(company.market_cap),
+      floatMarketCap: industryValuation.floatMarketCap ?? toNumber(company.float_market_cap),
+      trailingPE: industryValuation.trailingPE ?? pe,
+      priceToBook: industryValuation.priceToBook ?? pb,
+      priceToSales: industryValuation.priceToSales ?? ps,
+      dividendYield: industryValuation.dividendYield ?? dividendYield,
+      returnOnEquity: industryValuation.returnOnEquity ?? financialSnapshot.returnOnEquity,
+      profitMargins: industryValuation.profitMargins ?? financialSnapshot.profitMargins,
+      totalRevenue: industryValuation.totalRevenue ?? financialSnapshot.revenue ?? financialCardValue('revenue'),
+      netIncome: industryValuation.netIncome ?? financialSnapshot.netIncome ?? financialCardValue('netIncome'),
+      revenueGrowth: financialSnapshot.revenueGrowth,
+      netIncomeGrowth: financialSnapshot.netIncomeGrowth,
+      operatingCashflow: financialSnapshot.operatingCashflow ?? financialCardValue('operatingCashflow'),
+      totalAssets: financialSnapshot.totalAssets ?? financialCardValue('totalAssets'),
+      totalLiabilities: financialSnapshot.totalLiabilities ?? financialCardValue('totalLiabilities'),
+      debtToAssets: financialSnapshot.debtToAssets,
+      eps: industryValuation.eps ?? financialSnapshot.eps ?? financialCardValue('eps'),
+      bps: industryValuation.bps,
+      forecastEpsMean: forecastEps?.mean ?? null,
+      targetPrice: sdkRatings.targetPrice ?? null,
     },
     company: {
       name: pickText(company.name, company.company_name),
@@ -211,11 +1220,132 @@ function normalizeLongbridgeCompany(symbol, company = {}, valuation = null) {
       icon: pickText(company.icon),
       profile: profileText,
       adsRatio: pickText(company.ads_ratio),
-      sector: company.sector ?? null,
+      sector: pickNonNumericText(company.sector),
       revenueGrowth,
+      industryRank,
+      industryName: pickText(sdkRatings.industryName, industryRank?.industryName),
+      valuationSummary: pickValuationSummary(extras.valuationDetail, valuation),
+      earningsSummary: financialSnapshot.reportSummary,
+      financialPeriod: financialSnapshot.financialPeriod,
+      ratings: sdkRatings,
+      industryDistribution,
+      industryPeers,
+      shareholders,
+      executives,
+      operating,
+      forecastEps,
+      consensus,
+      financialReports,
+      dividends,
+      fundHolders,
+      corpActions,
+      investRelations,
+      buyback,
+      valuationComparison,
+      dataSources: {
+        company: hasPayload(company),
+        valuation: hasPayload(valuation),
+        industryValuation: hasPayload(extras.industryValuation),
+        industryDistribution: hasPayload(extras.industryDistribution),
+        valuationDetail: hasPayload(extras.valuationDetail),
+        financialSnapshot: hasPayload(extras.financialSnapshot),
+        financialReport: Boolean(financialReports?.hasReports),
+        quote: hasPayload(extras.quote),
+        staticInfo: hasPayload(extras.staticInfo),
+        institutionRating: hasPayload(extras.institutionRating),
+        institutionRatingDetail: hasPayload(extras.institutionRatingDetail),
+        ratings: hasPayload(extras.ratings),
+        shareholder: hasPayload(extras.shareholder),
+        shareholderTop: hasPayload(extras.shareholderTop),
+        executive: hasPayload(extras.executive),
+        operating: hasPayload(extras.operating),
+        forecastEps: hasPayload(extras.forecastEps),
+        consensus: hasPayload(extras.consensus),
+        dividend: Boolean(dividends?.total),
+        dividendDetail: hasPayload(extras.dividendDetail),
+        fundHolder: Boolean(fundHolders?.total),
+        corpAction: Boolean(corpActions?.total),
+        investRelation: Boolean(investRelations?.total || investRelations?.forwardUrl),
+        buyback: Boolean(buyback?.recent?.netBuybackTtm !== null || buyback?.history?.length),
+        valuationComparison: Boolean(valuationComparison?.peers?.length),
+      },
+      dataErrors: extras.dataErrors || {},
     },
-    provider: 'Longbridge HTTP',
+    provider: extras.sdkEnhanced ? 'Longbridge SDK + HTTP' : 'Longbridge HTTP',
   };
+}
+
+async function fetchLongbridgeSdkSnapshot(symbol, credentials) {
+  const sdk = await loadLongbridgeSdk();
+  const config = createLongbridgeConfig(sdk, credentials);
+  const lbSymbol = toLongbridgeStockSymbol(symbol);
+  const currency = getDefaultCurrencyForLongbridgeSymbol(lbSymbol);
+  const quoteContext = sdk.QuoteContext.new(config);
+  const fundamentalContext = sdk.FundamentalContext.new(config);
+
+  const tasks = await callSettledBatches([
+    { label: '实时行情', task: () => quoteContext.quote([lbSymbol]).then((items) => toPlainJson(items?.[0])) },
+    { label: '基础资料', task: () => quoteContext.staticInfo([lbSymbol]).then((items) => toPlainJson(items?.[0])) },
+    { label: '公司概览', task: () => callFirstAvailable(fundamentalContext, ['company', 'companyProfile'], lbSymbol).then(toPlainJson) },
+    { label: '财务三表', task: () => fundamentalContext.financialReport(lbSymbol, sdk.FinancialReportKind?.All ?? 3).then(toPlainJson) },
+    { label: '估值指标', task: () => fundamentalContext.valuation(lbSymbol).then(toPlainJson) },
+    { label: '估值历史', task: () => fundamentalContext.valuationHistory(lbSymbol).then(toPlainJson) },
+    { label: '同业估值', task: () => fundamentalContext.industryValuation(lbSymbol).then(toPlainJson) },
+    { label: '估值对比', task: () => fundamentalContext.valuationComparison(lbSymbol, currency).then(toPlainJson) },
+    { label: '行业估值分布', task: () => fundamentalContext.industryValuationDist(lbSymbol).then(toPlainJson) },
+    { label: '机构评级', task: () => fundamentalContext.institutionRating(lbSymbol).then(toPlainJson) },
+    { label: '机构评级历史', task: () => fundamentalContext.institutionRatingDetail(lbSymbol).then(toPlainJson) },
+    { label: '综合评分', task: () => fundamentalContext.ratings(lbSymbol).then(toPlainJson) },
+    { label: '分红', task: () => fundamentalContext.dividend(lbSymbol).then(toPlainJson) },
+    { label: '分红详情', task: () => fundamentalContext.dividendDetail(lbSymbol).then(toPlainJson) },
+    { label: '主要股东', task: () => fundamentalContext.shareholder(lbSymbol).then(toPlainJson) },
+    { label: '股东排行', task: () => fundamentalContext.shareholderTop(lbSymbol).then(toPlainJson) },
+    { label: '基金持仓', task: () => fundamentalContext.fundHolder(lbSymbol).then(toPlainJson) },
+    { label: '管理层', task: () => fundamentalContext.executive(lbSymbol).then(toPlainJson) },
+    { label: '经营摘要', task: () => fundamentalContext.operating(lbSymbol).then(toPlainJson) },
+    { label: '公司行动', task: () => fundamentalContext.corpAction(lbSymbol).then(toPlainJson) },
+    { label: '投资关系', task: () => fundamentalContext.investRelation(lbSymbol).then(toPlainJson) },
+    { label: '回购', task: () => fundamentalContext.buyback(lbSymbol).then(toPlainJson) },
+    { label: 'EPS预测', task: () => fundamentalContext.forecastEps(lbSymbol).then(toPlainJson) },
+    { label: '业绩一致预期', task: () => fundamentalContext.consensus(lbSymbol).then(toPlainJson) },
+  ]);
+
+  return tasks.reduce((acc, result) => {
+    const keyMap = {
+      实时行情: 'quote',
+      基础资料: 'staticInfo',
+      公司概览: 'company',
+      财务三表: 'financialReport',
+      估值指标: 'valuation',
+      估值历史: 'valuationHistory',
+      同业估值: 'industryValuation',
+      估值对比: 'valuationComparison',
+      行业估值分布: 'industryDistribution',
+      机构评级: 'institutionRating',
+      机构评级历史: 'institutionRatingDetail',
+      综合评分: 'ratings',
+      分红: 'dividend',
+      分红详情: 'dividendDetail',
+      主要股东: 'shareholder',
+      股东排行: 'shareholderTop',
+      基金持仓: 'fundHolder',
+      管理层: 'executive',
+      经营摘要: 'operating',
+      公司行动: 'corpAction',
+      投资关系: 'investRelation',
+      回购: 'buyback',
+      EPS预测: 'forecastEps',
+      业绩一致预期: 'consensus',
+    };
+    const key = keyMap[result.label];
+    if (!key) return acc;
+    if (result.status === 'fulfilled') {
+      acc[key] = result.value;
+    } else {
+      acc.dataErrors[key] = result.reason;
+    }
+    return acc;
+  }, { sdkEnhanced: true, dataErrors: {} });
 }
 
 export async function fetchLongbridgeStockSnapshot(symbol, credentials) {
@@ -223,7 +1353,19 @@ export async function fetchLongbridgeStockSnapshot(symbol, credentials) {
   const counterId = toLongbridgeCounterId(symbol);
   if (!counterId) return null;
 
-  const [companyResult, valuationResult] = await Promise.allSettled([
+  let sdkSnapshot = null;
+  let sdkError = null;
+  try {
+    sdkSnapshot = await withTimeout(
+      fetchLongbridgeSdkSnapshot(symbol, credentials),
+      LONGBRIDGE_SDK_TIMEOUT_MS,
+      '长桥 SDK'
+    );
+  } catch (error) {
+    sdkError = normalizeSdkError(error, '长桥 SDK');
+  }
+
+  const [companyResult, valuationResult, industryValuationResult, valuationDetailResult, financialSnapshotResult] = await Promise.allSettled([
     requestLongbridge('/v1/quote/comp-overview', credentials, {
       query: { counter_id: counterId },
     }),
@@ -234,16 +1376,51 @@ export async function fetchLongbridgeStockSnapshot(symbol, credentials) {
         range: '1',
       },
     }),
+    requestLongbridge('/v1/quote/industry-valuation-comparison', credentials, {
+      query: { counter_id: counterId },
+    }),
+    requestLongbridge('/v1/quote/valuation/detail', credentials, {
+      query: { counter_id: counterId },
+    }),
+    requestLongbridge('/v1/quote/financials/earnings-snapshot', credentials, {
+      query: { counter_id: counterId },
+    }),
   ]);
-  const company = companyResult.status === 'fulfilled' ? companyResult.value : null;
+  const company = sdkSnapshot?.company || (companyResult.status === 'fulfilled' ? companyResult.value : null);
   if (!company) {
-    const reason = companyResult.status === 'rejected' ? companyResult.reason?.message : '长桥公司画像为空';
+    const reason = sdkError || (companyResult.status === 'rejected' ? companyResult.reason?.message : '长桥公司画像为空');
     throw new Error(reason || '长桥公司画像暂不可用');
+  }
+  const mergedDataErrors = {
+    ...(sdkSnapshot?.dataErrors || {}),
+    ...(sdkError ? { sdk: sdkError } : {}),
+  };
+  if (!sdkSnapshot?.company && companyResult.status === 'rejected') {
+    mergedDataErrors.httpCompany = companyResult.reason?.message || '长桥 HTTP 公司画像失败';
+  }
+  if (!sdkSnapshot?.valuation && valuationResult.status === 'rejected') {
+    mergedDataErrors.httpValuation = valuationResult.reason?.message || '长桥 HTTP 估值失败';
+  }
+  if (!sdkSnapshot?.industryValuation && industryValuationResult.status === 'rejected') {
+    mergedDataErrors.httpIndustryValuation = industryValuationResult.reason?.message || '长桥 HTTP 同业估值失败';
+  }
+  if (!sdkSnapshot?.valuationDetail && valuationDetailResult.status === 'rejected') {
+    mergedDataErrors.httpValuationDetail = valuationDetailResult.reason?.message || '长桥 HTTP 估值详情失败';
+  }
+  if (financialSnapshotResult.status !== 'fulfilled' && financialSnapshotResult.status === 'rejected') {
+    mergedDataErrors.httpFinancialSnapshot = financialSnapshotResult.reason?.message || '长桥 HTTP 财报快照失败';
   }
   return normalizeLongbridgeCompany(
     symbol,
     company,
-    valuationResult.status === 'fulfilled' ? valuationResult.value : null
+    sdkSnapshot?.valuation || (valuationResult.status === 'fulfilled' ? valuationResult.value : null),
+    {
+      ...(sdkSnapshot || {}),
+      industryValuation: sdkSnapshot?.industryValuation || (industryValuationResult.status === 'fulfilled' ? industryValuationResult.value : null),
+      valuationDetail: valuationDetailResult.status === 'fulfilled' ? valuationDetailResult.value : null,
+      financialSnapshot: financialSnapshotResult.status === 'fulfilled' ? financialSnapshotResult.value : null,
+      dataErrors: mergedDataErrors,
+    }
   );
 }
 
@@ -251,5 +1428,72 @@ export async function fetchLongbridgeOptionQuote(contractSymbol, credentials) {
   if (!hasLongbridgeCredentials(credentials)) return null;
   const lbSymbol = toLongbridgeOptionSymbol(contractSymbol);
   if (!lbSymbol) return null;
-  throw new Error('长桥期权报价需要单独购买 OPRA US Options Quotes（OpenAPI）权限；当前请优先使用 MarketData.app 单合约报价。');
+  try {
+    const sdk = await loadLongbridgeSdk();
+    const config = createLongbridgeConfig(sdk, credentials);
+    const ctx = sdk.QuoteContext.new(config);
+    const [rawQuote] = await withTimeout(
+      ctx.optionQuote([lbSymbol]),
+      LONGBRIDGE_SDK_TIMEOUT_MS,
+      '长桥期权报价'
+    );
+    const quote = toPlainJson(rawQuote);
+    if (!quote) return null;
+    const parsed = String(contractSymbol || '').replace(/^OPTION_/i, '').trim().toUpperCase().match(/^([A-Z.]+)(\d{6})([CP])(\d{8})$/);
+    const underlying = quote.underlyingSymbol
+      ? String(quote.underlyingSymbol).replace(/\.(US|HK|SH|SZ|CN|SG)$/i, '')
+      : parsed?.[1] || null;
+    const expiration = quote.expiryDate
+      ? String(quote.expiryDate).slice(0, 10)
+      : (parsed ? `20${parsed[2].slice(0, 2)}-${parsed[2].slice(2, 4)}-${parsed[2].slice(4, 6)}` : null);
+    const type = Number(quote.direction) === 1 || String(quote.direction).toUpperCase() === 'PUT'
+      ? 'PUT'
+      : 'CALL';
+    const last = toNumber(quote.lastDone);
+    const previousClose = toNumber(quote.prevClose);
+    const change = last !== null && previousClose !== null ? Number((last - previousClose).toFixed(4)) : null;
+    const percentChange = change !== null && previousClose ? Number(((change / previousClose) * 100).toFixed(4)) : null;
+    return {
+      contractSymbol: String(contractSymbol || '').replace(/^OPTION_/i, '').trim().toUpperCase(),
+      longbridgeSymbol: lbSymbol,
+      underlying,
+      type,
+      expiration,
+      strike: toNumber(quote.strikePrice) ?? (parsed ? Number(parsed[4]) / 1000 : null),
+      last,
+      bid: null,
+      ask: null,
+      mark: last,
+      previousClose,
+      previousCloseDate: quote.timestamp ? new Date(quote.timestamp).toISOString().slice(0, 10) : null,
+      previousCloseSource: previousClose !== null ? 'longbridge_prev_close' : null,
+      dayChangeSource: previousClose !== null ? 'longbridge_prev_close' : 'missing_previous_close',
+      dayChangeNote: previousClose !== null
+        ? '日变动使用长桥期权 Last 与昨收计算。长桥单合约报价不提供 Bid/Ask 和 Greeks 时，Mark 暂用 Last。'
+        : '长桥未返回该合约昨收，暂不能计算期权日收益。',
+      change,
+      percentChange,
+      volume: toNumber(quote.volume),
+      turnover: toNumber(quote.turnover),
+      openInterest: toNumber(quote.openInterest),
+      impliedVolatility: toNumber(quote.impliedVolatility),
+      historicalVolatility: toNumber(quote.historicalVolatility),
+      delta: null,
+      gamma: null,
+      theta: null,
+      vega: null,
+      rho: null,
+      multiplier: toNumber(quote.contractMultiplier),
+      contractSize: toNumber(quote.contractSize),
+      contractType: quote.contractType ?? null,
+      tradeStatus: quote.tradeStatus ?? null,
+      updated: quote.timestamp ? Math.floor(new Date(quote.timestamp).getTime() / 1000) : null,
+      quoteDate: quote.timestamp ? new Date(quote.timestamp).toISOString().slice(0, 10) : null,
+      inTheMoney: null,
+      provider: 'Longbridge',
+      dataSource: 'Longbridge OpenAPI optionQuote',
+    };
+  } catch (error) {
+    throw new Error(normalizeSdkError(error, '长桥期权报价'));
+  }
 }

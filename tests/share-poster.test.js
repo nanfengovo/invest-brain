@@ -59,6 +59,8 @@ test('stock company profile de-emphasizes unavailable fields and keeps help butt
   const stockDetail = readFileSync(new URL('../src/pages/StockDetailPage.jsx', import.meta.url), 'utf8');
   const css = readFileSync(new URL('../src/pages/StockDetailPage.css', import.meta.url), 'utf8');
 
+  assert.match(stockDetail, /createPortal/);
+  assert.match(stockDetail, /document\.body/);
   assert.match(stockDetail, /profileMetricItems/);
   assert.match(stockDetail, /visibleProfileMetrics/);
   assert.match(stockDetail, /missingProfileMetrics/);
@@ -66,6 +68,8 @@ test('stock company profile de-emphasizes unavailable fields and keeps help butt
   assert.match(css, /min-width: 18px !important/);
   assert.match(css, /min-height: 18px !important/);
   assert.match(css, /stock-detail__profile-missing/);
+  assert.match(css, /z-index: 1200/);
+  assert.match(css, /scroll-padding-bottom: calc\(var\(--safe-area-bottom\) \+ 32px\)/);
 });
 
 test('market boards expose high-frequency refresh and directional background motion', () => {

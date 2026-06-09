@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Toast } from 'antd-mobile';
 import { LeftOutline, SearchOutline, CloseOutline, SendOutline } from 'antd-mobile-icons';
@@ -1959,7 +1960,7 @@ export default function StockDetailPage() {
       </div>
       )}
 
-      {fieldHelp && (
+      {fieldHelp && typeof document !== 'undefined' && createPortal((
         <div className="stock-detail__field-help-mask" onClick={() => setFieldHelp(null)}>
           <div
             className="stock-detail__field-help"
@@ -1995,7 +1996,7 @@ export default function StockDetailPage() {
             </div>
           </div>
         </div>
-      )}
+      ), document.body)}
 
       {/* AI Insights module */}
       <div className="stock-detail__ai-insights">

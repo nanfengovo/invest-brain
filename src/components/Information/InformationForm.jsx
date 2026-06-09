@@ -44,6 +44,42 @@ function mediaLinesFromParsed(parsed) {
   return lines.join('\n');
 }
 
+function canSummarizeUploadedFile(file) {
+  return Boolean(file?.type?.startsWith('image/'));
+}
+
+function getMissingSummarizeInputMessage(type, file) {
+  if (type === 'BOOK') {
+    return file
+      ? '当前书籍/研报附件没有抽取到可解析正文，请手动补充摘录，或重新上传可解析的 PDF/EPUB'
+      : '请先上传 PDF/EPUB，或填写来源链接/正文摘录后再解析书籍/研报';
+  }
+
+  if (type === 'VIDEO') {
+    return file
+      ? '本地视频附件已保存，但解析需要视频链接或正文摘录，请补充后再试'
+      : '请先填写视频链接、正文摘录，或上传可解析图片后再解析';
+  }
+
+  if (type === 'IMAGE') {
+    return '请先上传图片，或填写来源链接/正文内容后再解析';
+  }
+
+  return '请先填写来源链接、正文内容，或上传图片/PDF/EPUB 后再解析';
+}
+
+function normalizeSummarizeErrorMessage(message) {
+  const raw = String(message || '').trim();
+  if (!raw) return '解析服务暂时没有返回原因，请稍后重试';
+  const lowerRaw = raw.toLowerCase();
+  if (lowerRaw.includes('provide') && lowerRaw.includes('url') && lowerRaw.includes('content') && lowerRaw.includes('image')) {
+    return '请提供来源链接、正文内容或图片后再解析。书籍/研报请先上传 PDF/EPUB 或填写摘录';
+  }
+  if (/Method not allowed/i.test(raw)) return '当前解析接口仅支持 POST 请求';
+  if (/HTTP 400/.test(raw)) return '解析输入不完整，请补充来源链接、正文内容或图片';
+  return raw;
+}
+
 export default function InformationForm({ onClose }) {
   const [form] = Form.useForm();
   const [uploading, setUploading] = useState(false);
@@ -100,7 +136,7 @@ export default function InformationForm({ onClose }) {
 
       Toast.show({ icon: 'success', content: '上传成功' });
       
-      setTimeout(() => triggerAiSummarize(file, path), extractedDocument?.content ? 100 : 300);
+      setTimeout(() => triggerAiSummarize(file, path, { silent: true }), extractedDocument?.content ? 100 : 300);
     } catch (err) {
       Toast.show({ icon: 'fail', content: '上传失败: ' + err.message });
     } finally {
@@ -123,13 +159,22 @@ export default function InformationForm({ onClose }) {
     });
   };
 
-  const triggerAiSummarize = async (fileObj = null, pathVal = null) => {
-    const urlVal = form.getFieldValue('url');
-    const contentVal = form.getFieldValue('content');
+  const triggerAiSummarize = async (fileObj = null, pathVal = null, options = {}) => {
+    const { silent = false } = options;
+    const urlVal = String(form.getFieldValue('url') || '').trim();
+    const contentVal = String(form.getFieldValue('content') || '').trim();
     const targetFile = fileObj || uploadedFile;
+    const selectedType = form.getFieldValue('type')?.[0] || 'ARTICLE';
+    const hasSummarizableFile = canSummarizeUploadedFile(targetFile);
 
-    if (!urlVal && !contentVal && !targetFile) {
-      return; // Nothing to summarize
+    if (!urlVal && !contentVal && !hasSummarizableFile) {
+      if (!silent) {
+        Toast.show({
+          icon: 'fail',
+          content: getMissingSummarizeInputMessage(selectedType, targetFile),
+        });
+      }
+      return;
     }
 
     setSummarizing(true);
@@ -143,7 +188,7 @@ export default function InformationForm({ onClose }) {
       let base64Image = null;
       let mimeType = targetFile?.type || 'text/plain';
       
-      if (targetFile && targetFile.type.startsWith('image/')) {
+      if (hasSummarizableFile) {
         base64Image = await fileToBase64(targetFile);
         mimeType = targetFile.type;
       }
@@ -196,7 +241,7 @@ export default function InformationForm({ onClose }) {
     } catch (err) {
       console.error('[AI Summarize Error]:', err);
       toast.close();
-      Toast.show({ icon: 'fail', content: '解析失败: ' + err.message });
+      Toast.show({ icon: 'fail', content: `解析失败：${normalizeSummarizeErrorMessage(err.message)}` });
     } finally {
       setSummarizing(false);
     }
@@ -288,7 +333,7 @@ export default function InformationForm({ onClose }) {
             <button
               type="button"
               className="info-form__ai-summarize-btn"
-              onClick={() => triggerAiSummarize()}
+              onClick={() => triggerAiSummarize(null, null, { silent: false })}
               disabled={summarizing}
             >
               {summarizing ? '正在解析...' : '解析信息'}
@@ -307,7 +352,7 @@ export default function InformationForm({ onClose }) {
             <Input 
               placeholder="输入文章或视频的网址" 
               clearable 
-              onBlur={() => triggerAiSummarize()}
+              onBlur={() => triggerAiSummarize(null, null, { silent: true })}
             />
           </Form.Item>
 
@@ -317,7 +362,7 @@ export default function InformationForm({ onClose }) {
               rows={4} 
               showCount 
               maxLength={12000}
-              onBlur={() => triggerAiSummarize()}
+              onBlur={() => triggerAiSummarize(null, null, { silent: true })}
             />
           </Form.Item>
           

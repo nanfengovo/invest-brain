@@ -731,7 +731,7 @@ export default async function handler(req, res) {
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    return res.status(405).json({ error: '当前解析接口仅支持 POST 请求' });
   }
 
   try {
@@ -757,7 +757,9 @@ export default async function handler(req, res) {
     }
 
     if (!url && !content && !image) {
-      return res.status(400).json({ error: 'Please provide either url, content, or image.' });
+      return res.status(400).json({
+        error: '请提供来源链接、正文内容或图片后再解析。书籍/研报请先上传 PDF/EPUB 或填写摘录。',
+      });
     }
 
     if (!hasAnyAiKey(keys) && image && !url && !content) {

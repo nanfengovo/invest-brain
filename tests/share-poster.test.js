@@ -91,6 +91,24 @@ test('market default spotlight shows stock prices instead of index points', () =
   assert.doesNotMatch(market, /全球主要指数/);
 });
 
+test('market option section uses contract monitor cards instead of generic quote tiles', () => {
+  const market = readFileSync(new URL('../src/pages/MarketPage.jsx', import.meta.url), 'utf8');
+  const optionStrip = readFileSync(new URL('../src/components/Market/OptionMonitorStrip.jsx', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../src/pages/MarketPage.css', import.meta.url), 'utf8');
+
+  assert.match(market, /import OptionMonitorStrip/);
+  assert.match(market, /<OptionMonitorStrip/);
+  assert.match(market, /underlyingQuotes=\{marketData\}/);
+  assert.match(market, /optionUnderlyingSymbols/);
+  assert.doesNotMatch(market, /variant="options"/);
+  assert.match(optionStrip, /getDteMonitor/);
+  assert.match(optionStrip, /getMoneynessMonitor/);
+  assert.match(optionStrip, /期权报价未返回/);
+  assert.match(optionStrip, /行权/);
+  assert.match(css, /market-option-card__moneyness--itm/);
+  assert.match(css, /market-option-card__dte/);
+});
+
 test('share poster background picker supports local upload and NVIDIA generation', () => {
   const picker = readFileSync(new URL('../src/utils/sharePosterBackgrounds.jsx', import.meta.url), 'utf8');
   const api = readFileSync(new URL('../api/_lib/shareBackground.js', import.meta.url), 'utf8');

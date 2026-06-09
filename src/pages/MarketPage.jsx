@@ -4,6 +4,7 @@ import { useAppStore } from '../stores/useAppStore';
 import { useTradeStore } from '../stores/useTradeStore';
 import MarketHeader from '../components/Market/MarketHeader';
 import IndexCardScroller from '../components/Market/IndexCardScroller';
+import OptionMonitorStrip from '../components/Market/OptionMonitorStrip';
 import SectorGrid from '../components/Market/SectorGrid';
 import WatchlistBoard from '../components/Market/WatchlistBoard';
 import { findMatchingOption, getOptionCandidates, mergeOptionQuote } from '../utils/optionsMarket';
@@ -137,6 +138,16 @@ export default function MarketPage() {
   const priceMemoryRef = useRef({});
   const flashTimersRef = useRef({});
 
+  const optionCandidates = useMemo(() => getOptionCandidates({
+    watchlist: marketWatchlist,
+    trades,
+    limit: 3,
+  }), [marketWatchlist, trades]);
+  const optionUnderlyingSymbols = useMemo(
+    () => getUniqueSymbols(optionCandidates.map(item => item.underlying)),
+    [optionCandidates]
+  );
+
   const triggerMovement = (symbol, direction) => {
     if (!symbol || !direction) return;
 
@@ -169,10 +180,10 @@ export default function MarketPage() {
     const hasWatchlist = marketWatchlist.length > 0;
     const primaryConfigs = hasWatchlist ? marketWatchlist : DEFAULT_STOCKS;
     const primarySymbols = getUniqueSymbols(primaryConfigs.map(item => item.symbol));
-
     const secondarySymbols = getUniqueSymbols([
       ...SECTORS.map(s => s.symbol),
       ...marketWatchlist.map(item => item.symbol),
+      ...optionUnderlyingSymbols,
     ]).filter((symbol) => !primarySymbols.includes(symbol));
 
     const mergeMarketData = (nextData) => {
@@ -261,13 +272,7 @@ export default function MarketPage() {
       activeController?.abort();
       clearInterval(intervalId);
     };
-  }, [marketWatchlist]);
-
-  const optionCandidates = useMemo(() => getOptionCandidates({
-    watchlist: marketWatchlist,
-    trades,
-    limit: 3,
-  }), [marketWatchlist, trades]);
+  }, [marketWatchlist, optionUnderlyingSymbols]);
 
   useEffect(() => {
     let mounted = true;
@@ -452,11 +457,11 @@ export default function MarketPage() {
             <h2>期权</h2>
           </div>
           {optionItems.length > 0 ? (
-            <IndexCardScroller
+            <OptionMonitorStrip
               items={optionItems}
+              underlyingQuotes={marketData}
               colorConvention={colorConvention}
               loading={optionLoading}
-              variant="options"
             />
           ) : (
             <div className="market-watchlist-empty market-options-empty">

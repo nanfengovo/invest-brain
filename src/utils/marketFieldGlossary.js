@@ -63,6 +63,22 @@ export const STOCK_FIELD_HELP = {
     label: '每手股数',
     detail: '交易所定义的一手交易数量。美股通常 1 股即可交易，港股常见为 100/500/1000 股一手。',
   },
+  employees: {
+    label: '员工数',
+    detail: '公司披露或数据源估算的全职员工规模，用来观察业务体量和组织杠杆。',
+  },
+  listingDate: {
+    label: '上市日期',
+    detail: '公司首次公开上市或主要市场上市时间。老牌公司和新上市公司在信息披露、估值弹性上常有差异。',
+  },
+  founded: {
+    label: '成立时间',
+    detail: '公司成立年份或日期。结合上市日期可以观察公司从创立到资本市场成熟的周期。',
+  },
+  website: {
+    label: '公司官网',
+    detail: '公司官方网站，适合继续核对 IR、业务线、财报和新闻稿。',
+  },
 };
 
 export const OPTION_FIELD_HELP = {

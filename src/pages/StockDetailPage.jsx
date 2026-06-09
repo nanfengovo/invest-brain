@@ -83,6 +83,9 @@ const formatProfileValue = (value, type = 'text') => {
   if (type === 'ratioPercent') return formatPercentFromRatio(value);
   if (type === 'number') return formatCompact(value);
   if (type === 'multiple') return Number(value).toFixed(2);
+  if (type === 'url') {
+    return String(value).replace(/^https?:\/\//i, '').replace(/\/$/, '');
+  }
   return String(value);
 };
 
@@ -776,6 +779,10 @@ export default function StockDetailPage() {
               ['circulatingShares', company.circulatingShares, 'number'],
               ['lotSize', company.lotSize, 'number'],
               ['freeCashflow', company.freeCashflow, 'money'],
+              ['employees', company.employees, 'number'],
+              ['listingDate', company.listingDate, 'text'],
+              ['founded', company.founded, 'text'],
+              ['website', company.website, 'url'],
             ].map(([key, value, type]) => {
               const help = getFieldHelp('stock', key);
               return (

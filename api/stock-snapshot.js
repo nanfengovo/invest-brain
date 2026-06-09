@@ -170,6 +170,7 @@ function buildCompanyProfile(symbol, summary = {}, dailyMeta = {}, intradayMeta 
   const price = summary.price || {};
   const lbStatic = longbridgeSnapshot?.staticInfo || {};
   const lbFundamentals = longbridgeSnapshot?.fundamentals || {};
+  const lbCompany = longbridgeSnapshot?.company || {};
   const yahooProfileAvailable = Boolean(
     profile.industry
       || rawValue(price.marketCap)
@@ -194,11 +195,17 @@ function buildCompanyProfile(symbol, summary = {}, dailyMeta = {}, intradayMeta 
     currency: pickText(lbStatic.currency, price.currency, dailyMeta.currency, intradayMeta.currency, 'USD'),
     country: pickText(profile.country),
     city: pickText(profile.city),
-    sector: pickText(profile.sector),
-    industry: pickText(profile.industry),
-    website: pickText(profile.website),
-    employees: rawValue(profile.fullTimeEmployees),
-    businessSummary: pickText(profile.longBusinessSummary),
+    sector: pickText(profile.sector, lbStatic.board, lbCompany.sector),
+    industry: pickText(profile.industry, lbStatic.board),
+    website: pickText(lbCompany.website, profile.website),
+    employees: rawValue(profile.fullTimeEmployees) ?? lbCompany.employees ?? null,
+    businessSummary: pickText(lbCompany.profile, profile.longBusinessSummary),
+    founded: lbCompany.founded || null,
+    listingDate: lbCompany.listingDate || null,
+    chairman: lbCompany.chairman || null,
+    manager: lbCompany.manager || null,
+    officeAddress: lbCompany.officeAddress || lbCompany.address || null,
+    icon: lbCompany.icon || null,
     officers: (profile.companyOfficers || []).slice(0, 4).map((officer) => ({
       name: officer.name,
       title: officer.title,
@@ -211,7 +218,7 @@ function buildCompanyProfile(symbol, summary = {}, dailyMeta = {}, intradayMeta 
     forwardPE: rawValue(stats.forwardPE),
     priceToBook: lbFundamentals.priceToBook ?? rawValue(stats.priceToBook),
     beta,
-    dividendYield: rawValue(details.dividendYield),
+    dividendYield: lbFundamentals.dividendYield ?? rawValue(details.dividendYield),
     dividendPerShare: lbStatic.dividendPerShare ?? null,
     eps: lbStatic.eps ?? null,
     epsTtm: lbStatic.epsTtm ?? null,

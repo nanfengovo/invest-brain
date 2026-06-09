@@ -137,9 +137,10 @@ test('market data settings support MarketData.app option provider', () => {
   assert.match(stockSnapshot, /buildLongbridgeFallbackSnapshot/);
   assert.match(stockSnapshot, /company/);
   assert.match(stockSnapshot, /industryRank/);
-  assert.match(longbridge, /QuoteContext/);
-  assert.match(longbridge, /staticInfo/);
-  assert.match(longbridge, /optionQuote/);
+  assert.match(longbridge, /getLongbridgeCredentials/);
+  assert.match(longbridge, /buildSignature/);
+  assert.match(longbridge, /\/v1\/quote\/comp-overview/);
+  assert.match(longbridge, /OPRA US Options Quotes/);
   assert.match(longbridge, /toLongbridgeOptionSymbol/);
   assert.match(settings, /MarketData\.app/);
   assert.match(settings, /免费层约 100 次\/日 API Credits/);

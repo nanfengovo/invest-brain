@@ -9,6 +9,7 @@ import { useAppStore } from '../stores/useAppStore';
 import { db } from '../db/database';
 import { checkPriceAlerts } from '../utils/priceAlertRunner';
 import { syncCloudAlerts } from '../utils/cloudAlerts';
+import { normalizeMarketSearchResult } from '../utils/marketSymbols';
 import { getMoneynessMonitor, parseOptionAlertInput } from '../utils/optionMonitoring';
 import { getFieldHelp } from '../utils/marketFieldGlossary';
 import { sharePoster } from '../utils/sharePoster';
@@ -40,6 +41,8 @@ const SEARCHABLE_QUOTE_TYPES = new Set([
 
 const normalizeSearchResults = (items = []) => {
   return items
+    .map((item) => normalizeMarketSearchResult(item))
+    .filter(Boolean)
     .filter((item) => {
       if (!item?.symbol) return false;
       if (item.isYahooFinance) return true;
@@ -1225,7 +1228,7 @@ export default function StockDetailPage() {
                       className="flex justify-between items-center py-4 border-b border-white/5 active:bg-white/5 px-2 rounded-lg cursor-pointer"
                       onClick={() => {
                         setIsSearching(false);
-                        navigate(`/stock/${item.symbol}`);
+                        navigate(`/stock/${encodeURIComponent(item.symbol)}`);
                       }}
                     >
                       <div className="flex flex-col gap-1">

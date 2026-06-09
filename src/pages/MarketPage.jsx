@@ -8,43 +8,105 @@ import OptionMonitorStrip from '../components/Market/OptionMonitorStrip';
 import SectorGrid from '../components/Market/SectorGrid';
 import WatchlistBoard from '../components/Market/WatchlistBoard';
 import { findMatchingOption, getOptionCandidates, mergeOptionQuote } from '../utils/optionsMarket';
+import { getMarketRegion } from '../utils/marketSymbols';
 import { sharePoster } from '../utils/sharePoster';
 import './MarketPage.css';
 
 const SHARE_BASE_URL = 'https://invest-brain.vercel.app';
 const MARKET_DATA_CACHE_KEY = 'ib_market_page_cache';
+const MARKET_REGION_KEY = 'ib_market_active_region';
 const MARKET_CLIENT_CACHE_TTL_MS = 30_000;
 const MARKET_POLL_INTERVAL_MS = 8_000;
 const MARKET_FLASH_MS = 1_100;
 
-const DEFAULT_STOCKS = [
-  { symbol: 'NVDA', name: '英伟达', quoteLabel: '股票 · NVDA' },
-  { symbol: 'AAPL', name: '苹果', quoteLabel: '股票 · AAPL' },
-  { symbol: 'TSLA', name: '特斯拉', quoteLabel: '股票 · TSLA' },
-];
-
-const SECTORS = [
-  { symbol: 'gb_xbi', name: '创新药', icon: '💊' },
-  { symbol: 'gb_xlu', name: '电网', icon: '⚡' },
-  { symbol: 'gb_xop', name: '油气开采', icon: '🛢️' },
-  { symbol: 'gb_xle', name: '能源', icon: '🔌' },
-  { symbol: 'gb_moo', name: '农业', icon: '🌾' },
-  { symbol: 'gb_uso', name: '原油', icon: '🛢' },
-  { symbol: 'gb_ita', name: '商业航天', icon: '🚀' },
-  { symbol: 'gb_soxx', name: '芯片', icon: '💽' },
-  { symbol: 'gb_botz', name: 'AIGC', icon: 'AI' },
-  { symbol: 'gb_robo', name: '机器人', icon: '🤖' },
-  { symbol: 'gb_xme', name: '有色', icon: '🧱' },
-  { symbol: 'gb_icln', name: '新能源', icon: '🍃' },
-  { symbol: 'gb_lit', name: '锂电池', icon: '🔋' },
-  { symbol: 'gb_kol', name: '煤炭', icon: '🪨' },
-  { symbol: 'gb_xlk', name: '数据中心', icon: '🏢' },
-  { symbol: 'gb_smh', name: '半导体', icon: '📟' },
-  { symbol: 'gb_ita', name: '军工', icon: '🪖' },
-  { symbol: 'gb_tan', name: '光伏', icon: '☀️' },
-  { symbol: 'gb_xlc', name: 'CPO', icon: '💡' },
-  { symbol: 'gb_ufos', name: '卫星', icon: '🛰' }
-];
+const MARKET_REGIONS = {
+  US: {
+    label: '美股',
+    subtitle: '热门美股实时股价',
+    spotlightLabel: '热门美股',
+    sectorTitle: '美股夜盘',
+    shareHint: '默认美股',
+    stocks: [
+      { symbol: 'NVDA', name: '英伟达', quoteLabel: '美股 · NVDA' },
+      { symbol: 'AAPL', name: '苹果', quoteLabel: '美股 · AAPL' },
+      { symbol: 'TSLA', name: '特斯拉', quoteLabel: '美股 · TSLA' },
+    ],
+    sectors: [
+      { symbol: 'gb_xbi', name: '创新药', icon: '💊' },
+      { symbol: 'gb_xlu', name: '电网', icon: '⚡' },
+      { symbol: 'gb_xop', name: '油气开采', icon: '🛢️' },
+      { symbol: 'gb_xle', name: '能源', icon: '🔌' },
+      { symbol: 'gb_moo', name: '农业', icon: '🌾' },
+      { symbol: 'gb_uso', name: '原油', icon: '🛢' },
+      { symbol: 'gb_ita', name: '商业航天', icon: '🚀' },
+      { symbol: 'gb_soxx', name: '芯片', icon: '💽' },
+      { symbol: 'gb_botz', name: 'AIGC', icon: 'AI' },
+      { symbol: 'gb_robo', name: '机器人', icon: '🤖' },
+      { symbol: 'gb_xme', name: '有色', icon: '🧱' },
+      { symbol: 'gb_icln', name: '新能源', icon: '🍃' },
+      { symbol: 'gb_lit', name: '锂电池', icon: '🔋' },
+      { symbol: 'gb_kol', name: '煤炭', icon: '🪨' },
+      { symbol: 'gb_xlk', name: '数据中心', icon: '🏢' },
+      { symbol: 'gb_smh', name: '半导体', icon: '📟' },
+      { symbol: 'gb_ita', name: '军工', icon: '🪖' },
+      { symbol: 'gb_tan', name: '光伏', icon: '☀️' },
+      { symbol: 'gb_xlc', name: 'CPO', icon: '💡' },
+      { symbol: 'gb_ufos', name: '卫星', icon: '🛰' },
+    ],
+  },
+  CN: {
+    label: 'A股',
+    subtitle: 'A股核心资产与主题 ETF',
+    spotlightLabel: 'A股核心',
+    sectorTitle: 'A股主题',
+    shareHint: '默认A股',
+    stocks: [
+      { symbol: '600519.SS', name: '贵州茅台', quoteLabel: 'A股 · 600519.SH' },
+      { symbol: '300750.SZ', name: '宁德时代', quoteLabel: 'A股 · 300750.SZ' },
+      { symbol: '000001.SZ', name: '平安银行', quoteLabel: 'A股 · 000001.SZ' },
+    ],
+    sectors: [
+      { symbol: '510300.SS', name: '沪深300', icon: '🇨🇳' },
+      { symbol: '510500.SS', name: '中证500', icon: '📈' },
+      { symbol: '512480.SS', name: '半导体', icon: '💽' },
+      { symbol: '512010.SS', name: '医药', icon: '💊' },
+      { symbol: '515790.SS', name: '光伏', icon: '☀️' },
+      { symbol: '516160.SS', name: '新能源', icon: '🍃' },
+      { symbol: '512800.SS', name: '银行', icon: '🏦' },
+      { symbol: '512660.SS', name: '军工', icon: '🪖' },
+      { symbol: '159995.SZ', name: '芯片', icon: '📟' },
+      { symbol: '159928.SZ', name: '消费', icon: '🛒' },
+      { symbol: '601318.SS', name: '中国平安', icon: '🛡️' },
+      { symbol: '002594.SZ', name: '比亚迪', icon: '🚗' },
+    ],
+  },
+  HK: {
+    label: '港股',
+    subtitle: '港股核心资产与恒生科技',
+    spotlightLabel: '港股核心',
+    sectorTitle: '港股主题',
+    shareHint: '默认港股',
+    stocks: [
+      { symbol: '0700.HK', name: '腾讯控股', quoteLabel: '港股 · 0700.HK' },
+      { symbol: '9988.HK', name: '阿里巴巴-W', quoteLabel: '港股 · 9988.HK' },
+      { symbol: '3690.HK', name: '美团-W', quoteLabel: '港股 · 3690.HK' },
+    ],
+    sectors: [
+      { symbol: '2800.HK', name: '盈富基金', icon: '🇭🇰' },
+      { symbol: '3033.HK', name: '恒生科技', icon: '💻' },
+      { symbol: '2828.HK', name: '国企指数', icon: '🏢' },
+      { symbol: '0700.HK', name: '腾讯', icon: '🎮' },
+      { symbol: '9988.HK', name: '阿里', icon: '🛒' },
+      { symbol: '3690.HK', name: '美团', icon: '🛵' },
+      { symbol: '1810.HK', name: '小米', icon: '📱' },
+      { symbol: '9618.HK', name: '京东', icon: '📦' },
+      { symbol: '1299.HK', name: '友邦', icon: '🛡️' },
+      { symbol: '0005.HK', name: '汇丰', icon: '🏦' },
+      { symbol: '0388.HK', name: '港交所', icon: '💱' },
+      { symbol: '0981.HK', name: '中芯国际', icon: '💽' },
+    ],
+  },
+};
 
 const parseMarketNumber = (value) => {
   if (value === null || value === undefined || value === '') return null;
@@ -70,6 +132,11 @@ const copyText = async (text) => {
 };
 
 const getUniqueSymbols = (symbols) => Array.from(new Set(symbols.filter(Boolean)));
+
+const getSupportedMarketRegion = (region, fallback = 'US') => {
+  const normalized = String(region || '').trim().toUpperCase();
+  return MARKET_REGIONS[normalized] ? normalized : fallback;
+};
 
 const getMovementPrice = (quote) => {
   if (!quote) return null;
@@ -120,6 +187,28 @@ const writeCachedMarketData = (data) => {
   }
 };
 
+const readActiveMarketRegion = () => {
+  if (typeof window === 'undefined') return 'US';
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const urlRegion = getSupportedMarketRegion(params.get('region') || params.get('marketRegion'), '');
+    if (urlRegion) return urlRegion;
+
+    const saved = window.localStorage.getItem(MARKET_REGION_KEY);
+    return getSupportedMarketRegion(saved);
+  } catch {
+    return 'US';
+  }
+};
+
+const saveActiveMarketRegion = (region) => {
+  try {
+    window.localStorage.setItem(MARKET_REGION_KEY, region);
+  } catch {
+    // Region preference is cosmetic; the current session state still works.
+  }
+};
+
 const buildMarketDataHeaders = (marketDataConfig = {}) => ({
   ...(marketDataConfig.longbridgeAppKey ? { 'X-Longbridge-App-Key': marketDataConfig.longbridgeAppKey } : {}),
   ...(marketDataConfig.longbridgeAppSecret ? { 'X-Longbridge-App-Secret': marketDataConfig.longbridgeAppSecret } : {}),
@@ -141,14 +230,20 @@ export default function MarketPage() {
   const [loading, setLoading] = useState(() => Object.keys(readCachedMarketData()).length === 0);
   const [marketRefreshing, setMarketRefreshing] = useState(false);
   const [movementMap, setMovementMap] = useState({});
+  const [activeRegion, setActiveRegion] = useState(readActiveMarketRegion);
   const priceMemoryRef = useRef({});
   const flashTimersRef = useRef({});
+  const regionConfig = MARKET_REGIONS[activeRegion] || MARKET_REGIONS.US;
+  const regionWatchlist = useMemo(
+    () => marketWatchlist.filter((item) => (item.region || getMarketRegion(item.symbol)) === activeRegion),
+    [activeRegion, marketWatchlist]
+  );
 
   const optionCandidates = useMemo(() => getOptionCandidates({
-    watchlist: marketWatchlist,
+    watchlist: activeRegion === 'US' ? marketWatchlist : [],
     trades,
     limit: 3,
-  }), [marketWatchlist, trades]);
+  }), [activeRegion, marketWatchlist, trades]);
   const optionUnderlyingSymbols = useMemo(
     () => getUniqueSymbols(optionCandidates.map(item => item.underlying)),
     [optionCandidates]
@@ -183,12 +278,12 @@ export default function MarketPage() {
   useEffect(() => {
     let mounted = true;
     let activeController = null;
-    const hasWatchlist = marketWatchlist.length > 0;
-    const primaryConfigs = hasWatchlist ? marketWatchlist : DEFAULT_STOCKS;
+    const hasRegionWatchlist = regionWatchlist.length > 0;
+    const primaryConfigs = hasRegionWatchlist ? regionWatchlist : regionConfig.stocks;
     const primarySymbols = getUniqueSymbols(primaryConfigs.map(item => item.symbol));
     const secondarySymbols = getUniqueSymbols([
-      ...SECTORS.map(s => s.symbol),
-      ...marketWatchlist.map(item => item.symbol),
+      ...regionConfig.sectors.map(s => s.symbol),
+      ...regionWatchlist.map(item => item.symbol),
       ...optionUnderlyingSymbols,
     ]).filter((symbol) => !primarySymbols.includes(symbol));
 
@@ -251,7 +346,7 @@ export default function MarketPage() {
       const { signal } = activeController;
       if (mounted) setMarketRefreshing(true);
 
-      const primaryRequest = fetchSymbolGroup(primarySymbols, signal, { extended: hasWatchlist });
+      const primaryRequest = fetchSymbolGroup(primarySymbols, signal, { extended: activeRegion === 'US' && hasRegionWatchlist });
       const secondaryRequest = fetchSymbolGroup(secondarySymbols, signal);
 
       try {
@@ -287,7 +382,7 @@ export default function MarketPage() {
       activeController?.abort();
       clearInterval(intervalId);
     };
-  }, [marketWatchlist, optionUnderlyingSymbols, marketDataConfig]);
+  }, [activeRegion, optionUnderlyingSymbols, regionConfig, regionWatchlist, marketDataConfig]);
 
   useEffect(() => {
     let mounted = true;
@@ -376,8 +471,8 @@ export default function MarketPage() {
     });
   };
 
-  const hasWatchlist = marketWatchlist.length > 0;
-  const primaryItems = mapData(hasWatchlist ? marketWatchlist : DEFAULT_STOCKS);
+  const hasRegionWatchlist = regionWatchlist.length > 0;
+  const primaryItems = mapData(hasRegionWatchlist ? regionWatchlist : regionConfig.stocks);
   const optionItems = optionCandidates.map((candidate) => ({
     ...candidate,
     ...(optionQuotes[candidate.id] || {}),
@@ -387,8 +482,8 @@ export default function MarketPage() {
     quoteLabel: optionQuotes[candidate.id]?.quoteLabel || `${candidate.underlying} · ${candidate.expiration.slice(5)} · ${candidate.optionType}`,
     movement: movementMap[candidate.id] || '',
   }));
-  const sectorItems = mapData(SECTORS);
-  const watchlistItems = marketWatchlist.map((item) => {
+  const sectorItems = mapData(regionConfig.sectors);
+  const watchlistItems = regionWatchlist.map((item) => {
     const data = marketData[item.symbol] || {};
     const extendedMarket = normalizeExtendedMarket(data.extendedMarket);
     return {
@@ -403,10 +498,20 @@ export default function MarketPage() {
     };
   });
 
-  const handleAddWatchItem = (item) => addMarketWatchItem(item);
+  const handleAddWatchItem = (item) => addMarketWatchItem({ ...item, region: item.region || activeRegion });
+
+  const handleRegionChange = (region) => {
+    if (!MARKET_REGIONS[region] || region === activeRegion) return;
+    setActiveRegion(region);
+    saveActiveMarketRegion(region);
+    setMovementMap({});
+    Toast.show({ content: `已切换到${MARKET_REGIONS[region].label}` });
+  };
 
   const handleShareMarket = async () => {
     try {
+      const shareUrl = new URL('/market', SHARE_BASE_URL);
+      if (activeRegion !== 'US') shareUrl.searchParams.set('region', activeRegion);
       const topItems = [...primaryItems, ...optionItems, ...sectorItems]
         .filter((item) => item?.name && Number.isFinite(item?.pctChange))
         .slice(0, 4);
@@ -421,13 +526,13 @@ export default function MarketPage() {
         accent: '#38bdf8',
         accent2: '#2dd4bf',
         metrics: [
-          { label: hasWatchlist ? '自选数量' : '股票数量', value: hasWatchlist ? marketWatchlist.length : primaryItems.length, hint: hasWatchlist ? '我的关注' : '默认美股' },
-          { label: '期权关注', value: optionItems.length, hint: '合约监控' },
+          { label: hasRegionWatchlist ? '自选数量' : '股票数量', value: hasRegionWatchlist ? regionWatchlist.length : primaryItems.length, hint: hasRegionWatchlist ? `${regionConfig.label}关注` : regionConfig.shareHint },
+          { label: '期权关注', value: optionItems.length, hint: activeRegion === 'US' ? '合约监控' : '仅美股区域' },
           { label: '板块池', value: sectorItems.length, hint: '主题雷达' },
           { label: '刷新间隔', value: `${MARKET_POLL_INTERVAL_MS / 1000}s`, hint: '本地监控' },
         ],
         highlights,
-        footer: `行情链接 ${new URL('/market', SHARE_BASE_URL).toString()}`,
+        footer: `行情链接 ${shareUrl.toString()}`,
         fileName: `investbrain-market-${Date.now()}.png`,
       });
       Toast.show({ icon: 'success', content: result.mode === 'native' ? '分享图已发送' : '分享图已下载' });
@@ -451,19 +556,24 @@ export default function MarketPage() {
     <div className="market-page">
       <MarketHeader
         watchlist={marketWatchlist}
+        activeRegion={activeRegion}
+        onRegionChange={handleRegionChange}
+        regionLabel={regionConfig.label}
+        regionSubtitle={regionConfig.subtitle}
         onAddWatchItem={handleAddWatchItem}
       />
       
       <div className="market-page__content">
-        <section aria-label={hasWatchlist ? '我的关注行情' : '热门美股股价'}>
+        <section aria-label={hasRegionWatchlist ? `${regionConfig.label}关注行情` : regionConfig.spotlightLabel}>
           <IndexCardScroller
             items={primaryItems}
             colorConvention={colorConvention}
             loading={loading}
-            variant={hasWatchlist ? 'watchlist' : 'spotlight'}
+            variant={hasRegionWatchlist ? 'watchlist' : 'spotlight'}
           />
         </section>
 
+        {activeRegion === 'US' && (
         <section>
           <div className="market-section-title market-section-title--orange">
             <span className="market-section-title__bar" />
@@ -483,12 +593,13 @@ export default function MarketPage() {
             </div>
           )}
         </section>
+        )}
 
         <section>
           <div className="market-section-row">
             <div className="market-section-title market-section-title--blue">
               <span className="market-section-title__bar" />
-              <h2>美股夜盘</h2>
+              <h2>{regionConfig.sectorTitle}</h2>
               <span className="market-section-title__hint">?</span>
             </div>
             <button
@@ -510,7 +621,7 @@ export default function MarketPage() {
             <div className="market-section-title market-section-title--cyan">
               <span className="market-section-title__bar" />
               <h2>我的关注</h2>
-              <span className="market-section-title__count">{marketWatchlist.length}</span>
+              <span className="market-section-title__count">{regionWatchlist.length}</span>
             </div>
           </div>
           <WatchlistBoard

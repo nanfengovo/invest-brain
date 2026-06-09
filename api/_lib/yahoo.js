@@ -1,10 +1,13 @@
+import { normalizeYahooMarketSymbol } from './marketSymbols.js';
+
 export const YAHOO_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
   Accept: 'application/json,text/plain,*/*',
 };
 
 export function mapYahooSymbol(symbol) {
-  const clean = String(symbol || '').replace(/^(gb_|hf_|us|hk|sh|sz)/i, '').toUpperCase();
+  const text = String(symbol || '').trim().toUpperCase();
+  const clean = normalizeYahooMarketSymbol(text);
   if (clean === 'IXIC') return '^IXIC';
   if (clean === 'NDX') return '^NDX';
   if (clean === 'INX') return '^GSPC';

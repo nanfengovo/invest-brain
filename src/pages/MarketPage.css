@@ -175,15 +175,29 @@
 }
 
 .market-region-switch__item {
+  appearance: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 34px;
   height: 32px;
+  padding: 0;
+  border: 0;
   border-radius: 12px;
+  background: transparent;
   font-size: 17px;
   filter: grayscale(0.75);
   opacity: 0.55;
+  cursor: pointer;
+  transition:
+    opacity var(--transition-fast),
+    filter var(--transition-fast),
+    background var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+.market-region-switch__item:active {
+  transform: translateY(1px);
 }
 
 .market-region-switch__item--active {

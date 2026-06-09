@@ -1,4 +1,5 @@
 import { fetchWithTimeout, fetchYahooChart, YAHOO_HEADERS } from './_lib/yahoo.js';
+import { normalizeYahooMarketSymbol } from './_lib/marketSymbols.js';
 import {
   fetchLongbridgeCandlesticks,
   getLongbridgeCredentials,
@@ -42,11 +43,11 @@ const normalizeYahooKline = (result, interval) => {
 const toStooqSymbol = (symbol) => {
   const clean = String(symbol || '').trim();
   if (!clean) return '';
-  const normalized = clean.replace(/^(gb_|us|stock_)/i, '').toLowerCase();
+  const normalized = normalizeYahooMarketSymbol(clean).toLowerCase();
   if (/^hf_/i.test(clean)) return '';
   if (normalized.startsWith('^')) return normalized;
-  if (/^\d{5}$/.test(normalized)) return `${normalized}.hk`;
-  if (/\.(us|hk|cn|sh|sz)$/i.test(normalized)) return normalized;
+  if (/\.(hk|us)$/i.test(normalized)) return normalized;
+  if (/\.(ss|sz|cn|sh)$/i.test(normalized)) return '';
   return `${normalized}.us`;
 };
 

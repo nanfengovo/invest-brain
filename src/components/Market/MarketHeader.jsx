@@ -8,6 +8,7 @@ import {
   CloseOutline,
 } from 'antd-mobile-icons';
 import { getUsMarketStatus } from '../../utils/marketHours';
+import { getMarketRegion, getMarketTypeLabel, normalizeMarketSearchResult } from '../../utils/marketSymbols';
 
 const SEARCHABLE_QUOTE_TYPES = new Set([
   'EQUITY',
@@ -20,8 +21,10 @@ const SEARCHABLE_QUOTE_TYPES = new Set([
   'CRYPTOCURRENCY',
 ]);
 
-const normalizeSearchResults = (items = []) => {
+const normalizeSearchResults = (items = [], preferredRegion = 'US') => {
   return items
+    .map((item) => normalizeMarketSearchResult(item, preferredRegion))
+    .filter(Boolean)
     .filter((item) => {
       if (!item?.symbol) return false;
       if (item.isYahooFinance) return true;
@@ -35,7 +38,20 @@ function padMarketTime(ny) {
   return `${String(ny.hour).padStart(2, '0')}:${String(ny.minute).padStart(2, '0')}`;
 }
 
-export default function MarketHeader({ watchlist = [], onAddWatchItem }) {
+const REGION_ITEMS = [
+  { id: 'CN', icon: '🇨🇳', label: 'A股' },
+  { id: 'US', icon: '🇺🇸', label: '美股' },
+  { id: 'HK', icon: '🇭🇰', label: '港股' },
+];
+
+export default function MarketHeader({
+  watchlist = [],
+  onAddWatchItem,
+  activeRegion = 'US',
+  onRegionChange,
+  regionLabel = '美股',
+  regionSubtitle = '热门美股实时股价',
+}) {
   const [isSearching, setIsSearching] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
@@ -44,6 +60,9 @@ export default function MarketHeader({ watchlist = [], onAddWatchItem }) {
   const navigate = useNavigate();
   const inputRef = useRef(null);
   const watchedSymbols = new Set(watchlist.map((item) => String(item.symbol || '').toUpperCase()));
+  const activeWatchCount = watchlist.filter((item) => (
+    (item.region || getMarketRegion(item.symbol)) === activeRegion
+  )).length;
 
   useEffect(() => {
     if (!isSearching) {
@@ -69,7 +88,7 @@ export default function MarketHeader({ watchlist = [], onAddWatchItem }) {
         const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
         const json = await res.json();
         if (json && json.success && json.data) {
-          setResults(normalizeSearchResults(json.data));
+          setResults(normalizeSearchResults(json.data, activeRegion));
         }
       } catch (err) {
         console.error('Search failed:', err);
@@ -79,7 +98,7 @@ export default function MarketHeader({ watchlist = [], onAddWatchItem }) {
     }, 500);
 
     return () => clearTimeout(searchTimer);
-  }, [query]);
+  }, [activeRegion, query]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -93,7 +112,7 @@ export default function MarketHeader({ watchlist = [], onAddWatchItem }) {
     event.stopPropagation();
     if (!onAddWatchItem) return;
 
-    const added = onAddWatchItem(item);
+    const added = onAddWatchItem({ ...item, region: item.region || activeRegion });
     Toast.show({ content: added ? '已添加到我的关注' : '已在我的关注中' });
   };
 
@@ -148,7 +167,7 @@ export default function MarketHeader({ watchlist = [], onAddWatchItem }) {
                           className={`market-search-result ${isWatched ? 'market-search-result--watched' : ''}`}
                           onClick={() => {
                             setIsSearching(false);
-                            navigate(`/stock/${item.symbol}`);
+                            navigate(`/stock/${encodeURIComponent(item.symbol)}`);
                           }}
                         >
                           <div className="market-search-result__main">
@@ -157,7 +176,7 @@ export default function MarketHeader({ watchlist = [], onAddWatchItem }) {
                           </div>
                           <div className="market-search-result__side">
                             <div className="market-search-result__exchange">
-                              {item.exchDisp || item.typeDisp || item.quoteType}
+                              {item.exchDisp || item.typeDisp || getMarketTypeLabel(item.symbol, item.quoteType)}
                             </div>
                             <button
                               type="button"
@@ -201,15 +220,24 @@ export default function MarketHeader({ watchlist = [], onAddWatchItem }) {
                   {marketStatus.label}
                 </span>
               </div>
-              <p>{watchlist.length > 0 ? '关注股票实时监控' : '热门美股实时股价'}</p>
+              <p>{activeWatchCount > 0 ? `关注股票实时监控 · ${regionLabel}` : regionSubtitle}</p>
             </div>
           </div>
           
           <div className="market-header__actions">
             <div className="market-region-switch" aria-label="市场地区">
-              <span className="market-region-switch__item">🇨🇳</span>
-              <span className="market-region-switch__item market-region-switch__item--active">🇺🇸</span>
-              <span className="market-region-switch__item">🇭🇰</span>
+              {REGION_ITEMS.map((region) => (
+                <button
+                  key={region.id}
+                  type="button"
+                  className={`market-region-switch__item ${activeRegion === region.id ? 'market-region-switch__item--active' : ''}`}
+                  aria-label={`切换到${region.label}`}
+                  aria-pressed={activeRegion === region.id}
+                  onClick={() => onRegionChange?.(region.id)}
+                >
+                  {region.icon}
+                </button>
+              ))}
             </div>
             <button 
               type="button"

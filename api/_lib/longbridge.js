@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { toLongbridgeMarketSymbol } from './marketSymbols.js';
 
 const LONGBRIDGE_HTTP_URL = process.env.LONGBRIDGE_HTTP_URL || 'https://openapi.longbridge.com';
 const LONGBRIDGE_HTTP_TIMEOUT_MS = 6_000;
@@ -233,11 +234,9 @@ function getDefaultCurrencyForLongbridgeSymbol(symbol) {
 }
 
 export function toLongbridgeStockSymbol(symbol) {
-  const text = String(symbol || '').trim().toUpperCase();
+  const text = toLongbridgeMarketSymbol(symbol);
   if (!text) return '';
   if (/\.(US|HK|CN|SH|SZ|SG)$/i.test(text)) return text;
-  if (/^\d{5}$/.test(text)) return `${text}.HK`;
-  if (/^(SH|SZ)\d{6}$/.test(text)) return `${text.slice(2)}.${text.slice(0, 2)}`;
   return `${text}.US`;
 }
 

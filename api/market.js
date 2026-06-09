@@ -1,4 +1,5 @@
 import { fetchWithTimeout, fetchYahooChart, YAHOO_HEADERS } from './_lib/yahoo.js';
+import { getMarketRegion, normalizeYahooMarketSymbol } from './_lib/marketSymbols.js';
 import {
   fetchLongbridgeMarketQuote,
   getLongbridgeCredentials,
@@ -88,11 +89,13 @@ const fetchExtendedQuote = async (originalSymbol, referencePrice) => {
 const toStooqSymbol = (symbol) => {
   const clean = String(symbol || '').trim();
   if (!clean) return '';
-  const normalized = clean.replace(/^(gb_|us|stock_)/i, '').toLowerCase();
+  const normalized = normalizeYahooMarketSymbol(clean).toLowerCase();
   if (/^hf_/i.test(clean)) return '';
   if (normalized.startsWith('^')) return normalized;
   if (/^\d{5}$/.test(normalized)) return `${normalized}.hk`;
-  if (/\.(us|hk|cn|sh|sz)$/i.test(normalized)) return normalized;
+  if (/\.(hk)$/i.test(normalized)) return normalized;
+  if (/\.(ss|sz|cn|sh)$/i.test(normalized)) return '';
+  if (/\.(us)$/i.test(normalized)) return normalized;
   return `${normalized}.us`;
 };
 
@@ -129,6 +132,7 @@ const fetchStooqQuote = async (originalSymbol) => {
 
   const { absChange, pctChange } = getChange(price, previousClose);
   const cleanSymbol = String(originalSymbol || '').replace(/^(gb_|us|stock_)/i, '').toUpperCase();
+  const region = getMarketRegion(originalSymbol);
   return {
     symbol: originalSymbol,
     name: cleanSymbol,
@@ -146,11 +150,11 @@ const fetchStooqQuote = async (originalSymbol) => {
     regularMarketDayLow: Number.isFinite(Number(low)) ? Number(low) : null,
     regularMarketOpen: Number.isFinite(Number(open)) ? Number(open) : null,
     regularMarketVolume: Number.isFinite(Number(volume)) ? Number(volume) : null,
-    currency: stooqSymbol.endsWith('.hk') ? 'HKD' : 'USD',
+    currency: region === 'HK' ? 'HKD' : 'USD',
     exchangeName: 'Stooq',
     instrumentType: null,
     yahooSymbol: cleanSymbol,
-    type: originalSymbol.startsWith('hf_') ? 'futures' : 'us',
+    type: region.toLowerCase(),
     provider: 'Stooq delayed daily',
     timestamp: date || null,
     fallbackFrom: 'Yahoo Finance',
@@ -203,7 +207,7 @@ const fetchQuote = async (originalSymbol, { includeExtended = false } = {}) => {
     exchangeName: meta.exchangeName || null,
     instrumentType: meta.instrumentType || null,
     yahooSymbol,
-    type: originalSymbol.startsWith('hf_') ? 'futures' : 'us',
+    type: getMarketRegion(originalSymbol).toLowerCase(),
   };
 };
 

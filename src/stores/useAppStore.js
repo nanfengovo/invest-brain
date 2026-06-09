@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { db } from '../db/database';
 import { DEFAULT_AI_PROVIDER_CONFIG } from '../utils/aiProviders';
+import { getMarketTypeLabel, normalizeMarketSearchResult } from '../utils/marketSymbols';
 
 const MARKET_WATCHLIST_KEY = 'ib_market_watchlist';
 const SYNC_USER_ID_KEY = 'invest_sync_user_id';
@@ -32,7 +33,8 @@ const DEFAULT_SHARE_BACKGROUND_CONFIG = {
 };
 
 const normalizeMarketWatchItem = (item) => {
-  const symbol = String(item?.symbol || '').trim().toUpperCase();
+  const normalizedResult = normalizeMarketSearchResult(item, item?.region || 'US');
+  const symbol = normalizedResult?.symbol || '';
   if (!symbol) return null;
 
   return {
@@ -40,7 +42,8 @@ const normalizeMarketWatchItem = (item) => {
     name: item.shortname || item.longname || item.name || symbol,
     exchange: item.exchDisp || item.exchange || '',
     quoteType: item.quoteType || '',
-    typeDisp: item.typeDisp || item.quoteType || '',
+    typeDisp: item.typeDisp || getMarketTypeLabel(symbol, item.quoteType || '股票'),
+    region: normalizedResult.region,
     addedAt: item.addedAt || Date.now(),
   };
 };

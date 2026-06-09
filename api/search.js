@@ -1,10 +1,39 @@
 import { fetchWithTimeout, YAHOO_HEADERS } from './_lib/yahoo.js';
+import { getMarketRegion, normalizeYahooMarketSymbol } from './_lib/marketSymbols.js';
 
 const SEARCH_CACHE_TTL_MS = 45_000;
 const YAHOO_TIMEOUT_MS = 3_000;
 
 const searchCache = globalThis.__INVEST_BRAIN_SEARCH_CACHE__ || new Map();
 globalThis.__INVEST_BRAIN_SEARCH_CACHE__ = searchCache;
+
+const getDirectMarketMatch = (query) => {
+  const normalized = normalizeYahooMarketSymbol(query, /^\d{1,5}$/.test(String(query || '').trim()) ? 'HK' : 'US');
+  if (!normalized || normalized === String(query || '').trim().toUpperCase()) return null;
+  const region = getMarketRegion(normalized);
+  const labels = {
+    HK: { exchange: 'Hong Kong', type: '港股' },
+    CN: { exchange: normalized.endsWith('.SZ') ? 'Shenzhen' : 'Shanghai', type: 'A股' },
+    US: { exchange: 'US', type: '美股' },
+  };
+  const label = labels[region] || labels.US;
+  return {
+    symbol: normalized,
+    shortname: normalized,
+    longname: `${label.type} · ${normalized}`,
+    exchDisp: label.exchange,
+    quoteType: 'EQUITY',
+    typeDisp: label.type,
+    isInvestBrainDirect: true,
+  };
+};
+
+const mergeDirectMatch = (quotes, query) => {
+  const direct = getDirectMarketMatch(query);
+  if (!direct) return quotes;
+  if (quotes.some((item) => String(item.symbol || '').toUpperCase() === direct.symbol)) return quotes;
+  return [direct, ...quotes];
+};
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -40,7 +69,7 @@ export default async function handler(req, res) {
     }
 
     const data = await response.json();
-    const quotes = data.quotes || [];
+    const quotes = mergeDirectMatch(data.quotes || [], q);
 
     searchCache.set(cacheKey, {
       fetchedAt: Date.now(),

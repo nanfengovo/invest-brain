@@ -132,18 +132,26 @@ test('market boards expose high-frequency refresh and directional background mot
   assert.match(css, /background-color: rgba\(var\(--market-flash-down-rgb\)/);
 });
 
-test('market default spotlight shows stock prices instead of index points', () => {
+test('market default spotlight supports US, A-share, and Hong Kong regions', () => {
   const market = readFileSync(new URL('../src/pages/MarketPage.jsx', import.meta.url), 'utf8');
   const header = readFileSync(new URL('../src/components/Market/MarketHeader.jsx', import.meta.url), 'utf8');
+  const symbols = readFileSync(new URL('../src/utils/marketSymbols.js', import.meta.url), 'utf8');
 
-  assert.match(market, /const DEFAULT_STOCKS = \[/);
+  assert.match(market, /const MARKET_REGIONS = \{/);
   assert.match(market, /symbol: 'NVDA'/);
-  assert.match(market, /symbol: 'AAPL'/);
-  assert.match(market, /symbol: 'TSLA'/);
-  assert.match(market, /hasWatchlist \? marketWatchlist : DEFAULT_STOCKS/);
-  assert.match(market, /variant=\{hasWatchlist \? 'watchlist' : 'spotlight'\}/);
-  assert.match(market, /热门美股股价/);
+  assert.match(market, /symbol: '600519\.SS'/);
+  assert.match(market, /symbol: '0700\.HK'/);
+  assert.match(market, /regionConfig\.stocks/);
+  assert.match(market, /regionConfig\.sectors/);
+  assert.match(market, /activeRegion === 'US'/);
+  assert.match(market, /variant=\{hasRegionWatchlist \? 'watchlist' : 'spotlight'\}/);
+  assert.match(market, /A股核心资产与主题 ETF/);
+  assert.match(market, /港股核心资产与恒生科技/);
   assert.match(header, /热门美股实时股价/);
+  assert.match(header, /onRegionChange/);
+  assert.match(header, /aria-pressed/);
+  assert.match(symbols, /normalizeMarketSymbol/);
+  assert.match(symbols, /getMarketRegion/);
   assert.doesNotMatch(market, /const INDICES = \[/);
   assert.doesNotMatch(market, /gb_ixic/);
   assert.doesNotMatch(market, /全球主要指数/);

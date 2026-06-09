@@ -69,6 +69,7 @@ function readJsonBody(req) {
 function localApiPlugin() {
   const routes = {
     '/api/market': './api/market.js',
+    '/api/search': './api/search.js',
     '/api/summarize': './api/summarize.js',
     '/api/ocr': './api/ocr.js',
     '/api/analyze-personality': './api/analyze-personality.js',

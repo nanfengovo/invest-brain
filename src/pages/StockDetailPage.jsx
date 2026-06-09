@@ -4,6 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Toast } from 'antd-mobile';
 import { LeftOutline, SearchOutline, CloseOutline, SendOutline } from 'antd-mobile-icons';
 import KlineChart from '../components/Market/KlineChart';
+import OptionAlertSheet from '../components/common/OptionAlertSheet';
 import { useAppStore } from '../stores/useAppStore';
 import { db } from '../db/database';
 import { checkPriceAlerts } from '../utils/priceAlertRunner';
@@ -203,6 +204,11 @@ const formatOptionStrike = (value) => {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return '--';
   const number = Number(value);
   return Number.isInteger(number) ? String(number) : number.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+};
+
+const formatOptionAlertDefault = (value) => {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? `>${number.toFixed(2)}` : '>';
 };
 
 const buildMarketDataHeaders = (marketDataConfig = {}) => ({
@@ -430,6 +436,7 @@ export default function StockDetailPage() {
   const [detailMode, setDetailMode] = useState('stock');
   const [fieldHelp, setFieldHelp] = useState(null);
   const [rankDialogOpen, setRankDialogOpen] = useState(false);
+  const [optionAlertSheet, setOptionAlertSheet] = useState(null);
   
   // Inline search states
   const [isSearching, setIsSearching] = useState(false);
@@ -1069,20 +1076,36 @@ export default function StockDetailPage() {
     Toast.show({ icon: 'success', content: `自动检查间隔已设为 ${normalizedMinutes} 分钟` });
   };
 
-  const handleAddOptionAlert = async (option) => {
+  const handleAddOptionAlert = (option) => {
     const defaultTarget = option.mark || option.last || option.bid || '';
-    const input = window.prompt(
-      [
-        `设置 ${option.contractSymbol} 期权提醒`,
-        '输入格式：>1.50 表示高于等于提醒，<0.80 表示低于等于提醒',
-      ].join('\n'),
-      defaultTarget ? `>${defaultTarget}` : '>'
-    );
-    if (!input) return;
+    setOptionAlertSheet({
+      option,
+      title: `设置 ${option.contractSymbol} 期权提醒`,
+      subtitle: [
+        option.underlying || normalizedSymbol,
+        option.expiration ? `EXP ${option.expiration}` : '',
+        option.type,
+        option.strike ? `Strike ${formatOptionStrike(option.strike)}` : '',
+      ].filter(Boolean).join(' · '),
+      defaultValue: formatOptionAlertDefault(defaultTarget),
+      metaItems: [
+        { label: 'Mark', value: formatMetric(option.mark) },
+        { label: 'Bid / Ask', value: `${formatMetric(option.bid)} / ${formatMetric(option.ask)}` },
+        { label: 'Last', value: formatMetric(option.last) },
+        { label: 'IV', value: formatMetric(option.impliedVolatility ? option.impliedVolatility * 100 : null, '%') },
+        { label: 'Delta', value: formatMetric(option.delta) },
+        { label: 'DTE', value: formatOptionExpirationDte(option.expiration) },
+      ],
+    });
+  };
+
+  const handleSaveOptionAlert = async (input) => {
+    const option = optionAlertSheet?.option;
+    if (!option) return false;
     const parsedAlert = parseOptionAlertInput(input, 'ABOVE');
     if (!parsedAlert) {
       Toast.show({ content: '请输入有效提醒，例如 >1.50 或 <0.80' });
-      return;
+      return false;
     }
     await db.addPriceAlert({
       id: crypto.randomUUID(),
@@ -1099,12 +1122,14 @@ export default function StockDetailPage() {
         Number.isFinite(Number(option.delta)) ? `Delta ${Number(option.delta).toFixed(2)}` : '',
       ].filter(Boolean).join(' · '),
     });
+    setOptionAlertSheet(null);
     await reloadAlerts();
     await syncCloudAlerts({ notificationConfig, marketDataConfig });
     Toast.show({
       icon: 'success',
       content: `期权提醒已添加：${parsedAlert.condition === 'ABOVE' ? '高于等于' : '低于等于'} ${parsedAlert.target}`,
     });
+    return true;
   };
 
   const handleCheckAlertsNow = async () => {
@@ -2057,6 +2082,16 @@ export default function StockDetailPage() {
         )}
       </div>
       )}
+
+      <OptionAlertSheet
+        open={Boolean(optionAlertSheet)}
+        title={optionAlertSheet?.title}
+        subtitle={optionAlertSheet?.subtitle}
+        defaultValue={optionAlertSheet?.defaultValue}
+        metaItems={optionAlertSheet?.metaItems}
+        onClose={() => setOptionAlertSheet(null)}
+        onSubmit={handleSaveOptionAlert}
+      />
 
       {rankDialogOpen && typeof document !== 'undefined' && createPortal((
         <div className="stock-detail__rank-dialog-mask" onClick={() => setRankDialogOpen(false)}>

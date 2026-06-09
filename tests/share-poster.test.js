@@ -55,6 +55,25 @@ test('stock detail share poster uses the dedicated snapshot template and shared 
   assert.doesNotMatch(stockDetail, /skipBackgroundPicker: true/);
 });
 
+test('option alert setup uses the in-app sheet instead of native prompts', () => {
+  const stockDetail = readFileSync(new URL('../src/pages/StockDetailPage.jsx', import.meta.url), 'utf8');
+  const holdings = readFileSync(new URL('../src/pages/HoldingsPage.jsx', import.meta.url), 'utf8');
+  const sheet = readFileSync(new URL('../src/components/common/OptionAlertSheet.jsx', import.meta.url), 'utf8');
+  const sheetCss = readFileSync(new URL('../src/components/common/OptionAlertSheet.css', import.meta.url), 'utf8');
+
+  assert.match(stockDetail, /OptionAlertSheet/);
+  assert.match(holdings, /OptionAlertSheet/);
+  assert.match(stockDetail, /optionAlertSheet/);
+  assert.match(holdings, /optionAlertSheet/);
+  assert.doesNotMatch(stockDetail, /window\.prompt/);
+  assert.doesNotMatch(holdings, /window\.prompt/);
+  assert.match(sheet, /role="dialog"/);
+  assert.match(sheet, /Option Monitor/);
+  assert.match(sheet, /高于等于/);
+  assert.match(sheetCss, /option-alert-sheet__mask/);
+  assert.match(sheetCss, /backdrop-filter: blur/);
+});
+
 test('stock company profile de-emphasizes unavailable fields and keeps help buttons compact', () => {
   const stockDetail = readFileSync(new URL('../src/pages/StockDetailPage.jsx', import.meta.url), 'utf8');
   const css = readFileSync(new URL('../src/pages/StockDetailPage.css', import.meta.url), 'utf8');

@@ -4,6 +4,7 @@ import { useTradeStore } from '../stores/useTradeStore';
 import { useAppStore } from '../stores/useAppStore';
 import { db } from '../db/database';
 import EmptyState from '../components/common/EmptyState';
+import OptionAlertSheet from '../components/common/OptionAlertSheet';
 import HoldingCard from '../components/Holdings/HoldingCard';
 import { parseOptionAlertInput } from '../utils/optionMonitoring';
 import { getTradeOptionDisplay } from '../utils/tradeLifecycle';
@@ -26,6 +27,11 @@ const formatSignedCurrency = (num) => {
   if (!Number.isFinite(value)) return '--';
   const prefix = value > 0 ? '+' : value < 0 ? '-' : '';
   return `${prefix}$${formatCurrency(Math.abs(value))}`;
+};
+
+const formatOptionAlertDefault = (value) => {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? `>${number.toFixed(2)}` : '>';
 };
 
 const buildMarketDataHeaders = (marketDataConfig = {}) => ({
@@ -137,6 +143,7 @@ export default function HoldingsPage() {
   const [selectedAuthor, setSelectedAuthor] = useState('');
   const [underlyingQuotes, setUnderlyingQuotes] = useState({});
   const [optionQuotes, setOptionQuotes] = useState({});
+  const [optionAlertSheet, setOptionAlertSheet] = useState(null);
   const optionHoldingSignature = useMemo(() => getOptionHoldingSignature(holdings), [holdings]);
 
   const activeAuthor = selectedAuthor || null;
@@ -357,7 +364,7 @@ export default function HoldingsPage() {
     }
   };
 
-  const handleAddOptionAlert = async (holding) => {
+  const handleAddOptionAlert = (holding) => {
     if (isTeamWorkspace) {
       Toast.show({ content: '团队工作区是只读镜像，请先切换到个人工作区再设置提醒' });
       return;
@@ -374,19 +381,36 @@ export default function HoldingsPage() {
     });
     const title = optionDisplay?.title || holding.symbol || holding.asset_id;
     const defaultTarget = Number(holding.avg_cost);
-    const input = window.prompt(
-      [
-        `设置 ${title} 期权提醒`,
-        '输入格式：>1.50 表示高于等于提醒，<0.80 表示低于等于提醒',
-      ].join('\n'),
-      Number.isFinite(defaultTarget) && defaultTarget > 0 ? `>${defaultTarget.toFixed(2)}` : '>'
-    );
-    if (!input) return;
+    setOptionAlertSheet({
+      holding,
+      optionDisplay,
+      title: `设置 ${title} 期权提醒`,
+      subtitle: [
+        holding.underlying_symbol || holding.symbol,
+        holding.expiry_date ? `EXP ${holding.expiry_date}` : '',
+        holding.option_type,
+        holding.strike_price ? `Strike ${holding.strike_price}` : '',
+        holding.broker,
+      ].filter(Boolean).join(' · '),
+      defaultValue: formatOptionAlertDefault(defaultTarget),
+      metaItems: [
+        { label: '均价', value: Number.isFinite(defaultTarget) ? `$${formatCurrency(defaultTarget)}` : '--' },
+        { label: '数量', value: holding.quantity ? `${holding.quantity} 张` : '--' },
+        { label: '市值', value: holding.market_value ? `$${formatCurrency(holding.market_value)}` : '--' },
+        { label: 'Broker', value: holding.broker || '--' },
+      ],
+    });
+  };
+
+  const handleSaveOptionAlert = async (input) => {
+    const holding = optionAlertSheet?.holding;
+    const optionDisplay = optionAlertSheet?.optionDisplay;
+    if (!holding) return false;
 
     const parsedAlert = parseOptionAlertInput(input, 'ABOVE');
     if (!parsedAlert) {
       Toast.show({ content: '请输入有效提醒，例如 >1.50 或 <0.80' });
-      return;
+      return false;
     }
 
     const underlyingSymbol = String(holding.underlying_symbol || holding.symbol || '').trim().toUpperCase();
@@ -408,11 +432,13 @@ export default function HoldingsPage() {
       ].filter(Boolean).join(' · '),
     });
 
+    setOptionAlertSheet(null);
     await syncCloudAlerts({ notificationConfig, marketDataConfig });
     Toast.show({
       icon: 'success',
       content: `期权提醒已添加：${parsedAlert.condition === 'ABOVE' ? '高于等于' : '低于等于'} ${parsedAlert.target}`,
     });
+    return true;
   };
 
   const totalBuys = Number(summary?.total_buys) || 0;
@@ -697,6 +723,16 @@ export default function HoldingsPage() {
           />
         )}
       </div>
+
+      <OptionAlertSheet
+        open={Boolean(optionAlertSheet)}
+        title={optionAlertSheet?.title}
+        subtitle={optionAlertSheet?.subtitle}
+        defaultValue={optionAlertSheet?.defaultValue}
+        metaItems={optionAlertSheet?.metaItems}
+        onClose={() => setOptionAlertSheet(null)}
+        onSubmit={handleSaveOptionAlert}
+      />
     </div>
   );
 }

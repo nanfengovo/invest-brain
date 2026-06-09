@@ -7,19 +7,20 @@ import {
 
 const KLINE_TIMEOUT_MS = 4_500;
 const STOOQ_KLINE_TIMEOUT_MS = 4_500;
-const KLINE_CACHE_VERSION = 'real-ohlc-v2';
+const KLINE_CACHE_VERSION = 'real-ohlc-v3-yearly';
 const klineCache = globalThis.__INVEST_BRAIN_KLINE_CACHE__ || new Map();
 globalThis.__INVEST_BRAIN_KLINE_CACHE__ = klineCache;
 
+const isIntradayInterval = (interval) => /^\d+(m|h)$/i.test(String(interval || '').trim());
+
 const getCacheTtl = (interval) => {
-  if (interval.includes('m')) return 10_000;
-  if (interval.includes('h')) return 60_000;
+  if (isIntradayInterval(interval)) return 10_000;
   return 180_000;
 };
 
 const formatDate = (timestamp, interval) => {
   const date = new Date(timestamp * 1000);
-  return interval.includes('m') || interval.includes('h')
+  return isIntradayInterval(interval)
     ? `${date.getMonth() + 1}-${date.getDate()} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`
     : `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
 };
@@ -156,7 +157,7 @@ export default async function handler(req, res) {
         data: normalizeYahooKline(result, interval),
         dataSource: {
           provider: 'Yahoo Finance chart',
-          realtime: interval.includes('m'),
+          realtime: isIntradayInterval(interval),
           fallback: false,
           schema: KLINE_CACHE_VERSION,
         },

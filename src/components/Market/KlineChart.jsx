@@ -17,6 +17,7 @@ export default function KlineChart({ data, interval }) {
     const isDark = theme === 'dark';
     const textColor = isDark ? '#8899aa' : '#64748b';
     const splitLineColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
+    const isYearly = interval === '1y';
 
     const dates = data.map(item => item[0]);
     // ECharts expects: [open, close, lowest, highest]
@@ -84,8 +85,9 @@ export default function KlineChart({ data, interval }) {
           if (!params || params.length === 0) return '';
           
           const date = params[0].axisValue;
+          const dateLabel = isYearly ? `${date} 年` : date;
           let html = `<div style="font-family: sans-serif; font-size: 11px; color: #e2e8f0; min-width: 150px; line-height: 1.5;">`;
-          html += `<div style="font-weight: 600; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 4px; margin-bottom: 6px; color: #94a3b8; font-family: monospace;">${date}</div>`;
+          html += `<div style="font-weight: 600; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 4px; margin-bottom: 6px; color: #94a3b8; font-family: monospace;">${dateLabel}</div>`;
           
           let kline = null;
           let ma5 = null;
@@ -160,7 +162,7 @@ export default function KlineChart({ data, interval }) {
             if (val !== undefined && val !== '-' && val !== null) {
               const dot = `<span style="display:inline-block;margin-right:6px;border-radius:10px;width:7px;height:7px;background-color:#f59e0b;"></span>`;
               html += `<div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
-                <span style="color: #94a3b8;">${dot}MA5</span>
+                <span style="color: #94a3b8;">${dot}${isYearly ? '5年均线' : 'MA5'}</span>
                 <span style="font-weight: 600; color: #f59e0b; font-family: monospace;">${Number(val).toFixed(2)}</span>
               </div>`;
             }
@@ -171,7 +173,7 @@ export default function KlineChart({ data, interval }) {
             if (val !== undefined && val !== '-' && val !== null) {
               const dot = `<span style="display:inline-block;margin-right:6px;border-radius:10px;width:7px;height:7px;background-color:#818cf8;"></span>`;
               html += `<div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
-                <span style="color: #94a3b8;">${dot}MA20</span>
+                <span style="color: #94a3b8;">${dot}${isYearly ? '20年均线' : 'MA20'}</span>
                 <span style="font-weight: 600; color: #818cf8; font-family: monospace;">${Number(val).toFixed(2)}</span>
               </div>`;
             }
@@ -199,7 +201,12 @@ export default function KlineChart({ data, interval }) {
           splitLine: { show: false },
           min: 'dataMin',
           max: 'dataMax',
-          axisLabel: { color: textColor, fontSize: 10, margin: 8 },
+          axisLabel: {
+            color: textColor,
+            fontSize: 10,
+            margin: 8,
+            formatter: (value) => (isYearly ? String(value).slice(0, 4) : String(value)),
+          },
         },
         {
           type: 'category',
@@ -239,7 +246,7 @@ export default function KlineChart({ data, interval }) {
         {
           type: 'inside',
           xAxisIndex: [0, 1],
-          start: 50,
+          start: isYearly ? 0 : 50,
           end: 100
         }
       ],

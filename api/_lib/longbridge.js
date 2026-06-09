@@ -380,10 +380,14 @@ function normalizeLongbridgeQuote(quote) {
   };
 }
 
+function isLongbridgeIntradayInterval(interval) {
+  return /^\d+(m|h)$/i.test(String(interval || '').trim());
+}
+
 function formatLongbridgeCandleDate(timestamp, interval) {
   const date = timestamp instanceof Date ? timestamp : new Date(timestamp);
   if (Number.isNaN(date.getTime())) return '';
-  return String(interval || '').includes('m') || String(interval || '').includes('h')
+  return isLongbridgeIntradayInterval(interval)
     ? `${date.getMonth() + 1}-${date.getDate()} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`
     : `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
 }
@@ -408,7 +412,7 @@ function getLongbridgePeriod(sdk, interval) {
 function getLongbridgeKlineCount({ interval, range }) {
   const intervalText = String(interval || '').toLowerCase();
   const rangeText = String(range || '').toLowerCase();
-  if (intervalText.includes('m')) {
+  if (isLongbridgeIntradayInterval(intervalText)) {
     if (rangeText === '1d') return 420;
     if (rangeText === '5d') return 500;
     return 800;

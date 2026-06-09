@@ -281,10 +281,15 @@ test('stock detail chart does not get stuck on an English loading placeholder', 
   assert.doesNotMatch(stockDetail, /buildReferenceChartFromQuote/);
   assert.doesNotMatch(stockSnapshot, /buildSnapshotChartData/);
   assert.doesNotMatch(stockSnapshot, /chart:\s*\{/);
-  assert.match(klineApi, /KLINE_CACHE_VERSION = 'real-ohlc-v2'/);
-  assert.match(stockDetail, /KLINE_CACHE_VERSION = 'real-ohlc-v2'/);
+  assert.match(klineApi, /KLINE_CACHE_VERSION = 'real-ohlc-v3-yearly'/);
+  assert.match(stockDetail, /KLINE_CACHE_VERSION = 'real-ohlc-v3-yearly'/);
   assert.match(stockDetail, /isSyntheticKlinePayload/);
   assert.match(stockDetail, /normalizeRenderableKlineRows/);
+  assert.match(stockDetail, /aggregateKlineRowsByYear/);
+  assert.match(stockDetail, /id: '1y', label: '年K', interval: '1mo', range: '10y'/);
+  assert.doesNotMatch(stockDetail, /pseudo year K/);
+  assert.doesNotMatch(stockDetail, /id: '1y', label: '年K', interval: '3mo'/);
+  assert.match(klineApi, /isIntradayInterval/);
   assert.match(stockDetail, /已忽略旧缓存中的报价参考图/);
   assert.doesNotMatch(stockDetail, /正在尝试使用快照数据兜底/);
   assert.match(stockDetail, /headers: buildMarketDataHeaders\(marketDataConfig\)/);

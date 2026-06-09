@@ -15,7 +15,7 @@ import { buildApiCacheKey, fetchJsonWithCache } from '../utils/apiCache';
 import './StockDetailPage.css';
 
 const SHARE_BASE_URL = 'https://invest-brain.vercel.app';
-const KLINE_CACHE_VERSION = 'real-ohlc-v2';
+const KLINE_CACHE_VERSION = 'real-ohlc-v3-yearly';
 
 const TABS = [
   { id: '1m', label: '分时', interval: '1m', range: '1d' },
@@ -23,7 +23,7 @@ const TABS = [
   { id: '1d', label: '日K', interval: '1d', range: '6mo' },
   { id: '1wk', label: '周K', interval: '1wk', range: '2y' },
   { id: '1mo', label: '月K', interval: '1mo', range: '5y' },
-  { id: '1y', label: '年K', interval: '3mo', range: '10y' } // pseudo year K
+  { id: '1y', label: '年K', interval: '1mo', range: '10y' }
 ];
 
 const SEARCHABLE_QUOTE_TYPES = new Set([
@@ -327,6 +327,43 @@ const normalizeRenderableKlineRows = (rows = []) => rows
       && low <= Math.min(open, close, high);
   });
 
+const getKlineRowYear = (row) => {
+  const raw = String(row?.[0] || '').trim();
+  const directYear = raw.match(/^(\d{4})(?:-|$)/)?.[1];
+  if (directYear) return directYear;
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? '' : String(parsed.getFullYear());
+};
+
+const aggregateKlineRowsByYear = (rows = []) => {
+  const groups = new Map();
+
+  rows.forEach((row) => {
+    const year = getKlineRowYear(row);
+    const open = Number(row[1]);
+    const close = Number(row[2]);
+    const low = Number(row[3]);
+    const high = Number(row[4]);
+    const volume = Number(row[5]) || 0;
+    if (!year || [open, close, low, high].some((value) => !Number.isFinite(value))) return;
+
+    const current = groups.get(year);
+    if (!current) {
+      groups.set(year, { year, open, close, low, high, volume });
+      return;
+    }
+
+    current.close = close;
+    current.low = Math.min(current.low, low);
+    current.high = Math.max(current.high, high);
+    current.volume += volume;
+  });
+
+  return Array.from(groups.values())
+    .sort((a, b) => Number(a.year) - Number(b.year))
+    .map((item) => [item.year, item.open, item.close, item.low, item.high, item.volume]);
+};
+
 const formatAlertAssetLabel = (alert) => {
   const assetType = String(alert.asset_type || 'STOCK').toUpperCase();
   if (assetType !== 'OPTION') {
@@ -568,7 +605,8 @@ export default function StockDetailPage() {
         });
         
         if (json.success && mounted) {
-          const rows = isSyntheticKlinePayload(json) ? [] : normalizeRenderableKlineRows(json.data);
+          const normalizedRows = isSyntheticKlinePayload(json) ? [] : normalizeRenderableKlineRows(json.data);
+          const rows = activeTab === '1y' ? aggregateKlineRowsByYear(normalizedRows) : normalizedRows;
           setChartData(rows);
           setChartError(json.dataSource?.note || '');
           if (json.meta) {

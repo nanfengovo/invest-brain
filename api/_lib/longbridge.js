@@ -2,10 +2,6 @@ import crypto from 'node:crypto';
 
 const LONGBRIDGE_HTTP_URL = process.env.LONGBRIDGE_HTTP_URL || 'https://openapi.longbridge.com';
 const LONGBRIDGE_HTTP_TIMEOUT_MS = 6_000;
-const LONGBRIDGE_SDK_TIMEOUT_MS = 14_000;
-const LONGBRIDGE_SDK_BATCH_SIZE = 5;
-
-let longbridgeSdkPromise = null;
 
 function pickCredential(headers = {}, key, fallback = '') {
   const normalizedKey = key.toLowerCase();
@@ -95,63 +91,6 @@ function normalizeSdkError(error, scope = '长桥数据') {
     return `${scope}需要开通 OPRA US Options Quotes（OpenAPI）权限。`;
   }
   return message.replace(/^Error:\s*/i, '');
-}
-
-async function loadLongbridgeSdk() {
-  if (!longbridgeSdkPromise) {
-    longbridgeSdkPromise = import('longbridge').catch((error) => {
-      longbridgeSdkPromise = null;
-      throw error;
-    });
-  }
-  return longbridgeSdkPromise;
-}
-
-function withTimeout(promise, ms, label) {
-  let timeoutId;
-  const timeout = new Promise((_, reject) => {
-    timeoutId = setTimeout(() => reject(new Error(`${label}请求超时`)), ms);
-  });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
-}
-
-async function callSettled(label, task) {
-  try {
-    return { label, status: 'fulfilled', value: await task() };
-  } catch (error) {
-    return { label, status: 'rejected', reason: normalizeSdkError(error, `长桥${label}`) };
-  }
-}
-
-async function callSettledBatches(items, batchSize = LONGBRIDGE_SDK_BATCH_SIZE) {
-  const results = [];
-  for (let index = 0; index < items.length; index += batchSize) {
-    const batch = items.slice(index, index + batchSize);
-    const settled = await Promise.all(batch.map((item) => callSettled(item.label, item.task)));
-    results.push(...settled);
-  }
-  return results;
-}
-
-function callFirstAvailable(context, names, ...args) {
-  const method = names.find((name) => typeof context?.[name] === 'function');
-  if (!method) {
-    throw new Error(`当前 Longbridge SDK 未提供 ${names.join(' / ')} 方法`);
-  }
-  return context[method](...args);
-}
-
-function createLongbridgeConfig(sdk, credentials) {
-  return sdk.Config.fromApikey(
-    credentials.appKey,
-    credentials.appSecret,
-    credentials.accessToken,
-    {
-      language: sdk.Language?.ZH_CN ?? 0,
-      enablePrintQuotePackages: false,
-      ...(process.env.LONGBRIDGE_HTTP_URL ? { httpUrl: process.env.LONGBRIDGE_HTTP_URL } : {}),
-    }
-  );
 }
 
 function percentToRatio(value) {
@@ -437,7 +376,7 @@ function normalizeLongbridgeQuote(quote) {
     currency: pickText(quote.currency),
     timestamp: quote.timestamp ? new Date(quote.timestamp).toISOString() : null,
     tradeStatus: quote.tradeStatus ?? quote.trade_status ?? null,
-    provider: 'Longbridge SDK',
+    provider: 'Longbridge HTTP',
   };
 }
 
@@ -519,122 +458,15 @@ function normalizeLongbridgeCandle(candle, interval) {
 }
 
 export async function fetchLongbridgeCandlesticks(symbol, credentials, { interval = '1d', range = '6mo' } = {}) {
-  if (!hasLongbridgeCredentials(credentials)) return null;
-  const cleanSymbol = String(symbol || '')
-    .trim()
-    .replace(/^(gb_|us|stock_)/i, '')
-    .toUpperCase();
-  if (
-    !cleanSymbol
-    || /^hf_/i.test(symbol)
-    || cleanSymbol.startsWith('^')
-    || ['IXIC', 'NDX', 'INX', 'DJI', 'NQ', 'ES', 'YM', 'CL'].includes(cleanSymbol)
-  ) {
-    return null;
-  }
-
-  const sdk = await loadLongbridgeSdk();
-  const config = createLongbridgeConfig(sdk, credentials);
-  const quoteContext = sdk.QuoteContext.new(config);
-  const lbSymbol = toLongbridgeStockSymbol(cleanSymbol);
-  const rawCandles = await withTimeout(
-    quoteContext.candlesticks(
-      lbSymbol,
-      getLongbridgePeriod(sdk, interval),
-      getLongbridgeKlineCount({ interval, range }),
-      sdk.AdjustType?.NoAdjust ?? 0,
-      sdk.TradeSessions?.All ?? 1
-    ),
-    LONGBRIDGE_SDK_TIMEOUT_MS,
-    '长桥K线'
-  );
-  const data = (Array.isArray(rawCandles) ? rawCandles : [])
-    .map((candle) => normalizeLongbridgeCandle(candle, interval))
-    .filter(Boolean);
-  if (!data.length) return null;
-
-  return {
-    success: true,
-    meta: {
-      symbol,
-      currency: getDefaultCurrencyForLongbridgeSymbol(lbSymbol),
-      exchangeName: 'Longbridge',
-      dataSource: 'Longbridge candlesticks',
-      chartPreviousClose: data.length > 1 ? data.at(-2)?.[2] : null,
-      regularMarketPrice: data.at(-1)?.[2] ?? null,
-      regularMarketDayHigh: data.at(-1)?.[4] ?? null,
-      regularMarketDayLow: data.at(-1)?.[3] ?? null,
-      regularMarketOpen: data.at(-1)?.[1] ?? null,
-      regularMarketVolume: data.at(-1)?.[5] ?? null,
-    },
-    data,
-    dataSource: {
-      provider: 'Longbridge candlesticks',
-      realtime: String(interval || '').includes('m'),
-      fallback: true,
-      schema: 'real-ohlc-v2',
-      note: 'Yahoo K 线不可用，当前使用长桥真实 K 线兜底。',
-    },
-  };
+  // The official npm SDK ships 100MB+ native binaries, which pushes Vercel
+  // Serverless Functions over the 250MB unzipped limit. Keep this endpoint
+  // lightweight and let Yahoo/Stooq handle K-line fallback until Longbridge
+  // exposes a small HTTP candlestick endpoint for this runtime.
+  return null;
 }
 
 export async function fetchLongbridgeMarketQuote(symbol, credentials) {
-  if (!hasLongbridgeCredentials(credentials)) return null;
-  const cleanSymbol = String(symbol || '')
-    .trim()
-    .replace(/^(gb_|us|stock_)/i, '')
-    .toUpperCase();
-  if (
-    !cleanSymbol
-    || /^hf_/i.test(symbol)
-    || cleanSymbol.startsWith('^')
-    || ['IXIC', 'NDX', 'INX', 'DJI', 'NQ', 'ES', 'YM', 'CL'].includes(cleanSymbol)
-  ) {
-    return null;
-  }
-
-  const sdk = await loadLongbridgeSdk();
-  const config = createLongbridgeConfig(sdk, credentials);
-  const quoteContext = sdk.QuoteContext.new(config);
-  const lbSymbol = toLongbridgeStockSymbol(cleanSymbol);
-  const [rawQuote] = await withTimeout(
-    quoteContext.quote([lbSymbol]),
-    LONGBRIDGE_HTTP_TIMEOUT_MS,
-    '长桥行情'
-  );
-  const quote = normalizeLongbridgeQuote(toPlainJson(rawQuote));
-  if (!quote?.price) return null;
-
-  const absChange = quote.previousClose ? quote.price - quote.previousClose : null;
-  const pctChange = absChange !== null && quote.previousClose
-    ? (absChange / quote.previousClose) * 100
-    : null;
-
-  return {
-    symbol,
-    name: quote.name || cleanSymbol,
-    price: quote.price,
-    regularMarketPrice: quote.price,
-    displayPrice: quote.price,
-    pctChange,
-    absChange,
-    displayPctChange: pctChange,
-    displayAbsChange: absChange,
-    prevClose: quote.previousClose,
-    extendedMarket: null,
-    hasPrePostMarketData: false,
-    regularMarketDayHigh: quote.dayHigh,
-    regularMarketDayLow: quote.dayLow,
-    regularMarketOpen: quote.dayOpen,
-    regularMarketVolume: quote.dayVolume,
-    currency: quote.currency || getDefaultCurrencyForLongbridgeSymbol(lbSymbol),
-    exchangeName: 'Longbridge',
-    instrumentType: null,
-    yahooSymbol: cleanSymbol,
-    type: 'us',
-    provider: 'Longbridge OpenAPI',
-    timestamp: quote.timestamp,
-  };
+  return null;
 }
 
 function normalizeLongbridgeStatic(staticInfo) {
@@ -1271,99 +1103,14 @@ function normalizeLongbridgeCompany(symbol, company = {}, valuation = null, extr
       },
       dataErrors: extras.dataErrors || {},
     },
-    provider: extras.sdkEnhanced ? 'Longbridge SDK + HTTP' : 'Longbridge HTTP',
+    provider: 'Longbridge HTTP',
   };
-}
-
-async function fetchLongbridgeSdkSnapshot(symbol, credentials) {
-  const sdk = await loadLongbridgeSdk();
-  const config = createLongbridgeConfig(sdk, credentials);
-  const lbSymbol = toLongbridgeStockSymbol(symbol);
-  const currency = getDefaultCurrencyForLongbridgeSymbol(lbSymbol);
-  const quoteContext = sdk.QuoteContext.new(config);
-  const fundamentalContext = sdk.FundamentalContext.new(config);
-
-  const tasks = await callSettledBatches([
-    { label: '实时行情', task: () => quoteContext.quote([lbSymbol]).then((items) => toPlainJson(items?.[0])) },
-    { label: '基础资料', task: () => quoteContext.staticInfo([lbSymbol]).then((items) => toPlainJson(items?.[0])) },
-    { label: '公司概览', task: () => callFirstAvailable(fundamentalContext, ['company', 'companyProfile'], lbSymbol).then(toPlainJson) },
-    { label: '财务三表', task: () => fundamentalContext.financialReport(lbSymbol, sdk.FinancialReportKind?.All ?? 3).then(toPlainJson) },
-    { label: '估值指标', task: () => fundamentalContext.valuation(lbSymbol).then(toPlainJson) },
-    { label: '估值历史', task: () => fundamentalContext.valuationHistory(lbSymbol).then(toPlainJson) },
-    { label: '同业估值', task: () => fundamentalContext.industryValuation(lbSymbol).then(toPlainJson) },
-    { label: '估值对比', task: () => fundamentalContext.valuationComparison(lbSymbol, currency).then(toPlainJson) },
-    { label: '行业估值分布', task: () => fundamentalContext.industryValuationDist(lbSymbol).then(toPlainJson) },
-    { label: '机构评级', task: () => fundamentalContext.institutionRating(lbSymbol).then(toPlainJson) },
-    { label: '机构评级历史', task: () => fundamentalContext.institutionRatingDetail(lbSymbol).then(toPlainJson) },
-    { label: '综合评分', task: () => fundamentalContext.ratings(lbSymbol).then(toPlainJson) },
-    { label: '分红', task: () => fundamentalContext.dividend(lbSymbol).then(toPlainJson) },
-    { label: '分红详情', task: () => fundamentalContext.dividendDetail(lbSymbol).then(toPlainJson) },
-    { label: '主要股东', task: () => fundamentalContext.shareholder(lbSymbol).then(toPlainJson) },
-    { label: '股东排行', task: () => fundamentalContext.shareholderTop(lbSymbol).then(toPlainJson) },
-    { label: '基金持仓', task: () => fundamentalContext.fundHolder(lbSymbol).then(toPlainJson) },
-    { label: '管理层', task: () => fundamentalContext.executive(lbSymbol).then(toPlainJson) },
-    { label: '经营摘要', task: () => fundamentalContext.operating(lbSymbol).then(toPlainJson) },
-    { label: '公司行动', task: () => fundamentalContext.corpAction(lbSymbol).then(toPlainJson) },
-    { label: '投资关系', task: () => fundamentalContext.investRelation(lbSymbol).then(toPlainJson) },
-    { label: '回购', task: () => fundamentalContext.buyback(lbSymbol).then(toPlainJson) },
-    { label: 'EPS预测', task: () => fundamentalContext.forecastEps(lbSymbol).then(toPlainJson) },
-    { label: '业绩一致预期', task: () => fundamentalContext.consensus(lbSymbol).then(toPlainJson) },
-  ]);
-
-  return tasks.reduce((acc, result) => {
-    const keyMap = {
-      实时行情: 'quote',
-      基础资料: 'staticInfo',
-      公司概览: 'company',
-      财务三表: 'financialReport',
-      估值指标: 'valuation',
-      估值历史: 'valuationHistory',
-      同业估值: 'industryValuation',
-      估值对比: 'valuationComparison',
-      行业估值分布: 'industryDistribution',
-      机构评级: 'institutionRating',
-      机构评级历史: 'institutionRatingDetail',
-      综合评分: 'ratings',
-      分红: 'dividend',
-      分红详情: 'dividendDetail',
-      主要股东: 'shareholder',
-      股东排行: 'shareholderTop',
-      基金持仓: 'fundHolder',
-      管理层: 'executive',
-      经营摘要: 'operating',
-      公司行动: 'corpAction',
-      投资关系: 'investRelation',
-      回购: 'buyback',
-      EPS预测: 'forecastEps',
-      业绩一致预期: 'consensus',
-    };
-    const key = keyMap[result.label];
-    if (!key) return acc;
-    if (result.status === 'fulfilled') {
-      acc[key] = result.value;
-    } else {
-      acc.dataErrors[key] = result.reason;
-    }
-    return acc;
-  }, { sdkEnhanced: true, dataErrors: {} });
 }
 
 export async function fetchLongbridgeStockSnapshot(symbol, credentials) {
   if (!hasLongbridgeCredentials(credentials)) return null;
   const counterId = toLongbridgeCounterId(symbol);
   if (!counterId) return null;
-
-  let sdkSnapshot = null;
-  let sdkError = null;
-  try {
-    sdkSnapshot = await withTimeout(
-      fetchLongbridgeSdkSnapshot(symbol, credentials),
-      LONGBRIDGE_SDK_TIMEOUT_MS,
-      '长桥 SDK'
-    );
-  } catch (error) {
-    sdkError = normalizeSdkError(error, '长桥 SDK');
-  }
 
   const [companyResult, valuationResult, industryValuationResult, valuationDetailResult, financialSnapshotResult] = await Promise.allSettled([
     requestLongbridge('/v1/quote/comp-overview', credentials, {
@@ -1386,25 +1133,22 @@ export async function fetchLongbridgeStockSnapshot(symbol, credentials) {
       query: { counter_id: counterId },
     }),
   ]);
-  const company = sdkSnapshot?.company || (companyResult.status === 'fulfilled' ? companyResult.value : null);
+  const company = companyResult.status === 'fulfilled' ? companyResult.value : null;
   if (!company) {
-    const reason = sdkError || (companyResult.status === 'rejected' ? companyResult.reason?.message : '长桥公司画像为空');
+    const reason = companyResult.status === 'rejected' ? companyResult.reason?.message : '长桥公司画像为空';
     throw new Error(reason || '长桥公司画像暂不可用');
   }
-  const mergedDataErrors = {
-    ...(sdkSnapshot?.dataErrors || {}),
-    ...(sdkError ? { sdk: sdkError } : {}),
-  };
-  if (!sdkSnapshot?.company && companyResult.status === 'rejected') {
+  const mergedDataErrors = {};
+  if (companyResult.status === 'rejected') {
     mergedDataErrors.httpCompany = companyResult.reason?.message || '长桥 HTTP 公司画像失败';
   }
-  if (!sdkSnapshot?.valuation && valuationResult.status === 'rejected') {
+  if (valuationResult.status === 'rejected') {
     mergedDataErrors.httpValuation = valuationResult.reason?.message || '长桥 HTTP 估值失败';
   }
-  if (!sdkSnapshot?.industryValuation && industryValuationResult.status === 'rejected') {
+  if (industryValuationResult.status === 'rejected') {
     mergedDataErrors.httpIndustryValuation = industryValuationResult.reason?.message || '长桥 HTTP 同业估值失败';
   }
-  if (!sdkSnapshot?.valuationDetail && valuationDetailResult.status === 'rejected') {
+  if (valuationDetailResult.status === 'rejected') {
     mergedDataErrors.httpValuationDetail = valuationDetailResult.reason?.message || '长桥 HTTP 估值详情失败';
   }
   if (financialSnapshotResult.status !== 'fulfilled' && financialSnapshotResult.status === 'rejected') {
@@ -1413,10 +1157,9 @@ export async function fetchLongbridgeStockSnapshot(symbol, credentials) {
   return normalizeLongbridgeCompany(
     symbol,
     company,
-    sdkSnapshot?.valuation || (valuationResult.status === 'fulfilled' ? valuationResult.value : null),
+    valuationResult.status === 'fulfilled' ? valuationResult.value : null,
     {
-      ...(sdkSnapshot || {}),
-      industryValuation: sdkSnapshot?.industryValuation || (industryValuationResult.status === 'fulfilled' ? industryValuationResult.value : null),
+      industryValuation: industryValuationResult.status === 'fulfilled' ? industryValuationResult.value : null,
       valuationDetail: valuationDetailResult.status === 'fulfilled' ? valuationDetailResult.value : null,
       financialSnapshot: financialSnapshotResult.status === 'fulfilled' ? financialSnapshotResult.value : null,
       dataErrors: mergedDataErrors,
@@ -1428,72 +1171,5 @@ export async function fetchLongbridgeOptionQuote(contractSymbol, credentials) {
   if (!hasLongbridgeCredentials(credentials)) return null;
   const lbSymbol = toLongbridgeOptionSymbol(contractSymbol);
   if (!lbSymbol) return null;
-  try {
-    const sdk = await loadLongbridgeSdk();
-    const config = createLongbridgeConfig(sdk, credentials);
-    const ctx = sdk.QuoteContext.new(config);
-    const [rawQuote] = await withTimeout(
-      ctx.optionQuote([lbSymbol]),
-      LONGBRIDGE_SDK_TIMEOUT_MS,
-      '长桥期权报价'
-    );
-    const quote = toPlainJson(rawQuote);
-    if (!quote) return null;
-    const parsed = String(contractSymbol || '').replace(/^OPTION_/i, '').trim().toUpperCase().match(/^([A-Z.]+)(\d{6})([CP])(\d{8})$/);
-    const underlying = quote.underlyingSymbol
-      ? String(quote.underlyingSymbol).replace(/\.(US|HK|SH|SZ|CN|SG)$/i, '')
-      : parsed?.[1] || null;
-    const expiration = quote.expiryDate
-      ? String(quote.expiryDate).slice(0, 10)
-      : (parsed ? `20${parsed[2].slice(0, 2)}-${parsed[2].slice(2, 4)}-${parsed[2].slice(4, 6)}` : null);
-    const type = Number(quote.direction) === 1 || String(quote.direction).toUpperCase() === 'PUT'
-      ? 'PUT'
-      : 'CALL';
-    const last = toNumber(quote.lastDone);
-    const previousClose = toNumber(quote.prevClose);
-    const change = last !== null && previousClose !== null ? Number((last - previousClose).toFixed(4)) : null;
-    const percentChange = change !== null && previousClose ? Number(((change / previousClose) * 100).toFixed(4)) : null;
-    return {
-      contractSymbol: String(contractSymbol || '').replace(/^OPTION_/i, '').trim().toUpperCase(),
-      longbridgeSymbol: lbSymbol,
-      underlying,
-      type,
-      expiration,
-      strike: toNumber(quote.strikePrice) ?? (parsed ? Number(parsed[4]) / 1000 : null),
-      last,
-      bid: null,
-      ask: null,
-      mark: last,
-      previousClose,
-      previousCloseDate: quote.timestamp ? new Date(quote.timestamp).toISOString().slice(0, 10) : null,
-      previousCloseSource: previousClose !== null ? 'longbridge_prev_close' : null,
-      dayChangeSource: previousClose !== null ? 'longbridge_prev_close' : 'missing_previous_close',
-      dayChangeNote: previousClose !== null
-        ? '日变动使用长桥期权 Last 与昨收计算。长桥单合约报价不提供 Bid/Ask 和 Greeks 时，Mark 暂用 Last。'
-        : '长桥未返回该合约昨收，暂不能计算期权日收益。',
-      change,
-      percentChange,
-      volume: toNumber(quote.volume),
-      turnover: toNumber(quote.turnover),
-      openInterest: toNumber(quote.openInterest),
-      impliedVolatility: toNumber(quote.impliedVolatility),
-      historicalVolatility: toNumber(quote.historicalVolatility),
-      delta: null,
-      gamma: null,
-      theta: null,
-      vega: null,
-      rho: null,
-      multiplier: toNumber(quote.contractMultiplier),
-      contractSize: toNumber(quote.contractSize),
-      contractType: quote.contractType ?? null,
-      tradeStatus: quote.tradeStatus ?? null,
-      updated: quote.timestamp ? Math.floor(new Date(quote.timestamp).getTime() / 1000) : null,
-      quoteDate: quote.timestamp ? new Date(quote.timestamp).toISOString().slice(0, 10) : null,
-      inTheMoney: null,
-      provider: 'Longbridge',
-      dataSource: 'Longbridge OpenAPI optionQuote',
-    };
-  } catch (error) {
-    throw new Error(normalizeSdkError(error, '长桥期权报价'));
-  }
+  return null;
 }

@@ -660,7 +660,6 @@ export default function StockDetailPage() {
     try {
       Toast.show({ icon: 'loading', content: '正在生成股票分享图...' });
       const result = await sharePoster({
-        skipBackgroundPicker: true,
         template: 'stock-snapshot',
         title: `${normalizedSymbol} 股票快照`,
         subtitle: quote?.longName || snapshot?.meta?.name || normalizedSymbol,

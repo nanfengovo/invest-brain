@@ -5,14 +5,32 @@
 .market-page {
   --market-flash-up-rgb: 36, 216, 174;
   --market-flash-down-rgb: 255, 93, 120;
+  --market-safe-top: env(safe-area-inset-top, 0px);
+  --market-page-top: max(16px, calc(var(--market-safe-top) + 8px));
   min-height: 100%;
-  padding: calc(var(--safe-area-top) + 18px) 14px calc(var(--tabbar-height) + var(--safe-area-bottom) + 22px);
+  padding: var(--market-page-top) 14px calc(var(--tabbar-height) + var(--safe-area-bottom) + 22px);
   background:
     radial-gradient(circle at 28% 12%, rgba(35, 50, 103, 0.22), transparent 28%),
     linear-gradient(180deg, #070314 0%, #05020c 44%, #030711 100%);
   color: #f3f7ff;
   overflow-x: hidden;
   letter-spacing: 0;
+}
+
+.app-shell--market::before {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  z-index: 99;
+  width: 100%;
+  max-width: var(--app-shell-max-width);
+  height: env(safe-area-inset-top, 0px);
+  pointer-events: none;
+  content: '';
+  transform: translateX(-50%);
+  background:
+    radial-gradient(circle at 26% 0%, rgba(35, 50, 103, 0.26), transparent 62%),
+    #070314;
 }
 
 [data-color-mode='red-up'] .market-page {
@@ -196,7 +214,7 @@
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  padding: calc(var(--safe-area-top) + 12px) 14px calc(var(--safe-area-bottom) + 18px);
+  padding: max(14px, calc(env(safe-area-inset-top, 0px) + 8px)) 14px calc(var(--safe-area-bottom) + 18px);
   background:
     radial-gradient(circle at 24% 8%, rgba(44, 62, 126, 0.24), transparent 28%),
     rgba(5, 2, 12, 0.96);

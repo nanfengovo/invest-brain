@@ -21,6 +21,9 @@ test('share poster utility creates local PNG posters and recommends free-ish mod
   assert.match(source, /drawBadgeTemplate/);
   assert.match(source, /drawLedgerTemplate/);
   assert.match(source, /drawPopProfitTemplate/);
+  assert.match(source, /drawStockSnapshotTemplate/);
+  assert.match(source, /template === 'stock-snapshot'/);
+  assert.match(source, /config\.template === 'stock-snapshot'/);
   assert.match(source, /pickTemplate/);
 });
 
@@ -41,6 +44,15 @@ test('market trade decision and information modules expose share poster actions'
   assert.match(information, /buildPosterSummaryText/);
   assert.match(information, /title: posterTitle/);
   assert.match(information, /summary: posterSummary/);
+});
+
+test('stock detail share poster uses the dedicated snapshot template and shared background picker', () => {
+  const stockDetail = readFileSync(new URL('../src/pages/StockDetailPage.jsx', import.meta.url), 'utf8');
+
+  assert.match(stockDetail, /sharePoster/);
+  assert.match(stockDetail, /template: 'stock-snapshot'/);
+  assert.match(stockDetail, /stock: \{/);
+  assert.doesNotMatch(stockDetail, /skipBackgroundPicker: true/);
 });
 
 test('market boards expose high-frequency refresh and directional background motion', () => {

@@ -4,6 +4,7 @@ const POSTER_WIDTH = 1080;
 const POSTER_HEIGHT = 1440;
 const POSTER_PADDING = 72;
 const SHARE_BRAND = 'InvestBrain';
+const TEMPLATE_POOL = ['signal-card', 'badge-card', 'ledger-clean', 'pop-profit'];
 
 function getCanvasScale() {
   if (typeof window === 'undefined') return 2;
@@ -51,6 +52,70 @@ function clampText(ctx, text, maxWidth, maxLines = 2) {
   return sliced;
 }
 
+function stripPosterText(value = '') {
+  return String(value || '')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/!\[[^\]]*]\([^)]+\)/g, ' ')
+    .replace(/\[[^\]]+]\([^)]+\)/g, (match) => match.replace(/^\[|\]\([^)]+\)$/g, ''))
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[#*_>`~|]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function hashString(value = '') {
+  return [...String(value || '')].reduce((hash, char) => {
+    const next = ((hash << 5) - hash + char.charCodeAt(0)) | 0;
+    return Math.abs(next);
+  }, 23);
+}
+
+function pickTemplate(config = {}) {
+  const explicit = String(config.template || config.posterStyle || '').trim();
+  if (TEMPLATE_POOL.includes(explicit)) return explicit;
+
+  const type = String(config.typeLabel || '').toLowerCase();
+  const hasProfitLoss = (config.metrics || []).some((metric) => ['profit', 'loss'].includes(metric?.tone));
+  const seed = `${config.title || ''}|${config.subtitle || ''}|${Date.now()}|${Math.random()}`;
+  const choose = (pool) => pool[hashString(seed) % pool.length];
+
+  if (type.includes('行情')) return choose(['badge-card', 'signal-card', 'ledger-clean']);
+  if (type.includes('交易') || type.includes('复盘') || type.includes('决策')) {
+    return hasProfitLoss ? choose(['pop-profit', 'ledger-clean', 'signal-card']) : choose(['signal-card', 'ledger-clean', 'badge-card']);
+  }
+  if (type.includes('文章') || type.includes('情报') || type.includes('视频') || type.includes('图片') || type.includes('书籍')) {
+    return choose(['signal-card', 'ledger-clean', 'badge-card']);
+  }
+  return choose(TEMPLATE_POOL);
+}
+
+function getPosterSummary(config = {}, fallbackLines = []) {
+  const summary = stripPosterText(config.summary || config.description || '');
+  if (summary) return summary;
+  return stripPosterText(normalizeLines(fallbackLines, 3).join(' '));
+}
+
+function getMainMetric(config = {}) {
+  if (config.mainMetric?.value) return config.mainMetric;
+  const metrics = Array.isArray(config.metrics) ? config.metrics : [];
+  return metrics.find((metric) => ['profit', 'loss'].includes(metric?.tone)) || metrics[0] || null;
+}
+
+function setFittedFont(ctx, text, maxWidth, {
+  size = 46,
+  min = 24,
+  weight = 800,
+  family = '"DIN Alternate", "PingFang SC", sans-serif',
+} = {}) {
+  let nextSize = size;
+  do {
+    ctx.font = `${weight} ${nextSize}px ${family}`;
+    if (ctx.measureText(String(text || '')).width <= maxWidth) break;
+    nextSize -= 2;
+  } while (nextSize > min);
+  return nextSize;
+}
+
 function roundRect(ctx, x, y, width, height, radius) {
   const r = Math.min(radius, width / 2, height / 2);
   ctx.beginPath();
@@ -84,7 +149,7 @@ function drawMetricCard(ctx, metric, x, y, width, height, accent) {
   ctx.fillText(metric.label, x + 28, y + 44);
 
   ctx.fillStyle = metric.tone === 'loss' ? '#fb7185' : metric.tone === 'profit' ? '#2dd4bf' : accent;
-  ctx.font = '800 46px "DIN Alternate", "PingFang SC", sans-serif';
+  setFittedFont(ctx, metric.value || '--', width - 56, { size: 46, min: 28 });
   ctx.fillText(String(metric.value || '--'), x + 28, y + 96);
 
   if (metric.hint) {
@@ -166,22 +231,23 @@ function drawPosterBackground(ctx, config, accent, accent2) {
   }
 }
 
-function createPosterCanvas(config = {}) {
-  const scale = getCanvasScale();
-  const canvas = document.createElement('canvas');
-  canvas.width = POSTER_WIDTH * scale;
-  canvas.height = POSTER_HEIGHT * scale;
-  canvas.style.width = `${POSTER_WIDTH}px`;
-  canvas.style.height = `${POSTER_HEIGHT}px`;
+function drawFooter(ctx, config, theme = {}) {
+  const x = theme.x || POSTER_PADDING + 44;
+  const y = theme.y || POSTER_HEIGHT - 138;
+  ctx.fillStyle = theme.color || 'rgba(148, 163, 184, 0.62)';
+  ctx.font = '500 24px "PingFang SC", sans-serif';
+  ctx.fillText(config.footer || '本地优先 · 交易记录与分析 Agent', x, y);
 
-  const ctx = canvas.getContext('2d');
-  ctx.scale(scale, scale);
+  ctx.fillStyle = theme.dateColor || 'rgba(148, 163, 184, 0.45)';
+  ctx.font = '500 22px "PingFang SC", sans-serif';
+  ctx.fillText(config.generatedAt || new Date().toLocaleString('zh-CN'), x, y + 36);
+}
 
-  const accent = config.accent || '#8ea2ff';
-  const accent2 = config.accent2 || '#2dd4bf';
+function drawSignalCardTemplate(ctx, config, accent, accent2) {
   const typeLabel = config.typeLabel || '分享图';
   const metrics = Array.isArray(config.metrics) ? config.metrics.slice(0, 4) : [];
-  const highlights = normalizeLines(config.highlights, 5);
+  const highlights = normalizeLines(config.highlights, 5).map(stripPosterText).filter(Boolean);
+  const summary = getPosterSummary(config, highlights);
 
   drawPosterBackground(ctx, config, accent, accent2);
 
@@ -251,35 +317,292 @@ function createPosterCanvas(config = {}) {
     y += Math.ceil(metrics.length / 2) * 154 + 32;
   }
 
-  if (highlights.length > 0) {
+  if (summary) {
     ctx.fillStyle = '#e2e8f0';
     ctx.font = '800 34px "PingFang SC", sans-serif';
-    ctx.fillText(config.sectionTitle || '关键要点', POSTER_PADDING + 44, y + 34);
+    ctx.fillText(config.sectionTitle || '信息摘要', POSTER_PADDING + 44, y + 34);
     y += 76;
 
-    highlights.forEach((item) => {
-      ctx.fillStyle = accent2;
-      ctx.beginPath();
-      ctx.arc(POSTER_PADDING + 56, y - 9, 8, 0, Math.PI * 2);
-      ctx.fill();
+    ctx.fillStyle = accent2;
+    ctx.beginPath();
+    ctx.arc(POSTER_PADDING + 56, y - 9, 8, 0, Math.PI * 2);
+    ctx.fill();
 
-      ctx.fillStyle = 'rgba(241, 245, 249, 0.9)';
-      ctx.font = '600 30px "PingFang SC", "Noto Sans CJK SC", sans-serif';
-      const lines = clampText(ctx, item, POSTER_WIDTH - POSTER_PADDING * 2 - 122, 2);
-      lines.forEach((line, index) => {
-        ctx.fillText(line, POSTER_PADDING + 80, y + index * 42);
-      });
-      y += Math.max(62, lines.length * 42 + 18);
+    ctx.fillStyle = 'rgba(241, 245, 249, 0.9)';
+    ctx.font = '600 30px "PingFang SC", "Noto Sans CJK SC", sans-serif';
+    const lines = clampText(ctx, summary, POSTER_WIDTH - POSTER_PADDING * 2 - 122, 4);
+    lines.forEach((line, index) => {
+      ctx.fillText(line, POSTER_PADDING + 80, y + index * 42);
     });
   }
 
-  ctx.fillStyle = 'rgba(148, 163, 184, 0.62)';
-  ctx.font = '500 24px "PingFang SC", sans-serif';
-  ctx.fillText(config.footer || '本地优先 · 交易记录与分析 Agent', POSTER_PADDING + 44, POSTER_HEIGHT - 138);
+  drawFooter(ctx, config);
+}
 
-  ctx.fillStyle = 'rgba(148, 163, 184, 0.45)';
-  ctx.font = '500 22px "PingFang SC", sans-serif';
-  ctx.fillText(new Date().toLocaleString('zh-CN'), POSTER_PADDING + 44, POSTER_HEIGHT - 102);
+function drawBadgeIcon(ctx, x, y, radius, accent, accent2) {
+  ctx.save();
+  const gold = ctx.createLinearGradient(x - radius, y - radius, x + radius, y + radius);
+  gold.addColorStop(0, '#fff7cc');
+  gold.addColorStop(0.46, '#facc15');
+  gold.addColorStop(1, '#b45309');
+  ctx.beginPath();
+  for (let i = 0; i < 10; i += 1) {
+    const angle = -Math.PI / 2 + i * Math.PI / 5;
+    const r = i % 2 === 0 ? radius : radius * 0.84;
+    ctx.lineTo(x + Math.cos(angle) * r, y + Math.sin(angle) * r);
+  }
+  ctx.closePath();
+  ctx.fillStyle = gold;
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.52)';
+  ctx.lineWidth = 6;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(x, y, radius * 0.52, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.72)';
+  ctx.fill();
+
+  ctx.fillStyle = '#fff7ed';
+  ctx.font = '900 74px "DIN Alternate", "PingFang SC", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('IB', x, y + 24);
+
+  ['#ef4444', '#facc15', '#3b82f6', '#ffffff', accent2].forEach((color, index) => {
+    const angle = index * 1.18 + 0.2;
+    ctx.save();
+    ctx.translate(x + Math.cos(angle) * radius * 1.42, y + Math.sin(angle) * radius * 1.08);
+    ctx.rotate(angle);
+    ctx.fillStyle = color;
+    ctx.fillRect(-10, -20, 20, 40);
+    ctx.restore();
+  });
+  ctx.restore();
+}
+
+function drawBadgeTemplate(ctx, config, accent, accent2) {
+  const bg = ctx.createLinearGradient(0, 0, 0, POSTER_HEIGHT);
+  bg.addColorStop(0, '#06111f');
+  bg.addColorStop(0.54, '#0f2c44');
+  bg.addColorStop(1, '#1f4c68');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, POSTER_WIDTH, POSTER_HEIGHT);
+
+  const glow = ctx.createRadialGradient(POSTER_WIDTH / 2, 340, 0, POSTER_WIDTH / 2, 340, 480);
+  glow.addColorStop(0, `${accent}44`);
+  glow.addColorStop(1, 'rgba(2, 6, 23, 0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, POSTER_WIDTH, POSTER_HEIGHT);
+
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.78)';
+  ctx.font = '800 34px "PingFang SC", sans-serif';
+  ctx.fillText(SHARE_BRAND, 92, 112);
+
+  ctx.save();
+  roundRect(ctx, POSTER_WIDTH - 220, 78, 128, 42, 999);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '700 21px "PingFang SC", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(config.typeLabel || '分享图', POSTER_WIDTH - 156, 106);
+  ctx.restore();
+
+  drawBadgeIcon(ctx, POSTER_WIDTH / 2, 398, 172, accent, accent2);
+
+  ctx.fillStyle = accent;
+  ctx.font = '900 52px "PingFang SC", sans-serif';
+  ctx.fillText(config.badgeKicker || '值得记录', 92, 760);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '900 58px "PingFang SC", "Noto Sans CJK SC", sans-serif';
+  const titleLines = clampText(ctx, config.title || '投资分享图', POSTER_WIDTH - 184, 2);
+  titleLines.forEach((line, index) => ctx.fillText(line, 92, 842 + index * 68));
+
+  const summary = getPosterSummary(config, config.highlights);
+  ctx.fillStyle = 'rgba(226, 232, 240, 0.74)';
+  ctx.font = '500 32px "PingFang SC", sans-serif';
+  const summaryLines = clampText(ctx, summary || config.subtitle || '', POSTER_WIDTH - 184, 3);
+  summaryLines.forEach((line, index) => ctx.fillText(line, 92, 1008 + index * 48));
+
+  const mainMetric = getMainMetric(config);
+  if (mainMetric) {
+    ctx.save();
+    roundRect(ctx, 92, 1190, POSTER_WIDTH - 184, 92, 999);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    setFittedFont(ctx, `${mainMetric.label || '指标'}：${mainMetric.value}`, POSTER_WIDTH - 260, { size: 34, min: 24 });
+    ctx.textAlign = 'center';
+    ctx.fillText(`${mainMetric.label || '指标'}：${mainMetric.value}`, POSTER_WIDTH / 2, 1248);
+    ctx.restore();
+  }
+
+  drawFooter(ctx, config, { color: 'rgba(226, 232, 240, 0.58)', dateColor: 'rgba(226, 232, 240, 0.42)' });
+}
+
+function drawLedgerTemplate(ctx, config, accent, accent2) {
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, POSTER_WIDTH, POSTER_HEIGHT);
+
+  ctx.fillStyle = '#111827';
+  ctx.font = '900 44px "PingFang SC", sans-serif';
+  ctx.fillText(config.author || SHARE_BRAND, 138, 112);
+
+  ctx.fillStyle = '#6b7280';
+  ctx.font = '500 28px "PingFang SC", sans-serif';
+  ctx.fillText(config.generatedAt || new Date().toLocaleString('zh-CN'), 138, 156);
+
+  ctx.save();
+  roundRect(ctx, 92, 188, POSTER_WIDTH - 184, 54, 0);
+  ctx.fillStyle = '#f3f4f6';
+  ctx.fill();
+  ctx.fillStyle = '#6b7280';
+  ctx.font = '500 25px "PingFang SC", sans-serif';
+  ctx.fillText(`${config.typeLabel || '情报'} · ${config.subtitle || '本地账本'}`, 118, 224);
+  ctx.restore();
+
+  const mainMetric = getMainMetric(config);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#8b8b8b';
+  ctx.font = '500 31px "PingFang SC", sans-serif';
+  ctx.fillText(mainMetric?.label || config.sectionTitle || '核心摘要', POSTER_WIDTH / 2, 450);
+
+  ctx.fillStyle = mainMetric?.tone === 'loss' ? '#16a34a' : '#f97316';
+  setFittedFont(ctx, mainMetric?.value || config.title || '已沉淀', POSTER_WIDTH - 180, { size: 92, min: 48, weight: 900 });
+  ctx.fillText(mainMetric?.value || config.title || '已沉淀', POSTER_WIDTH / 2, 560);
+
+  ctx.textAlign = 'left';
+  const panelY = 720;
+  const panelH = 360;
+  ctx.save();
+  roundRect(ctx, 92, panelY, POSTER_WIDTH - 184, panelH, 14);
+  ctx.fillStyle = '#fff7ed';
+  ctx.fill();
+  ctx.strokeStyle = '#111827';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.fillStyle = '#111827';
+  ctx.font = '900 34px "PingFang SC", sans-serif';
+  ctx.fillText(config.sectionTitle || '信息摘要', 126, panelY + 58);
+
+  const summary = getPosterSummary(config, config.highlights);
+  ctx.fillStyle = '#374151';
+  ctx.font = '600 30px "PingFang SC", "Noto Sans CJK SC", sans-serif';
+  clampText(ctx, summary || config.title || '', POSTER_WIDTH - 252, 5)
+    .forEach((line, index) => ctx.fillText(line, 126, panelY + 116 + index * 46));
+
+  ctx.strokeStyle = '#e5e7eb';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(72, 1186);
+  ctx.lineTo(POSTER_WIDTH - 72, 1186);
+  ctx.stroke();
+
+  ctx.fillStyle = '#111827';
+  ctx.font = '900 34px "PingFang SC", sans-serif';
+  ctx.fillText(SHARE_BRAND, 132, 1306);
+  ctx.fillStyle = '#111827';
+  ctx.font = '700 28px "PingFang SC", sans-serif';
+  ctx.fillText('交易记录与分析 Agent', POSTER_WIDTH - 380, 1288);
+  ctx.fillText('本地优先', POSTER_WIDTH - 380, 1330);
+}
+
+function drawPopProfitTemplate(ctx, config, accent, accent2) {
+  const red = config.accent || '#f43f5e';
+  const bg = ctx.createLinearGradient(0, 0, 0, POSTER_HEIGHT);
+  bg.addColorStop(0, red);
+  bg.addColorStop(1, '#e11d48');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, POSTER_WIDTH, POSTER_HEIGHT);
+
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
+  ctx.font = '900 40px "PingFang SC", sans-serif';
+  ctx.fillText(SHARE_BRAND, 74, 112);
+  ctx.font = '500 24px "PingFang SC", sans-serif';
+  ctx.fillText('Local-first Trading Agent', 78, 146);
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
+  ctx.font = '500 36px "PingFang SC", sans-serif';
+  ctx.fillText(config.slogan || '今日复盘，落袋为安', POSTER_WIDTH / 2, 248);
+
+  ctx.save();
+  ctx.translate(POSTER_WIDTH / 2, 520);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.16)';
+  ctx.beginPath();
+  ctx.arc(0, 0, 216, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '900 170px "PingFang SC", sans-serif';
+  ctx.fillText('IB', 0, 54);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.54)';
+  ctx.font = '700 34px "PingFang SC", sans-serif';
+  ctx.fillText(config.typeLabel || '分享图', 0, 118);
+  ctx.restore();
+
+  const mainMetric = getMainMetric(config);
+  ctx.save();
+  roundRect(ctx, POSTER_WIDTH / 2 - 92, 820, 184, 48, 8);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+  ctx.stroke();
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '800 28px "PingFang SC", sans-serif';
+  ctx.fillText(mainMetric?.label || '核心指标', POSTER_WIDTH / 2, 854);
+  ctx.restore();
+
+  ctx.fillStyle = '#ffffff';
+  setFittedFont(ctx, mainMetric?.value || config.title || '+0.00%', POSTER_WIDTH - 164, { size: 96, min: 48, weight: 900 });
+  ctx.fillText(mainMetric?.value || config.title || '+0.00%', POSTER_WIDTH / 2, 970);
+
+  const metrics = Array.isArray(config.metrics) ? config.metrics.slice(0, 3) : [];
+  ctx.textAlign = 'left';
+  metrics.forEach((metric, index) => {
+    const x = 78 + index * 318;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.72)';
+    ctx.font = '500 28px "PingFang SC", sans-serif';
+    ctx.fillText(metric.label || '--', x, 1130);
+    ctx.fillStyle = '#ffffff';
+    setFittedFont(ctx, metric.value || '--', 270, { size: 36, min: 24, weight: 800 });
+    ctx.fillText(String(metric.value || '--'), x, 1180);
+  });
+
+  const summary = getPosterSummary(config, config.highlights);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.72)';
+  ctx.font = '500 27px "PingFang SC", sans-serif';
+  clampText(ctx, summary || config.subtitle || '', POSTER_WIDTH - 156, 2)
+    .forEach((line, index) => ctx.fillText(line, 78, 1264 + index * 40));
+
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.72)';
+  ctx.font = '500 24px "PingFang SC", sans-serif';
+  ctx.fillText(config.generatedAt || new Date().toLocaleString('zh-CN'), 78, 1370);
+}
+
+function createPosterCanvas(config = {}) {
+  const scale = getCanvasScale();
+  const canvas = document.createElement('canvas');
+  canvas.width = POSTER_WIDTH * scale;
+  canvas.height = POSTER_HEIGHT * scale;
+  canvas.style.width = `${POSTER_WIDTH}px`;
+  canvas.style.height = `${POSTER_HEIGHT}px`;
+
+  const ctx = canvas.getContext('2d');
+  ctx.scale(scale, scale);
+
+  const accent = config.accent || '#8ea2ff';
+  const accent2 = config.accent2 || '#2dd4bf';
+  const template = pickTemplate(config);
+  if (template === 'badge-card') {
+    drawBadgeTemplate(ctx, config, accent, accent2);
+  } else if (template === 'ledger-clean') {
+    drawLedgerTemplate(ctx, config, accent, accent2);
+  } else if (template === 'pop-profit') {
+    drawPopProfitTemplate(ctx, config, accent, accent2);
+  } else {
+    drawSignalCardTemplate(ctx, config, accent, accent2);
+  }
 
   return canvas;
 }
@@ -325,6 +648,9 @@ export async function sharePoster(config = {}) {
     : await chooseSharePosterBackground(config);
   const { blob, fileName } = createSharePoster({
     ...config,
+    template: background?.template || config.template,
+    accent: background?.accent || config.accent,
+    accent2: background?.accent2 || config.accent2,
     background: background || config.background,
   });
   const file = new File([blob], fileName, { type: 'image/png' });

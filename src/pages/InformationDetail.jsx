@@ -613,6 +613,17 @@ const splitList = (value) => String(value || '')
   .map((item) => item.trim())
   .filter(Boolean);
 
+const buildPosterSummaryText = (value = '') => String(value || '')
+  .replace(/```[\s\S]*?```/g, ' ')
+  .replace(/!\[[^\]]*]\([^)]+\)/g, ' ')
+  .replace(/\[[^\]]+]\([^)]+\)/g, (match) => match.replace(/^\[|\]\([^)]+\)$/g, ''))
+  .replace(/<[^>]+>/g, ' ')
+  .replace(/^(作者|来源|标题|视频地址|视频嵌入|原文链接)[:：].*$/gm, ' ')
+  .replace(/[#*_>`~|]/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim()
+  .slice(0, 220);
+
 const getStatusLabel = (status) => {
   const labels = {
     DRAFT: '观点',
@@ -1270,23 +1281,31 @@ export default function InformationDetail() {
 
   const handleShareInformationPoster = async () => {
     try {
+      const posterAssets = splitList(info?.asset_symbols || info?.asset_symbol || info?.asset_id);
+      const posterSectors = splitList(info?.sectors || info?.sector);
+      const posterSource = validUrl ? extractDomain(validUrl) : '本地情报库';
+      const posterSummary = buildPosterSummaryText(activeReaderContent || translationSourceContent || cleanContent);
+      const posterTitle = displayTitle || info?.title || '情报材料';
       const result = await sharePoster({
+        template: 'signal-card',
         typeLabel: TYPE_LABELS[info?.type] || '情报',
-        title: info?.title || '情报材料',
-        subtitle: validUrl ? extractDomain(validUrl) : '本地情报库',
+        title: posterTitle,
+        subtitle: `${posterSource}${translationModel ? ` · ${translationModel}` : ''}`,
         sectionTitle: '信息摘要',
+        summary: posterSummary || '暂无正文摘要',
+        footer: '本地优先 · 交易记录与分析 Agent',
         accent: '#8ea2ff',
         accent2: '#38bdf8',
         metrics: [
           { label: '类型', value: TYPE_LABELS[info?.type] || info?.type || '情报', hint: '信息分类' },
-          { label: '观点', value: viewpoints.length, hint: '已沉淀观点' },
-          { label: '决策', value: linkedDecisions.length, hint: '关联决策' },
-          { label: '来源', value: validUrl ? '外部' : '本地', hint: validUrl ? extractDomain(validUrl) : '离线保存' },
+          { label: '观点', value: `${viewpoints.length}`, hint: '已沉淀观点' },
+          { label: '决策', value: `${linkedDecisions.length}`, hint: '关联决策' },
+          { label: '来源', value: validUrl ? '外部' : '本地', hint: posterSource },
         ],
         highlights: [
-          ...splitList(info?.asset_symbols || info?.asset_symbol || info?.asset_id).slice(0, 2).map((asset) => `关联标的：${asset}`),
-          ...splitList(info?.sectors || info?.sector).slice(0, 2).map((sector) => `关联板块：${sector}`),
-          cleanContent ? cleanContent.replace(/\s+/g, ' ').slice(0, 140) : '暂无正文摘要',
+          ...posterAssets.slice(0, 2).map((asset) => `关联标的：${asset}`),
+          ...posterSectors.slice(0, 2).map((sector) => `关联板块：${sector}`),
+          posterSummary || '暂无正文摘要',
         ],
         fileName: `investbrain-info-${info?.id || Date.now()}.png`,
       });

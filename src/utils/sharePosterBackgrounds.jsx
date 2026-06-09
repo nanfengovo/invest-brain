@@ -31,6 +31,7 @@ const LOCAL_BACKGROUNDS = [
     value: 'radar',
     description: '蓝绿光源，适合行情和复盘',
     background: {
+      template: 'signal-card',
       palette: ['#06111f', '#0f172a', '#020617'],
       accent: '#38bdf8',
       accent2: '#2dd4bf',
@@ -42,6 +43,7 @@ const LOCAL_BACKGROUNDS = [
     value: 'theta',
     description: '琥珀与紫色，适合期权交易',
     background: {
+      template: 'signal-card',
       palette: ['#150f1f', '#1f1733', '#050816'],
       accent: '#f59e0b',
       accent2: '#a78bfa',
@@ -53,9 +55,34 @@ const LOCAL_BACKGROUNDS = [
     value: 'ledger',
     description: '低调暗色，数字可读性最高',
     background: {
+      template: 'ledger-clean',
       palette: ['#07111f', '#111827', '#020617'],
       accent: '#8ea2ff',
       accent2: '#64748b',
+      pattern: 'none',
+    },
+  },
+  {
+    label: '收益勋章',
+    value: 'badge',
+    description: '类似排行榜徽章，适合行情亮点和总结',
+    background: {
+      template: 'badge-card',
+      palette: ['#06111f', '#0f2c44', '#1f4c68'],
+      accent: '#38bdf8',
+      accent2: '#facc15',
+      pattern: 'none',
+    },
+  },
+  {
+    label: '红色战报',
+    value: 'pop-profit',
+    description: '强品牌色，适合收益、交易和期权战报',
+    background: {
+      template: 'pop-profit',
+      palette: ['#f43f5e', '#e11d48', '#be123c'],
+      accent: '#f43f5e',
+      accent2: '#ffffff',
       pattern: 'none',
     },
   },

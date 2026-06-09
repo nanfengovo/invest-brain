@@ -17,6 +17,11 @@ test('share poster utility creates local PNG posters and recommends free-ish mod
   assert.match(source, /flux\.2-klein-4b/);
   assert.match(source, /chooseSharePosterBackground/);
   assert.match(source, /drawPosterBackground/);
+  assert.match(source, /TEMPLATE_POOL/);
+  assert.match(source, /drawBadgeTemplate/);
+  assert.match(source, /drawLedgerTemplate/);
+  assert.match(source, /drawPopProfitTemplate/);
+  assert.match(source, /pickTemplate/);
 });
 
 test('market trade decision and information modules expose share poster actions', () => {
@@ -33,6 +38,9 @@ test('market trade decision and information modules expose share poster actions'
   assert.match(decision, /期权归因/);
   assert.match(information, /handleShareInformationPoster/);
   assert.match(information, />分享图</);
+  assert.match(information, /buildPosterSummaryText/);
+  assert.match(information, /title: posterTitle/);
+  assert.match(information, /summary: posterSummary/);
 });
 
 test('market boards expose high-frequency refresh and directional background motion', () => {
@@ -79,6 +87,8 @@ test('share poster background picker supports local upload and NVIDIA generation
 
   assert.match(picker, /选择本地背景/);
   assert.match(picker, /使用我的图片/);
+  assert.match(picker, /收益勋章/);
+  assert.match(picker, /红色战报/);
   assert.match(picker, /NVIDIA AI 生成/);
   assert.match(picker, /mode: 'share-background'/);
   assert.match(picker, /qwen-image-2512/);

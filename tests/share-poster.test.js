@@ -135,6 +135,7 @@ test('market boards expose high-frequency refresh and directional background mot
 test('market default spotlight supports US, A-share, and Hong Kong regions', () => {
   const market = readFileSync(new URL('../src/pages/MarketPage.jsx', import.meta.url), 'utf8');
   const header = readFileSync(new URL('../src/components/Market/MarketHeader.jsx', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../src/pages/MarketPage.css', import.meta.url), 'utf8');
   const symbols = readFileSync(new URL('../src/utils/marketSymbols.js', import.meta.url), 'utf8');
 
   assert.match(market, /const MARKET_REGIONS = \{/);
@@ -150,6 +151,8 @@ test('market default spotlight supports US, A-share, and Hong Kong regions', () 
   assert.match(header, /热门美股实时股价/);
   assert.match(header, /onRegionChange/);
   assert.match(header, /aria-pressed/);
+  assert.match(header, /market-region-switch__label/);
+  assert.doesNotMatch(css, /\.market-region-switch\s*\{\s*display:\s*none;/);
   assert.match(symbols, /normalizeMarketSymbol/);
   assert.match(symbols, /getMarketRegion/);
   assert.doesNotMatch(market, /const INDICES = \[/);

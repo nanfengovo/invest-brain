@@ -235,7 +235,10 @@ export default function MarketHeader({
                   aria-pressed={activeRegion === region.id}
                   onClick={() => onRegionChange?.(region.id)}
                 >
-                  {region.icon}
+                  <span className="market-region-switch__icon" aria-hidden="true">
+                    {region.icon}
+                  </span>
+                  <span className="market-region-switch__label">{region.label}</span>
                 </button>
               ))}
             </div>

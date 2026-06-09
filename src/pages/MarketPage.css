@@ -169,7 +169,7 @@
   height: 42px;
   padding: 4px;
   border: 1px solid rgba(91, 126, 204, 0.18);
-  border-radius: 16px;
+  border-radius: 18px;
   background: rgba(17, 27, 49, 0.78);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
@@ -179,21 +179,36 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
+  gap: 4px;
+  min-width: 48px;
   height: 32px;
-  padding: 0;
+  padding: 0 8px;
   border: 0;
-  border-radius: 12px;
+  border-radius: 14px;
   background: transparent;
-  font-size: 17px;
-  filter: grayscale(0.75);
+  color: rgba(219, 228, 244, 0.68);
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: -0.02em;
+  filter: grayscale(0.7);
   opacity: 0.55;
   cursor: pointer;
   transition:
+    color var(--transition-fast),
     opacity var(--transition-fast),
     filter var(--transition-fast),
     background var(--transition-fast),
     transform var(--transition-fast);
+}
+
+.market-region-switch__icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.market-region-switch__label {
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .market-region-switch__item:active {
@@ -202,6 +217,7 @@
 
 .market-region-switch__item--active {
   background: linear-gradient(145deg, rgba(74, 52, 69, 0.7), rgba(49, 34, 55, 0.78));
+  color: #f8fbff;
   filter: none;
   opacity: 1;
 }
@@ -1737,8 +1753,13 @@
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82);
 }
 
+[data-theme='light'] .market-region-switch__item {
+  color: rgba(62, 75, 98, 0.68);
+}
+
 [data-theme='light'] .market-region-switch__item--active {
   background: linear-gradient(145deg, rgba(255, 232, 238, 0.9), rgba(231, 239, 252, 0.92));
+  color: #172033;
 }
 
 [data-theme='light'] .market-search-overlay {
@@ -1955,8 +1976,25 @@
     font-size: 11px;
   }
 
+  .market-header__actions {
+    gap: 6px;
+  }
+
   .market-region-switch {
-    display: none;
+    height: 38px;
+    padding: 3px;
+  }
+
+  .market-region-switch__item {
+    min-width: 38px;
+    height: 30px;
+    gap: 2px;
+    padding: 0 5px;
+    font-size: 11px;
+  }
+
+  .market-region-switch__icon {
+    font-size: 12px;
   }
 
   .market-index-strip--futures {

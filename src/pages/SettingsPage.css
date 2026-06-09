@@ -274,6 +274,24 @@
   width: 100%;
 }
 
+.settings-card__provider-note {
+  padding: 10px 12px;
+  border: 1px solid rgba(84, 164, 255, 0.18);
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(84, 164, 255, 0.18), transparent 34%),
+    rgba(84, 164, 255, 0.08);
+  color: rgba(216, 226, 242, 0.78);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.55;
+}
+
+.settings-card__provider-note strong {
+  color: #a9c8ff;
+  font-weight: 850;
+}
+
 .settings-card__actions-row {
   display: flex;
   gap: 10px;
@@ -304,6 +322,18 @@
 [data-theme='light'] .settings-page .settings-card__input-wrapper .adm-input-element::placeholder {
   color: #475569;
   opacity: 1;
+}
+
+[data-theme='light'] .settings-page .settings-card__provider-note {
+  border-color: rgba(37, 99, 235, 0.18);
+  background:
+    radial-gradient(circle at 12% 0%, rgba(37, 99, 235, 0.14), transparent 34%),
+    rgba(239, 246, 255, 0.92);
+  color: #475569;
+}
+
+[data-theme='light'] .settings-page .settings-card__provider-note strong {
+  color: #1d4ed8;
 }
 
 [data-theme='light'] .settings-page .adm-selector .adm-selector-item {

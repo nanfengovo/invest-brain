@@ -11,6 +11,7 @@ const DEFAULT_NOTIFICATION_CONFIG = {
 
 const DEFAULT_MARKET_DATA_CONFIG = {
   optionProvider: 'auto',
+  marketDataToken: '',
   tradierToken: '',
   polygonToken: '',
 };
@@ -63,12 +64,13 @@ export function normalizeNotificationConfig(config = {}) {
 
 export function normalizeMarketDataConfig(config = {}) {
   const merged = { ...DEFAULT_MARKET_DATA_CONFIG, ...(config || {}) };
-  const provider = ['auto', 'tradier', 'polygon', 'yahoo'].includes(merged.optionProvider)
+  const provider = ['auto', 'marketdata', 'tradier', 'polygon', 'yahoo'].includes(merged.optionProvider)
     ? merged.optionProvider
     : 'auto';
 
   return {
     optionProvider: provider,
+    marketDataToken: String(merged.marketDataToken || ''),
     tradierToken: String(merged.tradierToken || ''),
     polygonToken: String(merged.polygonToken || ''),
   };

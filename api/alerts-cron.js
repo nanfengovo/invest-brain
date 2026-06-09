@@ -2,6 +2,7 @@ import { buildAlertNotification, getAlertChannels, normalizeCloudAlertPayload, s
 import { createRedisClient, parseRedisJson } from './_lib/redis.js';
 import { fetchYahooChart, fetchWithTimeout, YAHOO_HEADERS } from './_lib/yahoo.js';
 import { sendFeishu, sendResendEmail } from './notify.js';
+import optionsChainHandler from './options-chain.js';
 
 export const config = {
   maxDuration: 60,
@@ -64,9 +65,68 @@ async function fetchYahooOptionPrice(alert) {
   throw new Error(`No option price for ${alert.asset_id}`);
 }
 
-async function fetchAlertPrice(alert) {
+function createOptionsChainResponse() {
+  return {
+    statusCode: 200,
+    headers: {},
+    body: null,
+    setHeader(key, value) {
+      this.headers[key] = value;
+    },
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(payload) {
+      this.body = payload;
+      return this;
+    },
+  };
+}
+
+async function fetchConfiguredOptionPrice(alert, marketDataConfig = {}) {
+  const params = new URLSearchParams({
+    symbol: alert.symbol,
+    provider: marketDataConfig.optionProvider || 'auto',
+    contract: alert.asset_id,
+  });
+  const req = {
+    method: 'GET',
+    url: `/api/options-chain?${params.toString()}`,
+    headers: {
+      host: 'localhost',
+      ...(marketDataConfig.marketDataToken ? { 'x-marketdata-token': marketDataConfig.marketDataToken } : {}),
+      ...(marketDataConfig.tradierToken ? { 'x-tradier-token': marketDataConfig.tradierToken } : {}),
+      ...(marketDataConfig.polygonToken ? { 'x-polygon-token': marketDataConfig.polygonToken } : {}),
+    },
+  };
+  const res = createOptionsChainResponse();
+  await optionsChainHandler(req, res);
+
+  if (res.statusCode >= 400) {
+    throw new Error(res.body?.error || '期权行情加载失败');
+  }
+
+  const match = (res.body?.options || []).find((item) => item.contractSymbol === alert.asset_id);
+  const bid = toFiniteNumber(match?.bid);
+  const ask = toFiniteNumber(match?.ask);
+  const mark = toFiniteNumber(match?.mark);
+  const last = toFiniteNumber(match?.last);
+
+  if (mark !== null) return mark;
+  if (bid !== null && ask !== null && ask >= bid) return Number(((bid + ask) / 2).toFixed(4));
+  if (last !== null) return last;
+  throw new Error(`No option price for ${alert.asset_id}`);
+}
+
+async function fetchAlertPrice(alert, marketDataConfig = {}) {
   if (alert.asset_type === 'OPTION') {
-    return fetchYahooOptionPrice(alert);
+    try {
+      return await fetchConfiguredOptionPrice(alert, marketDataConfig);
+    } catch (error) {
+      if (marketDataConfig.optionProvider && marketDataConfig.optionProvider !== 'auto') throw error;
+      return fetchYahooOptionPrice(alert);
+    }
   }
   return fetchStockPrice(alert.symbol);
 }

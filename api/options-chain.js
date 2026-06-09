@@ -24,6 +24,25 @@ function toUnixExpiration(date) {
   return Number.isFinite(ts) ? Math.floor(ts / 1000) : null;
 }
 
+function getArrayValue(payload, key, index) {
+  const value = payload?.[key];
+  return Array.isArray(value) ? value[index] : value;
+}
+
+function parseOCCSymbol(value) {
+  const text = String(value || '').trim().toUpperCase();
+  const match = text.match(/^([A-Z.]+)(\d{6})([CP])(\d{8})$/);
+  if (!match) return {};
+  const [, underlying, yymmdd, side, strikeRaw] = match;
+  const expiration = `20${yymmdd.slice(0, 2)}-${yymmdd.slice(2, 4)}-${yymmdd.slice(4, 6)}`;
+  return {
+    underlying,
+    expiration,
+    type: side === 'P' ? 'PUT' : 'CALL',
+    strike: Number(strikeRaw) / 1000,
+  };
+}
+
 function markPrice(bid, ask, last) {
   const b = toNumber(bid);
   const a = toNumber(ask);
@@ -117,6 +136,110 @@ function normalizePolygonOption(item) {
     rho: null,
     inTheMoney: null,
     provider: 'Polygon',
+  };
+}
+
+function normalizeMarketDataOption(payload, index, fallbackUnderlying, fallbackExpiration) {
+  const contractSymbol = String(getArrayValue(payload, 'optionSymbol', index) || '').trim().toUpperCase();
+  const parsed = parseOCCSymbol(contractSymbol);
+  const bid = toNumber(getArrayValue(payload, 'bid', index));
+  const ask = toNumber(getArrayValue(payload, 'ask', index));
+  const last = toNumber(getArrayValue(payload, 'last', index));
+  const expirationValue = getArrayValue(payload, 'expiration', index);
+  const side = String(getArrayValue(payload, 'side', index) || parsed.type || '').toUpperCase();
+  const inTheMoney = getArrayValue(payload, 'inTheMoney', index);
+
+  return {
+    contractSymbol,
+    underlying: getArrayValue(payload, 'underlying', index) || parsed.underlying || fallbackUnderlying,
+    type: side === 'PUT' ? 'PUT' : 'CALL',
+    expiration: toDateStringFromUnix(expirationValue) || parsed.expiration || fallbackExpiration,
+    strike: toNumber(getArrayValue(payload, 'strike', index)) ?? parsed.strike ?? null,
+    last,
+    bid,
+    ask,
+    mark: toNumber(getArrayValue(payload, 'mid', index)) ?? markPrice(bid, ask, last),
+    change: null,
+    percentChange: null,
+    volume: toNumber(getArrayValue(payload, 'volume', index)),
+    openInterest: toNumber(getArrayValue(payload, 'openInterest', index)),
+    impliedVolatility: toNumber(getArrayValue(payload, 'iv', index)),
+    delta: toNumber(getArrayValue(payload, 'delta', index)),
+    gamma: toNumber(getArrayValue(payload, 'gamma', index)),
+    theta: toNumber(getArrayValue(payload, 'theta', index)),
+    vega: toNumber(getArrayValue(payload, 'vega', index)),
+    rho: null,
+    inTheMoney: typeof inTheMoney === 'boolean' ? inTheMoney : null,
+    intrinsicValue: toNumber(getArrayValue(payload, 'intrinsicValue', index)),
+    extrinsicValue: toNumber(getArrayValue(payload, 'extrinsicValue', index)),
+    updated: toNumber(getArrayValue(payload, 'updated', index)),
+    provider: 'MarketData.app',
+  };
+}
+
+function isMarketDataSuccess(response) {
+  return response.status === 200 || response.status === 203;
+}
+
+async function fetchMarketDataApp(symbol, expiration, token, filters = {}) {
+  const headers = {
+    Accept: 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+  const contractSymbol = String(filters.contract || '').replace(/^OPTION_/i, '').trim().toUpperCase();
+  const contractDetails = parseOCCSymbol(contractSymbol);
+
+  if (contractSymbol) {
+    const quoteUrl = `https://api.marketdata.app/v1/options/quotes/${encodeURIComponent(contractSymbol)}/`;
+    const quoteResponse = await fetchWithTimeout(quoteUrl, { headers }, 6_000);
+    const quoteJson = await quoteResponse.json().catch(() => ({}));
+    if (quoteResponse.status === 404 || quoteJson.s === 'no_data') {
+      return {
+        expirations: contractDetails.expiration ? [contractDetails.expiration] : [],
+        selectedExpiration: contractDetails.expiration || expiration || null,
+        options: [],
+        message: quoteJson.errmsg || 'MarketData.app 未返回该期权合约报价。',
+      };
+    }
+    if (!isMarketDataSuccess(quoteResponse)) {
+      throw new Error(`MarketData.app quotes responded with ${quoteResponse.status}`);
+    }
+    return {
+      expirations: contractDetails.expiration ? [contractDetails.expiration] : [],
+      selectedExpiration: contractDetails.expiration || expiration || null,
+      options: [normalizeMarketDataOption(quoteJson, 0, symbol, contractDetails.expiration || expiration)],
+    };
+  }
+
+  const chainUrl = new URL(`https://api.marketdata.app/v1/options/chain/${encodeURIComponent(symbol)}/`);
+  if (expiration) chainUrl.searchParams.set('expiration', expiration);
+  if (filters.strike) chainUrl.searchParams.set('strike', filters.strike);
+  if (filters.side) chainUrl.searchParams.set('side', String(filters.side).toLowerCase());
+
+  const chainResponse = await fetchWithTimeout(chainUrl.toString(), { headers }, 8_000);
+  const chainJson = await chainResponse.json().catch(() => ({}));
+  if (chainResponse.status === 404 || chainJson.s === 'no_data') {
+    return {
+      expirations: expiration ? [expiration] : [],
+      selectedExpiration: expiration || null,
+      options: [],
+      message: chainJson.errmsg || 'MarketData.app 未返回期权链。',
+    };
+  }
+  if (!isMarketDataSuccess(chainResponse)) {
+    throw new Error(`MarketData.app chain responded with ${chainResponse.status}`);
+  }
+
+  const count = Array.isArray(chainJson.optionSymbol) ? chainJson.optionSymbol.length : 0;
+  const options = Array.from({ length: count }, (_, index) => (
+    normalizeMarketDataOption(chainJson, index, symbol, expiration)
+  ));
+  const expirations = Array.from(new Set(options.map((item) => item.expiration).filter(Boolean))).sort();
+
+  return {
+    expirations,
+    selectedExpiration: expiration || expirations[0] || null,
+    options,
   };
 }
 
@@ -245,6 +368,14 @@ export default async function handler(req, res) {
     const symbol = String(searchParams.get('symbol') || '').trim().toUpperCase();
     const expiration = searchParams.get('expiration') || null;
     const provider = searchParams.get('provider') || 'auto';
+    const strike = searchParams.get('strike') || '';
+    const side = searchParams.get('side') || '';
+    const contract = searchParams.get('contract') || '';
+    const marketDataToken = req.headers['x-marketdata-token']
+      || req.headers['x-market-data-token']
+      || process.env.MARKETDATA_TOKEN
+      || process.env.MARKETDATA_API_TOKEN
+      || '';
     const tradierToken = req.headers['x-tradier-token'] || process.env.TRADIER_TOKEN || '';
     const polygonToken = req.headers['x-polygon-token'] || process.env.POLYGON_API_KEY || '';
 
@@ -252,7 +383,17 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Missing symbol parameter' });
     }
 
-    const cacheKey = `${provider}:${symbol}:${expiration || 'front'}:${tradierToken ? 'tradier' : ''}:${polygonToken ? 'polygon' : ''}`;
+    const cacheKey = [
+      provider,
+      symbol,
+      expiration || 'front',
+      strike || 'all-strikes',
+      side || 'both',
+      contract || 'chain',
+      marketDataToken ? 'marketdata' : '',
+      tradierToken ? 'tradier' : '',
+      polygonToken ? 'polygon' : '',
+    ].join(':');
     const cached = optionsCache.get(cacheKey);
     if (cached && Date.now() - cached.fetchedAt <= CACHE_TTL_MS) {
       res.setHeader('Access-Control-Allow-Origin', '*');
@@ -262,7 +403,15 @@ export default async function handler(req, res) {
     }
 
     let payload;
-    if (provider === 'tradier' || (provider === 'auto' && tradierToken)) {
+    if (provider === 'marketdata' || (provider === 'auto' && marketDataToken)) {
+      payload = {
+        success: true,
+        symbol,
+        provider: 'MarketData.app',
+        generatedAt: new Date().toISOString(),
+        ...(await fetchMarketDataApp(symbol, expiration, marketDataToken, { strike, side, contract })),
+      };
+    } else if (provider === 'tradier' || (provider === 'auto' && tradierToken)) {
       payload = {
         success: true,
         symbol,
@@ -295,7 +444,7 @@ export default async function handler(req, res) {
         expirations: [],
         selectedExpiration: null,
         options: [],
-        message: '期权链需要在设置中配置 Tradier 或 Polygon API Token。',
+        message: '期权链需要在设置中配置 MarketData.app、Tradier 或 Polygon API Token。',
       };
     }
 

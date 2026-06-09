@@ -2,9 +2,28 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
+
+function loadLocalEnv() {
+  ['.env.local', '.env'].forEach((file) => {
+    if (!existsSync(file)) return;
+    const content = readFileSync(file, 'utf-8');
+    content.split(/\r?\n/).forEach((line) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#') || !trimmed.includes('=')) return;
+      const index = trimmed.indexOf('=');
+      const key = trimmed.slice(0, index).trim();
+      const value = trimmed.slice(index + 1).trim().replace(/^['"]|['"]$/g, '');
+      if (key && process.env[key] === undefined) {
+        process.env[key] = value;
+      }
+    });
+  });
+}
+
+loadLocalEnv();
 
 function createApiResponse(res) {
   return {
@@ -54,6 +73,7 @@ function localApiPlugin() {
     '/api/ocr': './api/ocr.js',
     '/api/analyze-personality': './api/analyze-personality.js',
     '/api/share-background': './api/summarize.js',
+    '/api/options-chain': './api/options-chain.js',
   };
 
   return {

@@ -16,6 +16,7 @@ const DEFAULT_NOTIFICATION_CONFIG = {
 
 const DEFAULT_MARKET_DATA_CONFIG = {
   optionProvider: 'auto',
+  marketDataToken: '',
   tradierToken: '',
   polygonToken: '',
 };

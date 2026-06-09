@@ -109,6 +109,38 @@ test('market option section uses contract monitor cards instead of generic quote
   assert.match(css, /market-option-card__dte/);
 });
 
+test('market data settings support MarketData.app option provider', () => {
+  const api = readFileSync(new URL('../api/options-chain.js', import.meta.url), 'utf8');
+  const settings = readFileSync(new URL('../src/pages/SettingsPage.jsx', import.meta.url), 'utf8');
+  const appStore = readFileSync(new URL('../src/stores/useAppStore.js', import.meta.url), 'utf8');
+  const alertRules = readFileSync(new URL('../api/_lib/alertRules.js', import.meta.url), 'utf8');
+  const cloudAlerts = readFileSync(new URL('../src/utils/cloudAlerts.js', import.meta.url), 'utf8');
+  const market = readFileSync(new URL('../src/pages/MarketPage.jsx', import.meta.url), 'utf8');
+  const stockDetail = readFileSync(new URL('../src/pages/StockDetailPage.jsx', import.meta.url), 'utf8');
+  const priceAlertRunner = readFileSync(new URL('../src/utils/priceAlertRunner.js', import.meta.url), 'utf8');
+  const viteConfig = readFileSync(new URL('../vite.config.js', import.meta.url), 'utf8');
+
+  assert.match(api, /fetchMarketDataApp/);
+  assert.match(api, /api\.marketdata\.app\/v1\/options\/quotes/);
+  assert.match(api, /api\.marketdata\.app\/v1\/options\/chain/);
+  assert.match(api, /MARKETDATA_TOKEN/);
+  assert.match(api, /MarketData\.app/);
+  assert.match(api, /status === 203/);
+  assert.match(settings, /MarketData\.app/);
+  assert.match(settings, /免费层约 100 次\/日 API Credits/);
+  assert.match(settings, /期权数据延迟约 24h/);
+  assert.match(settings, /MarketData\.app Token（推荐）/);
+  assert.match(appStore, /marketDataToken/);
+  assert.match(alertRules, /marketDataToken/);
+  assert.match(alertRules, /'marketdata'/);
+  assert.match(cloudAlerts, /marketDataToken/);
+  assert.match(market, /X-MarketData-Token/);
+  assert.match(market, /params\.set\('contract'/);
+  assert.match(stockDetail, /X-MarketData-Token/);
+  assert.match(priceAlertRunner, /X-MarketData-Token/);
+  assert.match(viteConfig, /\/api\/options-chain/);
+});
+
 test('share poster background picker supports local upload and NVIDIA generation', () => {
   const picker = readFileSync(new URL('../src/utils/sharePosterBackgrounds.jsx', import.meta.url), 'utf8');
   const api = readFileSync(new URL('../api/_lib/shareBackground.js', import.meta.url), 'utf8');

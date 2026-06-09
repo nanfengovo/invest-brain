@@ -535,11 +535,19 @@ function SettingsPage() {
   }
 
   async function handleSaveMarketDataConfig() {
+    const normalizedMarketData = {
+      ...marketDataInput,
+      marketDataToken: String(marketDataInput.marketDataToken || '').trim(),
+      tradierToken: String(marketDataInput.tradierToken || '').trim(),
+      polygonToken: String(marketDataInput.polygonToken || '').trim(),
+    };
+
     try {
-      await saveMarketDataConfig(marketDataInput);
+      await saveMarketDataConfig(normalizedMarketData);
+      setMarketDataInput(normalizedMarketData);
       await syncCloudAlerts({
         notificationConfig: notificationInput,
-        marketDataConfig: marketDataInput,
+        marketDataConfig: normalizedMarketData,
       });
       Toast.show({ icon: 'success', content: '行情数据源已保存' });
     } catch {
@@ -1114,7 +1122,7 @@ function SettingsPage() {
             <div className="settings-card__content">
               <div className="settings-card__label">期权链数据源</div>
               <div className="settings-card__desc">
-                Auto 会优先使用 Tradier，其次 Polygon；Yahoo 期权链当前需要 crumb，仅保留实验入口。
+                Auto 会优先使用 MarketData.app，其次 Tradier、Polygon；Yahoo 仅作为免费实验兜底，盘中实时期权价仍取决于 OPRA 权限。
               </div>
             </div>
           </div>
@@ -1122,6 +1130,7 @@ function SettingsPage() {
             <Selector
               options={[
                 { label: 'Auto', value: 'auto' },
+                { label: 'MarketData.app', value: 'marketdata' },
                 { label: 'Tradier', value: 'tradier' },
                 { label: 'Polygon', value: 'polygon' },
                 { label: 'Yahoo(实验)', value: 'yahoo' },
@@ -1132,6 +1141,19 @@ function SettingsPage() {
                 setMarketDataInput((current) => ({ ...current, optionProvider: value[0] }));
               }}
             />
+            <div className="settings-card__provider-note">
+              <strong>MarketData.app 建议优先使用。</strong>
+              免费层约 100 次/日 API Credits，期权数据延迟约 24h，适合复盘和低频监控；试用或付费套餐可升级更低延迟/实时 OPRA。为省额度，本系统会优先按 OCC 单合约代码请求报价。
+            </div>
+            <div className="settings-card__input-wrapper">
+              <Input
+                placeholder="MarketData.app Token（推荐）"
+                type="password"
+                value={marketDataInput.marketDataToken || ''}
+                onChange={(value) => setMarketDataInput((current) => ({ ...current, marketDataToken: value }))}
+                clearable
+              />
+            </div>
             <div className="settings-card__input-wrapper">
               <Input
                 placeholder="Tradier API Token（可选）"

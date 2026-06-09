@@ -81,6 +81,7 @@ async function fetchOptionPrice(alert, marketDataConfig) {
     headers: {
       ...(marketDataConfig.tradierToken ? { 'X-Tradier-Token': marketDataConfig.tradierToken } : {}),
       ...(marketDataConfig.polygonToken ? { 'X-Polygon-Token': marketDataConfig.polygonToken } : {}),
+      ...(marketDataConfig.marketDataToken ? { 'X-MarketData-Token': marketDataConfig.marketDataToken } : {}),
     },
   });
   const json = await response.json();

@@ -262,6 +262,12 @@ export function mergeOptionQuote(candidate, option) {
     provider: option?.provider || '',
     volume: option?.volume ?? null,
     openInterest: option?.openInterest ?? null,
+    impliedVolatility: option?.impliedVolatility ?? null,
+    delta: option?.delta ?? null,
+    gamma: option?.gamma ?? null,
+    theta: option?.theta ?? null,
+    vega: option?.vega ?? null,
+    updated: option?.updated ?? null,
   };
 }
 

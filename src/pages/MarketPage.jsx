@@ -290,37 +290,32 @@ export default function MarketPage() {
       setOptionLoading(true);
 
       try {
-        const grouped = optionCandidates.reduce((acc, candidate) => {
-          const key = `${candidate.underlying}:${candidate.expiration}`;
-          if (!acc[key]) acc[key] = [];
-          acc[key].push(candidate);
-          return acc;
-        }, {});
         const nextQuotes = {};
 
-        await Promise.all(Object.entries(grouped).map(async ([, candidates]) => {
-          const first = candidates[0];
+        await Promise.all(optionCandidates.map(async (candidate) => {
           const params = new URLSearchParams({
-            symbol: first.underlying,
-            expiration: first.expiration,
+            symbol: candidate.underlying,
+            expiration: candidate.expiration,
             provider: marketDataConfig.optionProvider || 'auto',
           });
+          if (candidate.contractSymbol) params.set('contract', candidate.contractSymbol);
+          if (candidate.strike) params.set('strike', candidate.strike);
+          if (candidate.optionType) params.set('side', candidate.optionType.toLowerCase());
           const res = await fetch(`/api/options-chain?${params.toString()}`, {
             signal: activeController.signal,
             headers: {
               ...(marketDataConfig.tradierToken ? { 'X-Tradier-Token': marketDataConfig.tradierToken } : {}),
               ...(marketDataConfig.polygonToken ? { 'X-Polygon-Token': marketDataConfig.polygonToken } : {}),
+              ...(marketDataConfig.marketDataToken ? { 'X-MarketData-Token': marketDataConfig.marketDataToken } : {}),
             },
           });
           const json = await res.json();
           if (!res.ok) throw new Error(json.error || '期权行情加载失败');
 
-          candidates.forEach((candidate) => {
-            const match = findMatchingOption(json.options || [], candidate);
-            if (match) {
-              nextQuotes[candidate.id] = mergeOptionQuote(candidate, match);
-            }
-          });
+          const match = findMatchingOption(json.options || [], candidate);
+          if (match) {
+            nextQuotes[candidate.id] = mergeOptionQuote(candidate, match);
+          }
         }));
 
         if (!mounted) return;

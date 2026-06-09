@@ -26,6 +26,7 @@ import {
 import {
   getOrphanSellLifecycleItems,
 } from '../../utils/tradeLifecycle';
+import { createTradeDeduper } from '../../utils/tradeDeduplication';
 import './TradeForm.css';
 
 const ASSET_TYPE_OPTIONS = [
@@ -872,6 +873,7 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
                 const refreshTrades = useTradeStore.getState().refreshTrades;
                 const getTrades = () => useTradeStore.getState().trades;
                 let successCount = 0;
+                let duplicateCount = 0;
                 let failCount = 0;
                 const errors = [];
                 const prepared = attachDecisionRecommendations(ocrTrades, decisions);
@@ -892,6 +894,9 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
                   content: '正在导入...',
                   duration: 0,
                 });
+
+                await refreshTrades();
+                const deduper = createTradeDeduper(getTrades(), { author: currentAuthor });
 
                 for (const [index, item] of prepared.entries()) {
                   const t = useRecommendations ? item.trade : ocrTrades[index];
@@ -933,6 +938,11 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
                     author: t.author || currentAuthor,
                   };
 
+                  if (deduper.isDuplicate(tradeToSave)) {
+                    duplicateCount++;
+                    continue;
+                  }
+
                   const res = await addTrade(tradeToSave);
                   if (res.success) {
                     successCount++;
@@ -950,7 +960,15 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
                 }
 
                 if (failCount === 0) {
-                  Toast.show({ icon: 'success', content: `成功导入 ${successCount} 笔交易` });
+                  if (successCount === 0 && duplicateCount > 0) {
+                    Toast.show({ icon: 'success', content: `没有新增交易，已跳过重复 ${duplicateCount} 笔` });
+                    setOcrSheetVisible(false);
+                    onSuccess?.();
+                    onClose?.();
+                    return;
+                  }
+                  const duplicateText = duplicateCount > 0 ? `，已跳过重复 ${duplicateCount} 笔` : '';
+                  Toast.show({ icon: 'success', content: `成功导入 ${successCount} 笔交易${duplicateText}` });
                   if (missingBuyItems.length > 0) {
                     Dialog.alert({
                       header: <span style={{ color: 'var(--color-loss)' }}>发现缺少买入记录</span>,
@@ -971,7 +989,8 @@ export default function TradeForm({ onClose, onSuccess, initialData }) {
                   onSuccess?.();
                   onClose?.();
                 } else if (successCount > 0) {
-                  Toast.show({ icon: 'success', content: `导入完成: 成功 ${successCount} 笔, 失败 ${failCount} 笔` });
+                  const duplicateText = duplicateCount > 0 ? `，跳过重复 ${duplicateCount} 笔` : '';
+                  Toast.show({ icon: 'success', content: `导入完成: 成功 ${successCount} 笔, 失败 ${failCount} 笔${duplicateText}` });
                   Dialog.alert({
                     header: <span style={{ color: 'var(--color-loss)' }}>部分导入失败</span>,
                     content: (

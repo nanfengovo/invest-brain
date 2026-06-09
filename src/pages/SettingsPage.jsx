@@ -7,6 +7,7 @@ import { parseTradesFile } from '../utils/importTrades';
 import { attachDecisionRecommendations } from '../utils/decisionMatcher';
 import { restoreAutoBackup } from '../utils/autoBackup';
 import { syncCloudAlerts } from '../utils/cloudAlerts';
+import { createTradeDeduper } from '../utils/tradeDeduplication';
 import {
   AI_PROVIDER_OPTIONS,
   AI_TEXT_MODEL_OPTIONS,
@@ -320,11 +321,22 @@ function SettingsPage() {
 
         Toast.show({ icon: 'loading', content: '正在导入...' });
         let successCount = 0;
+        let duplicateCount = 0;
         let failCount = 0;
         const errors = [];
+        const existingTrades = await db.getTrades(5000, 0, workspaceScope);
+        const deduper = createTradeDeduper(existingTrades, { author: currentAuthor });
 
         for (const trade of tradesToImport) {
           try {
+            const tradeToSave = {
+              ...trade,
+              author: trade.author || currentAuthor,
+            };
+            if (deduper.isDuplicate(tradeToSave)) {
+              duplicateCount++;
+              continue;
+            }
             await db.upsertAsset({
               id: trade.asset_id,
               symbol: trade.symbol,
@@ -336,10 +348,7 @@ function SettingsPage() {
               option_type: trade.option_type || null,
               multiplier: trade.multiplier || (trade.asset_type === 'OPTION' ? 100 : 1),
             });
-            await db.addTrade({
-              ...trade,
-              author: trade.author || currentAuthor,
-            });
+            await db.addTrade(tradeToSave);
             successCount++;
           } catch (err) {
             failCount++;
@@ -349,9 +358,15 @@ function SettingsPage() {
         await refreshAll();
 
         if (failCount === 0) {
-          Toast.show({ icon: 'success', content: `成功导入 ${successCount} 条记录` });
+          if (successCount === 0 && duplicateCount > 0) {
+            Toast.show({ icon: 'success', content: `没有新增记录，已跳过重复 ${duplicateCount} 条` });
+            return;
+          }
+          const duplicateText = duplicateCount > 0 ? `，已跳过重复 ${duplicateCount} 条` : '';
+          Toast.show({ icon: 'success', content: `成功导入 ${successCount} 条记录${duplicateText}` });
         } else if (successCount > 0) {
-          Toast.show({ icon: 'success', content: `导入完成: 成功 ${successCount} 条, 失败 ${failCount} 条` });
+          const duplicateText = duplicateCount > 0 ? `，跳过重复 ${duplicateCount} 条` : '';
+          Toast.show({ icon: 'success', content: `导入完成: 成功 ${successCount} 条, 失败 ${failCount} 条${duplicateText}` });
           Dialog.alert({
             header: <span style={{ color: 'var(--color-loss)' }}>部分导入失败</span>,
             content: (

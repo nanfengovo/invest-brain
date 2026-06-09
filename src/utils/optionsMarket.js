@@ -124,6 +124,25 @@ export function parseOptionContractSymbol(value) {
     };
   }
 
+  const strikeFirstLooseMatch = text.match(/^([A-Z.]+)\s+(\d{6}|\d{8}|\d{4}-\d{2}-\d{2})\s+([\d.]+)\s+(CALL|PUT|C|P)$/);
+  if (strikeFirstLooseMatch) {
+    const expiration = normalizeExpiration(strikeFirstLooseMatch[2]);
+    const strike = normalizeStrike(strikeFirstLooseMatch[3]);
+    const optionType = normalizeOptionType(strikeFirstLooseMatch[4]);
+    return {
+      underlying: strikeFirstLooseMatch[1],
+      expiration,
+      optionType,
+      strike,
+      contractSymbol: buildOCCContractSymbol({
+        underlying: strikeFirstLooseMatch[1],
+        expiration,
+        optionType,
+        strike,
+      }) || text,
+    };
+  }
+
   const typeFirstMatch = text.match(/^([A-Z.]+)\s+(CALL|PUT|C|P)\s+(\d{6}|\d{8}|\d{4}-\d{2}-\d{2})\s+([\d.]+)/);
   if (typeFirstMatch) {
     const expiration = normalizeExpiration(typeFirstMatch[3]);

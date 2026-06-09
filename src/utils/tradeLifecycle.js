@@ -8,6 +8,7 @@ import {
   normalizeStrike,
   normalizeUnderlying,
 } from './optionsMarket.js';
+import { getTradeIdentityAssetKey } from './tradeDeduplication.js';
 
 const BUY_DIRECTIONS = new Set(['BUY', 'OPEN', 'BTO', '买入', '买', '开仓']);
 const SELL_DIRECTIONS = new Set(['SELL', 'CLOSE', 'STC', '卖出', '卖', '平仓']);
@@ -281,11 +282,11 @@ export function getTradeLifecycleKey(trade = {}) {
   const broker = String(trade.broker || '').trim().toUpperCase();
   const account = String(trade.account || '').trim().toUpperCase();
   const author = String(trade.author || '未标记').trim().toUpperCase();
-  const identity = type === 'OPTION'
-    ? `${symbol}|${assetDisplay}`
-    : `${symbol || trade.asset_id || ''}`;
+  if (type === 'OPTION') {
+    return [author, type, getTradeIdentityAssetKey(trade) || assetDisplay || symbol || trade.asset_id || ''].join('::');
+  }
 
-  return [author, broker, account, type, identity].join('::');
+  return [author, broker, account, type, symbol || trade.asset_id || ''].join('::');
 }
 
 function getTradeLifecycleType(trade = {}) {

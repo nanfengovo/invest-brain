@@ -85,6 +85,40 @@ test('calculates realized pnl for closed buy and sell pairs', () => {
   assert.equal(shouldShowOptionExpirationLabel(trades[1]), false);
 });
 
+test('matches option buys and sells even when broker metadata differs', () => {
+  const trades = annotateTradesWithLifecycle([
+    {
+      id: 'b1',
+      symbol: 'STM',
+      asset_type: 'OPTION',
+      expiry_date: '2026-06-18',
+      strike_price: 72,
+      option_type: 'CALL',
+      direction: 'BUY',
+      quantity: 1,
+      price: 4.3,
+      author: 'feng',
+      broker: '',
+    },
+    {
+      id: 's1',
+      symbol: 'STM',
+      asset_type: 'OPTION',
+      contract_symbol: 'STM260618C00072000',
+      direction: 'SELL',
+      quantity: 1,
+      price: 8,
+      author: 'feng',
+      broker: '复星证券',
+      account: 'OCR',
+    },
+  ]);
+
+  assert.equal(trades[0].lifecycle.status, 'CLOSED');
+  assert.equal(trades[1].lifecycle.status, 'CLOSED');
+  assert.equal(getOrphanSellLifecycleItems(trades).length, 0);
+});
+
 test('shows option expiration only for open buy exposure', () => {
   const [openBuy, closedBuy, closeSell, orphanSell] = annotateTradesWithLifecycle([
     {

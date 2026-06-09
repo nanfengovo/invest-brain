@@ -74,6 +74,23 @@ test('market boards expose high-frequency refresh and directional background mot
   assert.match(css, /background-color: rgba\(var\(--market-flash-down-rgb\)/);
 });
 
+test('market default spotlight shows stock prices instead of index points', () => {
+  const market = readFileSync(new URL('../src/pages/MarketPage.jsx', import.meta.url), 'utf8');
+  const header = readFileSync(new URL('../src/components/Market/MarketHeader.jsx', import.meta.url), 'utf8');
+
+  assert.match(market, /const DEFAULT_STOCKS = \[/);
+  assert.match(market, /symbol: 'NVDA'/);
+  assert.match(market, /symbol: 'AAPL'/);
+  assert.match(market, /symbol: 'TSLA'/);
+  assert.match(market, /hasWatchlist \? marketWatchlist : DEFAULT_STOCKS/);
+  assert.match(market, /variant=\{hasWatchlist \? 'watchlist' : 'spotlight'\}/);
+  assert.match(market, /热门美股股价/);
+  assert.match(header, /热门美股实时股价/);
+  assert.doesNotMatch(market, /const INDICES = \[/);
+  assert.doesNotMatch(market, /gb_ixic/);
+  assert.doesNotMatch(market, /全球主要指数/);
+});
+
 test('share poster background picker supports local upload and NVIDIA generation', () => {
   const picker = readFileSync(new URL('../src/utils/sharePosterBackgrounds.jsx', import.meta.url), 'utf8');
   const api = readFileSync(new URL('../api/_lib/shareBackground.js', import.meta.url), 'utf8');

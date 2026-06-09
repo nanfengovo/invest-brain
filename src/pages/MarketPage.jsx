@@ -16,10 +16,10 @@ const MARKET_CLIENT_CACHE_TTL_MS = 30_000;
 const MARKET_POLL_INTERVAL_MS = 8_000;
 const MARKET_FLASH_MS = 1_100;
 
-const INDICES = [
-  { symbol: 'gb_ixic', name: '纳斯达克综合', quoteLabel: '指数 · ^IXIC' },
-  { symbol: 'gb_ndx', name: '纳斯达克100', quoteLabel: '指数 · ^NDX' },
-  { symbol: 'gb_inx', name: '标普500', quoteLabel: '指数 · ^GSPC' }
+const DEFAULT_STOCKS = [
+  { symbol: 'NVDA', name: '英伟达', quoteLabel: '股票 · NVDA' },
+  { symbol: 'AAPL', name: '苹果', quoteLabel: '股票 · AAPL' },
+  { symbol: 'TSLA', name: '特斯拉', quoteLabel: '股票 · TSLA' },
 ];
 
 const SECTORS = [
@@ -167,7 +167,7 @@ export default function MarketPage() {
     let mounted = true;
     let activeController = null;
     const hasWatchlist = marketWatchlist.length > 0;
-    const primaryConfigs = hasWatchlist ? marketWatchlist : INDICES;
+    const primaryConfigs = hasWatchlist ? marketWatchlist : DEFAULT_STOCKS;
     const primarySymbols = getUniqueSymbols(primaryConfigs.map(item => item.symbol));
 
     const secondarySymbols = getUniqueSymbols([
@@ -359,7 +359,7 @@ export default function MarketPage() {
   };
 
   const hasWatchlist = marketWatchlist.length > 0;
-  const primaryItems = mapData(hasWatchlist ? marketWatchlist : INDICES);
+  const primaryItems = mapData(hasWatchlist ? marketWatchlist : DEFAULT_STOCKS);
   const optionItems = optionCandidates.map((candidate) => ({
     ...candidate,
     ...(optionQuotes[candidate.id] || {}),
@@ -403,7 +403,7 @@ export default function MarketPage() {
         accent: '#38bdf8',
         accent2: '#2dd4bf',
         metrics: [
-          { label: hasWatchlist ? '自选数量' : '指数数量', value: hasWatchlist ? marketWatchlist.length : primaryItems.length, hint: hasWatchlist ? '我的关注' : '默认指数' },
+          { label: hasWatchlist ? '自选数量' : '股票数量', value: hasWatchlist ? marketWatchlist.length : primaryItems.length, hint: hasWatchlist ? '我的关注' : '默认美股' },
           { label: '期权关注', value: optionItems.length, hint: '合约监控' },
           { label: '板块池', value: sectorItems.length, hint: '主题雷达' },
           { label: '刷新间隔', value: `${MARKET_POLL_INTERVAL_MS / 1000}s`, hint: '本地监控' },
@@ -437,12 +437,12 @@ export default function MarketPage() {
       />
       
       <div className="market-page__content">
-        <section aria-label={hasWatchlist ? '我的关注行情' : '全球主要指数'}>
+        <section aria-label={hasWatchlist ? '我的关注行情' : '热门美股股价'}>
           <IndexCardScroller
             items={primaryItems}
             colorConvention={colorConvention}
             loading={loading}
-            variant={hasWatchlist ? 'watchlist' : 'indices'}
+            variant={hasWatchlist ? 'watchlist' : 'spotlight'}
           />
         </section>
 

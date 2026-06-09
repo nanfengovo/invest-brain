@@ -201,7 +201,7 @@ export default function MarketHeader({ watchlist = [], onAddWatchItem }) {
                   {marketStatus.label}
                 </span>
               </div>
-              <p>{watchlist.length > 0 ? '关注股票实时监控' : '全球主要指数实时监控'}</p>
+              <p>{watchlist.length > 0 ? '关注股票实时监控' : '热门美股实时股价'}</p>
             </div>
           </div>
           

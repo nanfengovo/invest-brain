@@ -78,11 +78,14 @@ export default function IndexCardScroller({ items, colorConvention, variant = 'i
         const absFormatted = item.absChange !== null ? `${sign}${item.absChange.toFixed(2)}` : '--';
         const safeId = (item.symbol || `index-${index}`).replace(/[^a-zA-Z0-9]/g, '-');
         const flashClass = item.movement ? `market-flash--${item.movement}` : '';
+        const hierarchyClass = variant === 'spotlight'
+          ? `market-index-card--${index === 0 ? 'primary' : 'secondary'}`
+          : '';
 
         return (
           <button
             type="button"
-            className={`market-index-card ${flashClass}`}
+            className={`market-index-card ${hierarchyClass} ${flashClass}`}
             key={item.symbol || index}
             onClick={() => item.symbol && navigate(`/stock/${item.symbol}`)}
           >

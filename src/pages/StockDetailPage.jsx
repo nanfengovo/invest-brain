@@ -862,6 +862,48 @@ export default function StockDetailPage() {
   const showFieldHelp = (group, key) => {
     setFieldHelp({ group, key, ...getFieldHelp(group, key) });
   };
+  const profileMetricItems = [
+    ['marketCap', company.marketCap, 'money'],
+    ['floatMarketCap', company.floatMarketCap, 'money'],
+    ['enterpriseValue', company.enterpriseValue, 'money'],
+    ['trailingPE', company.trailingPE, 'multiple'],
+    ['forwardPE', company.forwardPE, 'multiple'],
+    ['priceToBook', company.priceToBook, 'multiple'],
+    ['priceToSales', company.priceToSales, 'multiple'],
+    ['beta', company.beta, 'multiple'],
+    ['epsTtm', company.epsTtm, 'money'],
+    ['bps', company.bps, 'money'],
+    ['revenueGrowth', company.revenueGrowth, 'ratioPercent'],
+    ['profitMargins', company.profitMargins, 'ratioPercent'],
+    ['returnOnEquity', company.returnOnEquity, 'ratioPercent'],
+    ['netIncome', company.netIncome, 'money'],
+    ['netIncomeGrowth', company.netIncomeGrowth, 'ratioPercent'],
+    ['totalShares', company.totalShares, 'number'],
+    ['circulatingShares', company.circulatingShares, 'number'],
+    ['lotSize', company.lotSize, 'number'],
+    ['freeCashflow', company.freeCashflow, 'money'],
+    ['totalAssets', company.totalAssets, 'money'],
+    ['totalLiabilities', company.totalLiabilities, 'money'],
+    ['debtToAssets', company.debtToAssets, 'ratioPercent'],
+    ['employees', company.employees, 'number'],
+    ['listingDate', company.listingDate, 'text'],
+    ['founded', company.founded, 'text'],
+    ['website', company.website, 'url'],
+  ].map(([key, value, type]) => {
+    const help = getFieldHelp('stock', key);
+    const formatted = formatProfileValue(value, type);
+    const available = formatted !== '--' && formatted !== 'NaN' && formatted !== '$NaN';
+    return {
+      key,
+      value,
+      type,
+      label: help.label,
+      formatted,
+      available,
+    };
+  });
+  const visibleProfileMetrics = profileMetricItems.filter((item) => item.available);
+  const missingProfileMetrics = profileMetricItems.filter((item) => !item.available);
 
   const reloadAlerts = async () => {
     const rows = await db.getPriceAlertsBySymbol(normalizedSymbol);
@@ -1259,51 +1301,42 @@ export default function StockDetailPage() {
             )}
           </div>
           <div className="stock-detail__profile-grid">
-            {[
-              ['marketCap', company.marketCap, 'money'],
-              ['floatMarketCap', company.floatMarketCap, 'money'],
-              ['enterpriseValue', company.enterpriseValue, 'money'],
-              ['trailingPE', company.trailingPE, 'multiple'],
-              ['forwardPE', company.forwardPE, 'multiple'],
-              ['priceToBook', company.priceToBook, 'multiple'],
-              ['priceToSales', company.priceToSales, 'multiple'],
-              ['beta', company.beta, 'multiple'],
-              ['epsTtm', company.epsTtm, 'money'],
-              ['bps', company.bps, 'money'],
-              ['revenueGrowth', company.revenueGrowth, 'ratioPercent'],
-              ['profitMargins', company.profitMargins, 'ratioPercent'],
-              ['returnOnEquity', company.returnOnEquity, 'ratioPercent'],
-              ['netIncome', company.netIncome, 'money'],
-              ['netIncomeGrowth', company.netIncomeGrowth, 'ratioPercent'],
-              ['totalShares', company.totalShares, 'number'],
-              ['circulatingShares', company.circulatingShares, 'number'],
-              ['lotSize', company.lotSize, 'number'],
-              ['freeCashflow', company.freeCashflow, 'money'],
-              ['totalAssets', company.totalAssets, 'money'],
-              ['totalLiabilities', company.totalLiabilities, 'money'],
-              ['debtToAssets', company.debtToAssets, 'ratioPercent'],
-              ['employees', company.employees, 'number'],
-              ['listingDate', company.listingDate, 'text'],
-              ['founded', company.founded, 'text'],
-              ['website', company.website, 'url'],
-            ].map(([key, value, type]) => {
-              const help = getFieldHelp('stock', key);
+            {visibleProfileMetrics.map((item) => {
               return (
-                <div key={key} className="stock-detail__profile-metric">
+                <div key={item.key} className="stock-detail__profile-metric">
                   <span>
-                    {help.label}
+                    {item.label}
                     <button
                       type="button"
-                      aria-label={`查看${help.label}解释`}
-                      onClick={() => showFieldHelp('stock', key)}
+                      aria-label={`查看${item.label}解释`}
+                      onClick={() => showFieldHelp('stock', item.key)}
                     >
                       ?
                     </button>
                   </span>
-                  <strong>{formatProfileValue(value, type)}</strong>
+                  <strong>{item.formatted}</strong>
                 </div>
               );
             })}
+            {missingProfileMetrics.length > 0 && (
+              <details className="stock-detail__profile-missing">
+                <summary>
+                  <span>待返回字段</span>
+                  <strong>{missingProfileMetrics.length} 项</strong>
+                </summary>
+                <div>
+                  {missingProfileMetrics.map((item) => (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => showFieldHelp('stock', item.key)}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </details>
+            )}
           </div>
           <div className="stock-detail__longbridge-coverage">
             <div>

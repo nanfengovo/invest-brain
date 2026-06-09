@@ -55,6 +55,19 @@ test('stock detail share poster uses the dedicated snapshot template and shared 
   assert.doesNotMatch(stockDetail, /skipBackgroundPicker: true/);
 });
 
+test('stock company profile de-emphasizes unavailable fields and keeps help buttons compact', () => {
+  const stockDetail = readFileSync(new URL('../src/pages/StockDetailPage.jsx', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../src/pages/StockDetailPage.css', import.meta.url), 'utf8');
+
+  assert.match(stockDetail, /profileMetricItems/);
+  assert.match(stockDetail, /visibleProfileMetrics/);
+  assert.match(stockDetail, /missingProfileMetrics/);
+  assert.match(stockDetail, /stock-detail__profile-missing/);
+  assert.match(css, /min-width: 18px !important/);
+  assert.match(css, /min-height: 18px !important/);
+  assert.match(css, /stock-detail__profile-missing/);
+});
+
 test('market boards expose high-frequency refresh and directional background motion', () => {
   const market = readFileSync(new URL('../src/pages/MarketPage.jsx', import.meta.url), 'utf8');
   const css = readFileSync(new URL('../src/pages/MarketPage.css', import.meta.url), 'utf8');

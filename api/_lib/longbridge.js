@@ -617,7 +617,7 @@ function normalizeIndustryPeers(payload, symbol) {
     || null;
   return {
     current,
-    peers: peers.slice(0, 6),
+    peers,
     count: peers.length,
   };
 }

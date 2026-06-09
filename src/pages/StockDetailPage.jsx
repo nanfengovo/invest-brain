@@ -364,6 +364,10 @@ const aggregateKlineRowsByYear = (rows = []) => {
     .map((item) => [item.year, item.open, item.close, item.low, item.high, item.volume]);
 };
 
+const normalizeRankingSymbol = (value) => String(value || '')
+  .replace(/\.(US|HK|SH|SZ|CN|SG)$/i, '')
+  .toUpperCase();
+
 const formatAlertAssetLabel = (alert) => {
   const assetType = String(alert.asset_type || 'STOCK').toUpperCase();
   if (assetType !== 'OPTION') {
@@ -425,6 +429,7 @@ export default function StockDetailPage() {
   const [optionSourceExpanded, setOptionSourceExpanded] = useState(false);
   const [detailMode, setDetailMode] = useState('stock');
   const [fieldHelp, setFieldHelp] = useState(null);
+  const [rankDialogOpen, setRankDialogOpen] = useState(false);
   
   // Inline search states
   const [isSearching, setIsSearching] = useState(false);
@@ -827,6 +832,45 @@ export default function StockDetailPage() {
   const industryRankNote = company.industryRank?.source === 'longbridge'
     ? '来自长桥评级/估值分布模块，适合作为行业内相对位置参考。'
     : '基于市值、增长、利润率、ROE、Beta 的本地评分，不等同券商排名。';
+  const industryRankingSource = companyValuationPeers.length ? companyValuationPeers : companyPeerItems;
+  const industryRankingSourceLabel = companyValuationPeers.length ? '估值对比榜单' : '同行公司榜单';
+  const industryRankingTotal = company.industryRank?.total
+    || company.valuationComparison?.count
+    || company.industryPeers?.count
+    || industryRankingSource.length;
+  const industryRankingRows = industryRankingSource.map((item, index) => {
+    const peerSymbol = normalizeRankingSymbol(item.symbol);
+    const isCurrent = peerSymbol === normalizeRankingSymbol(normalizedSymbol);
+    return {
+      ...item,
+      rank: isCurrent && company.industryRank?.position ? company.industryRank.position : index + 1,
+      displaySymbol: peerSymbol || item.symbol || item.name || `Peer ${index + 1}`,
+      isCurrent,
+    };
+  });
+  const hasCurrentInRanking = industryRankingRows.some((item) => item.isCurrent);
+  const currentRankingRow = {
+    symbol: normalizedSymbol,
+    displaySymbol: normalizedSymbol,
+    name: company.name || normalizedSymbol,
+    currency: company.currency || quote?.currency || 'USD',
+    marketCap: company.marketCap,
+    price: currentPrice,
+    pe: company.trailingPE,
+    pb: company.priceToBook,
+    ps: company.priceToSales,
+    roe: company.returnOnEquity,
+    rank: company.industryRank?.position || industryRankingRows.length + 1,
+    isCurrent: true,
+  };
+  const industryRankingDisplayRows = (hasCurrentInRanking || industryRankingRows.length === 0
+    ? industryRankingRows
+    : [...industryRankingRows, currentRankingRow])
+    .sort((a, b) => Number(a.rank || 9999) - Number(b.rank || 9999));
+  const currentIndustryRankingRow = industryRankingDisplayRows.find((item) => item.isCurrent) || currentRankingRow;
+  const currentIndustryRankValue = currentIndustryRankingRow.rank && industryRankingTotal
+    ? `${currentIndustryRankingRow.rank}/${industryRankingTotal}`
+    : industryRankValue;
   const companyLocationLabel = [company.country, company.city].filter(Boolean).join(' · ')
     || company.exchangeName
     || quote?.exchangeName
@@ -1276,7 +1320,13 @@ export default function StockDetailPage() {
                 {derivativeSupport.length > 0 && <span>{derivativeSupport.join(' / ')}</span>}
               </div>
             </div>
-            <div className={`stock-detail__rank-panel stock-detail__rank-panel--${String(company.industryRank?.tier || 'd').toLowerCase()}`}>
+            <div
+              className={`stock-detail__rank-panel stock-detail__rank-panel--${String(company.industryRank?.tier || 'd').toLowerCase()} ${industryRankingDisplayRows.length ? 'stock-detail__rank-panel--clickable' : ''}`}
+              onClick={(event) => {
+                if (!industryRankingDisplayRows.length || event.target.closest('button')) return;
+                setRankDialogOpen(true);
+              }}
+            >
               <div>
                 <span>
                   {industryRankSourceLabel}
@@ -1290,7 +1340,17 @@ export default function StockDetailPage() {
                 </span>
                 <strong>{industryRankValue}</strong>
               </div>
-              <em>{company.industryRank?.label || '排名待估算'}</em>
+              <div className="stock-detail__rank-panel-actions">
+                <em>{company.industryRank?.label || '排名待估算'}</em>
+                <button
+                  type="button"
+                  className="stock-detail__rank-list-button"
+                  disabled={!industryRankingDisplayRows.length}
+                  onClick={() => setRankDialogOpen(true)}
+                >
+                  看榜单
+                </button>
+              </div>
             </div>
           </div>
           <div className="stock-detail__company-hero">
@@ -1997,6 +2057,98 @@ export default function StockDetailPage() {
         )}
       </div>
       )}
+
+      {rankDialogOpen && typeof document !== 'undefined' && createPortal((
+        <div className="stock-detail__rank-dialog-mask" onClick={() => setRankDialogOpen(false)}>
+          <div
+            className="stock-detail__rank-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="stock-detail-rank-dialog-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="stock-detail__rank-dialog-bar" aria-hidden="true" />
+            <div className="stock-detail__rank-dialog-header">
+              <div>
+                <span>{industryRankingSourceLabel}</span>
+                <h3 id="stock-detail-rank-dialog-title">行业完整排行榜</h3>
+                <p>{displaySector} · {displayIndustry}</p>
+              </div>
+              <button type="button" onClick={() => setRankDialogOpen(false)} aria-label="关闭行业排行榜">
+                关闭
+              </button>
+            </div>
+            <div className={`stock-detail__rank-dialog-hero stock-detail__rank-dialog-hero--${String(company.industryRank?.tier || 'd').toLowerCase()}`}>
+              <div>
+                <span>当前公司</span>
+                <strong>{company.name || currentIndustryRankingRow.displaySymbol || normalizedSymbol}</strong>
+                <em>{industryRankNote}</em>
+              </div>
+              <div>
+                <small>当前排名</small>
+                <strong>{currentIndustryRankValue}</strong>
+                <em>{industryRankSourceLabel}</em>
+              </div>
+            </div>
+            <div className="stock-detail__rank-dialog-summary">
+              <span>总样本 {industryRankingTotal || industryRankingDisplayRows.length || '--'}</span>
+              <span>已显示 {industryRankingDisplayRows.length || 0}</span>
+              <span>核心指标 PE / 市值 / ROE</span>
+            </div>
+            {industryRankingDisplayRows.length > 0 ? (
+              <div className="stock-detail__rank-list">
+                {industryRankingDisplayRows.map((item, index) => {
+                  const rowKey = `${item.symbol || item.displaySymbol || item.name || 'peer'}-${index}`;
+                  return (
+                    <div
+                      key={rowKey}
+                      className={`stock-detail__rank-row ${item.isCurrent ? 'is-current' : ''}`}
+                    >
+                      <div className="stock-detail__rank-row-index">
+                        <strong>#{item.rank || index + 1}</strong>
+                        {item.isCurrent && <span>当前</span>}
+                      </div>
+                      <div className="stock-detail__rank-row-main">
+                        <strong>{item.displaySymbol || item.symbol || item.name}</strong>
+                        <span>{item.name || item.currency || '同行公司'}</span>
+                      </div>
+                      <div className="stock-detail__rank-row-metrics">
+                        <span>
+                          <em>股价</em>
+                          <strong>{formatProfileValue(item.price, 'money')}</strong>
+                        </span>
+                        <span>
+                          <em>市值</em>
+                          <strong>{formatProfileValue(item.marketCap, 'money')}</strong>
+                        </span>
+                        <span>
+                          <em>PE</em>
+                          <strong>{formatProfileValue(item.pe, 'multiple')}</strong>
+                        </span>
+                        <span>
+                          <em>PB / PS</em>
+                          <strong>{formatProfileValue(item.pb, 'multiple')} / {formatProfileValue(item.ps, 'multiple')}</strong>
+                        </span>
+                        <span>
+                          <em>ROE</em>
+                          <strong>{formatOptionalRatio(item.roe)}</strong>
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="stock-detail__rank-dialog-empty">
+                长桥暂未返回该行业的完整同行列表，目前只能展示当前排名。
+              </div>
+            )}
+            <div className="stock-detail__rank-dialog-footnote">
+              排名口径来自长桥返回的行业评级、估值分布或同行估值模块；不同接口更新时间可能不同，请以长桥原始数据和财报为准。
+            </div>
+          </div>
+        </div>
+      ), document.body)}
 
       {fieldHelp && typeof document !== 'undefined' && createPortal((
         <div className="stock-detail__field-help-mask" onClick={() => setFieldHelp(null)}>

@@ -58,6 +58,7 @@ test('stock detail share poster uses the dedicated snapshot template and shared 
 test('stock company profile de-emphasizes unavailable fields and keeps help buttons compact', () => {
   const stockDetail = readFileSync(new URL('../src/pages/StockDetailPage.jsx', import.meta.url), 'utf8');
   const css = readFileSync(new URL('../src/pages/StockDetailPage.css', import.meta.url), 'utf8');
+  const longbridge = readFileSync(new URL('../api/_lib/longbridge.js', import.meta.url), 'utf8');
 
   assert.match(stockDetail, /createPortal/);
   assert.match(stockDetail, /document\.body/);
@@ -70,6 +71,15 @@ test('stock company profile de-emphasizes unavailable fields and keeps help butt
   assert.match(css, /stock-detail__profile-missing/);
   assert.match(css, /z-index: 1200/);
   assert.match(css, /scroll-padding-bottom: calc\(var\(--safe-area-bottom\) \+ 32px\)/);
+  assert.match(stockDetail, /rankDialogOpen/);
+  assert.match(stockDetail, /stock-detail__rank-list-button/);
+  assert.match(stockDetail, /行业完整排行榜/);
+  assert.match(stockDetail, /stock-detail__rank-dialog/);
+  assert.match(stockDetail, /currentIndustryRankingRow/);
+  assert.match(css, /stock-detail__rank-dialog-mask/);
+  assert.match(css, /stock-detail__rank-row\.is-current/);
+  assert.doesNotMatch(longbridge, /peers: peers\.slice\(0, 6\)/);
+  assert.match(longbridge, /peers,\s*\n\s*count: peers\.length/);
 });
 
 test('market boards expose high-frequency refresh and directional background motion', () => {

@@ -590,6 +590,141 @@
   padding: 8px 12px;
 }
 
+[data-theme='light'] .holding-card {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.94));
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+}
+
+[data-theme='light'] .holding-card--expanded {
+  border-color: rgba(79, 70, 229, 0.22);
+  box-shadow: 0 18px 38px rgba(79, 70, 229, 0.12);
+}
+
+[data-theme='light'] .holding-card__main:active {
+  background: rgba(238, 242, 255, 0.54);
+}
+
+[data-theme='light'] .holding-card__symbol,
+[data-theme='light'] .holding-card__position-value,
+[data-theme='light'] .holding-card__trade-price {
+  color: #1e293b;
+}
+
+[data-theme='light'] .holding-card__name,
+[data-theme='light'] .holding-card__quantity,
+[data-theme='light'] .holding-card__trade-count,
+[data-theme='light'] .holding-card__trade-date,
+[data-theme='light'] .holding-card__trade-qty,
+[data-theme='light'] .holding-card__dte-label strong {
+  color: #64748b;
+}
+
+[data-theme='light'] .holding-card__avg-cost,
+[data-theme='light'] .holding-card__last-trade,
+[data-theme='light'] .holding-card__expand-icon,
+[data-theme='light'] .holding-card__dte-label {
+  color: #94a3b8;
+}
+
+[data-theme='light'] .holding-card__expiration--calm {
+  --holding-option-exp-color: #2563eb;
+  --holding-option-exp-bg: rgba(219, 234, 254, 0.86);
+  --holding-option-exp-border: rgba(37, 99, 235, 0.2);
+}
+
+[data-theme='light'] .holding-card__expiration--cool {
+  --holding-option-exp-color: #0891b2;
+  --holding-option-exp-bg: rgba(207, 250, 254, 0.86);
+  --holding-option-exp-border: rgba(8, 145, 178, 0.2);
+}
+
+[data-theme='light'] .holding-card__expiration--warm {
+  --holding-option-exp-color: #b45309;
+  --holding-option-exp-bg: rgba(254, 243, 199, 0.9);
+  --holding-option-exp-border: rgba(217, 119, 6, 0.24);
+}
+
+[data-theme='light'] .holding-card__expiration--hot {
+  --holding-option-exp-color: #ea580c;
+  --holding-option-exp-bg: rgba(255, 237, 213, 0.92);
+  --holding-option-exp-border: rgba(234, 88, 12, 0.26);
+}
+
+[data-theme='light'] .holding-card__expiration--endgame {
+  --holding-option-exp-color: #e11d48;
+  --holding-option-exp-bg: rgba(255, 241, 242, 0.94);
+  --holding-option-exp-border: rgba(225, 29, 72, 0.28);
+}
+
+[data-theme='light'] .holding-card__expiration--expired {
+  --holding-option-exp-color: #64748b;
+  --holding-option-exp-bg: rgba(241, 245, 249, 0.94);
+  --holding-option-exp-border: rgba(100, 116, 139, 0.22);
+}
+
+[data-theme='light'] .holding-card__option-badge--call {
+  color: #2563eb;
+  background: rgba(219, 234, 254, 0.9);
+  border-color: rgba(37, 99, 235, 0.24);
+}
+
+[data-theme='light'] .holding-card__option-badge--put {
+  color: #7c3aed;
+  background: rgba(245, 243, 255, 0.92);
+  border-color: rgba(124, 58, 237, 0.22);
+}
+
+[data-theme='light'] .holding-card__moneyness--itm {
+  color: #059669;
+  background: rgba(236, 253, 245, 0.9);
+  border-color: rgba(5, 150, 105, 0.22);
+}
+
+[data-theme='light'] .holding-card__moneyness--otm {
+  color: #64748b;
+  background: rgba(241, 245, 249, 0.92);
+  border-color: rgba(100, 116, 139, 0.16);
+}
+
+[data-theme='light'] .holding-card__broker-badge {
+  color: #0891b2;
+  background: rgba(207, 250, 254, 0.9);
+  border-color: rgba(8, 145, 178, 0.2);
+}
+
+[data-theme='light'] .holding-card__author-badge,
+[data-theme='light'] .holding-card__alert-btn {
+  color: #d97706;
+  background: rgba(254, 243, 199, 0.9);
+  border-color: rgba(217, 119, 6, 0.24);
+}
+
+[data-theme='light'] .holding-card__sector-badge {
+  color: #64748b;
+  background: rgba(241, 245, 249, 0.9);
+  border-color: rgba(100, 116, 139, 0.16);
+}
+
+[data-theme='light'] .holding-card__footer,
+[data-theme='light'] .holding-card__trades-list {
+  border-color: rgba(15, 23, 42, 0.08);
+  background: rgba(248, 250, 252, 0.8);
+}
+
+[data-theme='light'] .holding-card__trade-item:not(:last-child) {
+  border-bottom-color: rgba(15, 23, 42, 0.06);
+}
+
+[data-theme='light'] .holding-card__trade-item:active {
+  background: rgba(238, 242, 255, 0.54);
+}
+
+[data-theme='light'] .holding-card__dte-track {
+  background: rgba(226, 232, 240, 0.9);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .holding-card,
   .holding-card__trades-list {

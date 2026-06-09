@@ -21,6 +21,9 @@ const DEFAULT_MARKET_DATA_CONFIG = {
   marketDataToken: '',
   tradierToken: '',
   polygonToken: '',
+  longbridgeAppKey: '',
+  longbridgeAppSecret: '',
+  longbridgeAccessToken: '',
 };
 const DEFAULT_SHARE_BACKGROUND_CONFIG = {
   provider: 'local',

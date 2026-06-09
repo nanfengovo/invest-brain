@@ -25,6 +25,13 @@ const formatCurrency = (num) => {
   });
 };
 
+const formatSignedCurrency = (num) => {
+  const value = Number(num);
+  if (!Number.isFinite(value)) return '--';
+  const prefix = value > 0 ? '+' : value < 0 ? '-' : '';
+  return `${prefix}$${formatCurrency(Math.abs(value))}`;
+};
+
 const formatDate = (dateStr) => {
   if (!dateStr) return '—';
   const d = parseDateTime(dateStr);
@@ -39,6 +46,7 @@ const formatDate = (dateStr) => {
 export default function HoldingCard({
   holding,
   underlyingPrice = null,
+  optionQuote = null,
   index = 0,
   viewMode = 'compact',
   isExpanded = false,
@@ -75,10 +83,20 @@ export default function HoldingCard({
     optionType: holding.option_type,
   }) : null;
   const quantityUnit = getTradeQuantityUnit({ asset_type: holding.type });
-  const positionValue =
-    (Number(holding.total_quantity) || 0) *
-    (Number(holding.avg_cost) || 0) *
-    getTradeMultiplier({ asset_type: holding.type, multiplier: holding.multiplier });
+  const quantity = Number(holding.total_quantity) || 0;
+  const avgCost = Number(holding.avg_cost) || 0;
+  const multiplier = getTradeMultiplier({ asset_type: holding.type, multiplier: holding.multiplier });
+  const liveOptionPrice = isOption ? Number(optionQuote?.mark ?? optionQuote?.last ?? optionQuote?.bid) : null;
+  const hasLiveOptionPrice = isOption && Number.isFinite(liveOptionPrice) && liveOptionPrice >= 0;
+  const unitPrice = hasLiveOptionPrice ? liveOptionPrice : avgCost;
+  const costBasis = quantity * avgCost * multiplier;
+  const positionValue = quantity * unitPrice * multiplier;
+  const unrealizedPnl = hasLiveOptionPrice ? positionValue - costBasis : null;
+  const unrealizedPnlPct = hasLiveOptionPrice && costBasis > 0 ? unrealizedPnl / costBasis : null;
+  const optionDayChange = hasLiveOptionPrice && Number.isFinite(Number(optionQuote?.change))
+    ? Number(optionQuote.change) * quantity * multiplier
+    : null;
+  const pnlTone = unrealizedPnl > 0 ? 'profit' : unrealizedPnl < 0 ? 'loss' : 'neutral';
   const title = isOption && optionDisplay?.title ? optionDisplay.title : holding.symbol;
   const typeLabel = TYPE_LABELS[assetType] || assetType;
   const hasMeta = Boolean(isOption ? optionExpirationLabel : (holding.name || holding.symbol));
@@ -159,12 +177,24 @@ export default function HoldingCard({
           <div className="holding-card__position-value text-mono">
             ${formatCurrency(positionValue)}
           </div>
+          {isOption && (
+            <div className={`holding-card__live-pnl holding-card__live-pnl--${pnlTone} text-mono`}>
+              {hasLiveOptionPrice
+                ? `${formatSignedCurrency(unrealizedPnl)} · ${Number.isFinite(unrealizedPnlPct) ? `${(unrealizedPnlPct * 100).toFixed(1)}%` : '--'}`
+                : '等待期权报价'}
+            </div>
+          )}
           <div className="holding-card__quantity text-mono">
-            {Number(holding.total_quantity).toLocaleString()} {quantityUnit}
+            {quantity.toLocaleString()} {quantityUnit}
           </div>
           <div className="holding-card__avg-cost text-mono">
             均价 ${formatCurrency(holding.avg_cost)}
           </div>
+          {isOption && hasLiveOptionPrice && (
+            <div className="holding-card__live-mark text-mono">
+              Mark ${formatCurrency(liveOptionPrice)}
+            </div>
+          )}
         </div>
       </div>
 
@@ -192,6 +222,15 @@ export default function HoldingCard({
             <span>Theta Clock</span>
             <strong>{dteMonitor.label}</strong>
           </div>
+        </div>
+      )}
+
+      {isOption && optionQuote && (
+        <div className="holding-card__quote-strip">
+          <span>{optionQuote.provider || '期权报价'}</span>
+          <span>Last ${formatCurrency(optionQuote.last)}</span>
+          <span>Bid/Ask {formatCurrency(optionQuote.bid)} / {formatCurrency(optionQuote.ask)}</span>
+          <span>{optionDayChange === null ? '日变动 --' : `日变动 ${formatSignedCurrency(optionDayChange)}`}</span>
         </div>
       )}
 

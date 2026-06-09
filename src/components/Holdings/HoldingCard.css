@@ -340,6 +340,35 @@
   white-space: nowrap;
 }
 
+.holding-card__live-pnl {
+  margin-top: 3px;
+  font-size: 11px;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.holding-card__live-pnl--profit {
+  color: var(--color-profit);
+}
+
+.holding-card__live-pnl--loss {
+  color: var(--color-loss);
+}
+
+.holding-card__live-pnl--neutral {
+  color: var(--color-text-muted);
+}
+
+.holding-card__live-mark {
+  margin-top: 2px;
+  color: #93c5fd;
+  font-size: 10px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .holding-card__footer {
   display: flex;
   align-items: center;
@@ -351,6 +380,27 @@
 
 .holding-card__dte {
   padding: 0 16px 10px;
+}
+
+.holding-card__quote-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 16px 10px;
+}
+
+.holding-card__quote-strip span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 7px;
+  border: 1px solid rgba(96, 165, 250, 0.16);
+  border-radius: var(--radius-full);
+  background: rgba(96, 165, 250, 0.08);
+  color: var(--color-text-secondary);
+  font-size: 10px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
 }
 
 .holding-card__dte-track {
@@ -573,6 +623,11 @@
   font-size: 10px;
 }
 
+.holding-card--compact .holding-card__live-pnl,
+.holding-card--compact .holding-card__live-mark {
+  font-size: 10px;
+}
+
 .holding-card--compact .holding-card__footer {
   display: none;
 }
@@ -624,8 +679,19 @@
 [data-theme='light'] .holding-card__avg-cost,
 [data-theme='light'] .holding-card__last-trade,
 [data-theme='light'] .holding-card__expand-icon,
-[data-theme='light'] .holding-card__dte-label {
+[data-theme='light'] .holding-card__dte-label,
+[data-theme='light'] .holding-card__live-pnl--neutral {
   color: #94a3b8;
+}
+
+[data-theme='light'] .holding-card__live-mark {
+  color: #2563eb;
+}
+
+[data-theme='light'] .holding-card__quote-strip span {
+  color: #475569;
+  background: rgba(219, 234, 254, 0.72);
+  border-color: rgba(37, 99, 235, 0.16);
 }
 
 [data-theme='light'] .holding-card__expiration--calm {

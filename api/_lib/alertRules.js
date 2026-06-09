@@ -14,6 +14,9 @@ const DEFAULT_MARKET_DATA_CONFIG = {
   marketDataToken: '',
   tradierToken: '',
   polygonToken: '',
+  longbridgeAppKey: '',
+  longbridgeAppSecret: '',
+  longbridgeAccessToken: '',
 };
 
 export function toFiniteNumber(value) {
@@ -64,7 +67,7 @@ export function normalizeNotificationConfig(config = {}) {
 
 export function normalizeMarketDataConfig(config = {}) {
   const merged = { ...DEFAULT_MARKET_DATA_CONFIG, ...(config || {}) };
-  const provider = ['auto', 'marketdata', 'tradier', 'polygon', 'yahoo'].includes(merged.optionProvider)
+  const provider = ['auto', 'marketdata', 'tradier', 'polygon', 'longbridge', 'yahoo'].includes(merged.optionProvider)
     ? merged.optionProvider
     : 'auto';
 
@@ -73,6 +76,9 @@ export function normalizeMarketDataConfig(config = {}) {
     marketDataToken: String(merged.marketDataToken || ''),
     tradierToken: String(merged.tradierToken || ''),
     polygonToken: String(merged.polygonToken || ''),
+    longbridgeAppKey: String(merged.longbridgeAppKey || ''),
+    longbridgeAppSecret: String(merged.longbridgeAppSecret || ''),
+    longbridgeAccessToken: String(merged.longbridgeAccessToken || ''),
   };
 }
 

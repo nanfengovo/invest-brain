@@ -7,7 +7,8 @@ import { useAppStore } from '../stores/useAppStore';
 import { db } from '../db/database';
 import { checkPriceAlerts } from '../utils/priceAlertRunner';
 import { syncCloudAlerts } from '../utils/cloudAlerts';
-import { parseOptionAlertInput } from '../utils/optionMonitoring';
+import { getMoneynessMonitor, parseOptionAlertInput } from '../utils/optionMonitoring';
+import { getFieldHelp } from '../utils/marketFieldGlossary';
 import './StockDetailPage.css';
 
 const SHARE_BASE_URL = 'https://invest-brain.vercel.app';
@@ -71,6 +72,40 @@ const formatCompact = (value) => {
   return Number(value).toLocaleString();
 };
 
+const formatPercentFromRatio = (value) => {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return '--';
+  return `${(Number(value) * 100).toFixed(2)}%`;
+};
+
+const formatProfileValue = (value, type = 'text') => {
+  if (value === null || value === undefined || value === '') return '--';
+  if (type === 'money') return `$${formatCompact(value)}`;
+  if (type === 'ratioPercent') return formatPercentFromRatio(value);
+  if (type === 'number') return formatCompact(value);
+  if (type === 'multiple') return Number(value).toFixed(2);
+  return String(value);
+};
+
+const buildMarketDataHeaders = (marketDataConfig = {}) => ({
+  ...(marketDataConfig.tradierToken ? { 'X-Tradier-Token': marketDataConfig.tradierToken } : {}),
+  ...(marketDataConfig.polygonToken ? { 'X-Polygon-Token': marketDataConfig.polygonToken } : {}),
+  ...(marketDataConfig.marketDataToken ? { 'X-MarketData-Token': marketDataConfig.marketDataToken } : {}),
+  ...(marketDataConfig.longbridgeAppKey ? { 'X-Longbridge-App-Key': marketDataConfig.longbridgeAppKey } : {}),
+  ...(marketDataConfig.longbridgeAppSecret ? { 'X-Longbridge-App-Secret': marketDataConfig.longbridgeAppSecret } : {}),
+  ...(marketDataConfig.longbridgeAccessToken ? { 'X-Longbridge-Access-Token': marketDataConfig.longbridgeAccessToken } : {}),
+});
+
+const formatDerivativeSupport = (items = []) => {
+  const labels = {
+    0: '期权',
+    1: '窝轮',
+    2: '牛熊证',
+  };
+  return items
+    .map((item) => labels[item] || labels[String(item)] || String(item || '').trim())
+    .filter((item) => item && item !== 'undefined' && item !== 'null');
+};
+
 const formatAlertAssetLabel = (alert) => {
   const assetType = String(alert.asset_type || 'STOCK').toUpperCase();
   if (assetType !== 'OPTION') {
@@ -127,6 +162,8 @@ export default function StockDetailPage() {
   const [optionLoading, setOptionLoading] = useState(false);
   const [optionExpiration, setOptionExpiration] = useState('');
   const [optionTypeFilter, setOptionTypeFilter] = useState('ALL');
+  const [detailMode, setDetailMode] = useState('stock');
+  const [fieldHelp, setFieldHelp] = useState(null);
   
   // Inline search states
   const [isSearching, setIsSearching] = useState(false);
@@ -230,11 +267,7 @@ export default function StockDetailPage() {
         });
         if (optionExpiration) params.set('expiration', optionExpiration);
         const res = await fetch(`/api/options-chain?${params.toString()}`, {
-          headers: {
-            ...(marketDataConfig.tradierToken ? { 'X-Tradier-Token': marketDataConfig.tradierToken } : {}),
-            ...(marketDataConfig.polygonToken ? { 'X-Polygon-Token': marketDataConfig.polygonToken } : {}),
-            ...(marketDataConfig.marketDataToken ? { 'X-MarketData-Token': marketDataConfig.marketDataToken } : {}),
-          },
+          headers: buildMarketDataHeaders(marketDataConfig),
         });
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || '期权链加载失败');
@@ -284,7 +317,9 @@ export default function StockDetailPage() {
     const fetchSnapshot = async () => {
       setSnapshotLoading(true);
       try {
-        const res = await fetch(`/api/stock-snapshot?symbol=${encodeURIComponent(symbol)}`);
+        const res = await fetch(`/api/stock-snapshot?symbol=${encodeURIComponent(symbol)}`, {
+          headers: buildMarketDataHeaders(marketDataConfig),
+        });
         const json = await res.json();
         if (mounted && json?.success) {
           setSnapshot(json);
@@ -298,7 +333,7 @@ export default function StockDetailPage() {
 
     fetchSnapshot();
     return () => { mounted = false; };
-  }, [symbol]);
+  }, [symbol, marketDataConfig]);
 
   const handleShare = async () => {
     const normalizedSymbol = String(symbol || '').toUpperCase();
@@ -369,11 +404,25 @@ export default function StockDetailPage() {
   const changePct = hasDailyChange ? ((currentPrice - previousClose) / previousClose * 100).toFixed(2) : '0.00';
   const sign = isUp ? '+' : '';
   const normalizedSymbol = String(symbol || '').toUpperCase();
+  const company = snapshot?.company || {};
+  const derivativeSupport = formatDerivativeSupport(company.stockDerivatives || []);
   const activeAlerts = priceAlerts.filter((alert) => alert.status === 'ACTIVE');
   const optionRows = (optionChain?.options || [])
     .filter((item) => optionTypeFilter === 'ALL' || item.type === optionTypeFilter)
     .sort((a, b) => (a.strike || 0) - (b.strike || 0))
     .slice(0, 40);
+  const nearAtmOptions = optionRows
+    .map((option) => ({
+      ...option,
+      money: getMoneynessMonitor({
+        underlyingPrice: currentPrice,
+        strikePrice: option.strike,
+        optionType: option.type,
+      }),
+    }));
+  const showFieldHelp = (group, key) => {
+    setFieldHelp({ group, key, ...getFieldHelp(group, key) });
+  };
 
   const reloadAlerts = async () => {
     const rows = await db.getPriceAlertsBySymbol(normalizedSymbol);
@@ -669,6 +718,96 @@ export default function StockDetailPage() {
         )}
       </div>
 
+      <div className="stock-detail__mode-switch">
+        <button
+          type="button"
+          className={detailMode === 'stock' ? 'active' : ''}
+          onClick={() => setDetailMode('stock')}
+        >
+          公司情报
+        </button>
+        <button
+          type="button"
+          className={detailMode === 'option' ? 'active' : ''}
+          onClick={() => setDetailMode('option')}
+        >
+          期权链
+        </button>
+      </div>
+
+      {detailMode === 'stock' && (
+        <div className="stock-detail__company">
+          <div className="stock-detail__module-header">
+            <div>
+              <h3>公司详细信息</h3>
+              <p>{company.name || normalizedSymbol} · {company.sector || '行业待补充'} · {company.industry || '细分行业待补充'}</p>
+            </div>
+            <span className={`stock-detail__rank-badge stock-detail__rank-badge--${String(company.industryRank?.tier || 'd').toLowerCase()}`}>
+              {company.industryRank?.label || '排名待估算'}
+            </span>
+          </div>
+          <div className="stock-detail__company-hero">
+            <div>
+              <span>行业排名估算</span>
+              <strong>{company.industryRank?.percentile ? `Top ${100 - company.industryRank.percentile}%` : '--'}</strong>
+              <em>基于市值、增长、利润率、ROE、Beta 的本地评分，不等同券商排名。</em>
+            </div>
+            <div>
+              <span>交易所 / 地区</span>
+              <strong>{company.exchangeName || quote?.exchangeName || '--'}</strong>
+              <em>{[company.country, company.city].filter(Boolean).join(' · ') || '地区信息待补充'}</em>
+            </div>
+          </div>
+          <div className="stock-detail__profile-grid">
+            {[
+              ['marketCap', company.marketCap, 'money'],
+              ['floatMarketCap', company.floatMarketCap, 'money'],
+              ['enterpriseValue', company.enterpriseValue, 'money'],
+              ['trailingPE', company.trailingPE, 'multiple'],
+              ['forwardPE', company.forwardPE, 'multiple'],
+              ['priceToBook', company.priceToBook, 'multiple'],
+              ['beta', company.beta, 'multiple'],
+              ['epsTtm', company.epsTtm, 'money'],
+              ['bps', company.bps, 'money'],
+              ['revenueGrowth', company.revenueGrowth, 'ratioPercent'],
+              ['profitMargins', company.profitMargins, 'ratioPercent'],
+              ['returnOnEquity', company.returnOnEquity, 'ratioPercent'],
+              ['totalShares', company.totalShares, 'number'],
+              ['circulatingShares', company.circulatingShares, 'number'],
+              ['lotSize', company.lotSize, 'number'],
+              ['freeCashflow', company.freeCashflow, 'money'],
+            ].map(([key, value, type]) => {
+              const help = getFieldHelp('stock', key);
+              return (
+                <div key={key} className="stock-detail__profile-metric">
+                  <span>
+                    {help.label}
+                    <button type="button" onClick={() => showFieldHelp('stock', key)}>?</button>
+                  </span>
+                  <strong>{formatProfileValue(value, type)}</strong>
+                </div>
+              );
+            })}
+          </div>
+          <div className="stock-detail__source-row">
+            <span>画像来源：{company.providers?.longbridge === 'ok' ? 'Longbridge 已增强' : 'Longbridge 未启用'} · {company.providers?.yahooProfile === 'ok' ? 'Yahoo Profile' : 'Yahoo fallback'}</span>
+            {derivativeSupport.length > 0 && (
+              <span>衍生品支持：{derivativeSupport.join(' / ')}</span>
+            )}
+          </div>
+          {company.businessSummary ? (
+            <div className="stock-detail__business-summary">
+              <h4>公司业务简介</h4>
+              <p>{company.businessSummary}</p>
+            </div>
+          ) : (
+            <div className="stock-detail__business-summary stock-detail__business-summary--empty">
+              公司画像接口暂时不可用，当前先展示价格、K 线和技术证据；稍后会自动重试。
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="stock-detail__snapshot">
         <div className="stock-detail__snapshot-header">
           <div>
@@ -812,6 +951,7 @@ export default function StockDetailPage() {
         )}
       </div>
 
+      {detailMode === 'option' && (
       <div className="stock-detail__options">
         <div className="stock-detail__module-header">
           <div>
@@ -838,16 +978,29 @@ export default function StockDetailPage() {
             <option value="PUT">Put</option>
           </select>
         </div>
-        {optionRows.length > 0 ? (
+        {nearAtmOptions.length > 0 ? (
           <div className="stock-detail__options-table">
             <div className="stock-detail__options-head">
-              <span>合约</span>
-              <span>Bid/Ask</span>
-              <span>Mid</span>
-              <span>IV/Delta</span>
-              <span>量/OI</span>
+              {[
+                ['contract', '合约'],
+                ['bidAsk', 'Bid/Ask'],
+                ['mark', 'Mark'],
+                ['last', 'Last'],
+                ['impliedVolatility', 'IV'],
+                ['delta', 'Delta'],
+                ['gamma', 'Gamma'],
+                ['theta', 'Theta'],
+                ['vega', 'Vega'],
+                ['volume', '量/OI'],
+                ['moneyness', 'ITM/OTM'],
+              ].map(([key, label]) => (
+                <span key={key}>
+                  {label}
+                  <button type="button" onClick={() => showFieldHelp('option', key)}>?</button>
+                </span>
+              ))}
             </div>
-            {optionRows.map((option) => (
+            {nearAtmOptions.map((option) => (
               <button
                 type="button"
                 key={option.contractSymbol}
@@ -860,8 +1013,16 @@ export default function StockDetailPage() {
                 </span>
                 <span>{formatMetric(option.bid)} / {formatMetric(option.ask)}</span>
                 <span>{formatMetric(option.mark)}</span>
-                <span>{formatMetric(option.impliedVolatility ? option.impliedVolatility * 100 : null, '%')} / {formatMetric(option.delta)}</span>
+                <span>{formatMetric(option.last)}</span>
+                <span>{formatMetric(option.impliedVolatility ? option.impliedVolatility * 100 : null, '%')}</span>
+                <span>{formatMetric(option.delta)}</span>
+                <span>{formatMetric(option.gamma)}</span>
+                <span>{formatMetric(option.theta)}</span>
+                <span>{formatMetric(option.vega)}</span>
                 <span>{formatCompact(option.volume)} / {formatCompact(option.openInterest)}</span>
+                <span className={`stock-detail__option-moneyness stock-detail__option-moneyness--${option.money?.tone || 'unknown'}`}>
+                  {option.money?.status || '--'}
+                </span>
               </button>
             ))}
             <div className="stock-detail__options-hint">
@@ -874,6 +1035,20 @@ export default function StockDetailPage() {
           </div>
         )}
       </div>
+      )}
+
+      {fieldHelp && (
+        <div className="stock-detail__field-help-mask" onClick={() => setFieldHelp(null)}>
+          <div className="stock-detail__field-help" onClick={(event) => event.stopPropagation()}>
+            <div>
+              <span>{fieldHelp.group === 'option' ? '期权字段解释' : '股票字段解释'}</span>
+              <button type="button" onClick={() => setFieldHelp(null)}>关闭</button>
+            </div>
+            <h3>{fieldHelp.label}</h3>
+            <p>{fieldHelp.detail}</p>
+          </div>
+        </div>
+      )}
 
       {/* AI Insights module */}
       <div className="stock-detail__ai-insights">

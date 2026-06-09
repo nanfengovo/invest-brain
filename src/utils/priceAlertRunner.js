@@ -76,12 +76,16 @@ async function fetchOptionPrice(alert, marketDataConfig) {
   const params = new URLSearchParams({
     symbol: alert.symbol,
     provider: marketDataConfig.optionProvider || 'auto',
+    contract: alert.asset_id,
   });
   const response = await fetch(`/api/options-chain?${params.toString()}`, {
     headers: {
       ...(marketDataConfig.tradierToken ? { 'X-Tradier-Token': marketDataConfig.tradierToken } : {}),
       ...(marketDataConfig.polygonToken ? { 'X-Polygon-Token': marketDataConfig.polygonToken } : {}),
       ...(marketDataConfig.marketDataToken ? { 'X-MarketData-Token': marketDataConfig.marketDataToken } : {}),
+      ...(marketDataConfig.longbridgeAppKey ? { 'X-Longbridge-App-Key': marketDataConfig.longbridgeAppKey } : {}),
+      ...(marketDataConfig.longbridgeAppSecret ? { 'X-Longbridge-App-Secret': marketDataConfig.longbridgeAppSecret } : {}),
+      ...(marketDataConfig.longbridgeAccessToken ? { 'X-Longbridge-Access-Token': marketDataConfig.longbridgeAccessToken } : {}),
     },
   });
   const json = await response.json();

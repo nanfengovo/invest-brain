@@ -19,6 +19,9 @@ const DEFAULT_MARKET_DATA_CONFIG = {
   marketDataToken: '',
   tradierToken: '',
   polygonToken: '',
+  longbridgeAppKey: '',
+  longbridgeAppSecret: '',
+  longbridgeAccessToken: '',
 };
 
 async function loadJsonSetting(key, fallback) {

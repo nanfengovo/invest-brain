@@ -7,6 +7,7 @@ import EmptyState from '../components/common/EmptyState';
 import HoldingCard from '../components/Holdings/HoldingCard';
 import { parseOptionAlertInput } from '../utils/optionMonitoring';
 import { getTradeOptionDisplay } from '../utils/tradeLifecycle';
+import { buildOCCContractSymbol } from '../utils/optionsMarket';
 import { syncCloudAlerts } from '../utils/cloudAlerts';
 import './HoldingsPage.css';
 
@@ -16,6 +17,36 @@ const formatCurrency = (num) => {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+};
+
+const buildMarketDataHeaders = (marketDataConfig = {}) => ({
+  ...(marketDataConfig.tradierToken ? { 'X-Tradier-Token': marketDataConfig.tradierToken } : {}),
+  ...(marketDataConfig.polygonToken ? { 'X-Polygon-Token': marketDataConfig.polygonToken } : {}),
+  ...(marketDataConfig.marketDataToken ? { 'X-MarketData-Token': marketDataConfig.marketDataToken } : {}),
+  ...(marketDataConfig.longbridgeAppKey ? { 'X-Longbridge-App-Key': marketDataConfig.longbridgeAppKey } : {}),
+  ...(marketDataConfig.longbridgeAppSecret ? { 'X-Longbridge-App-Secret': marketDataConfig.longbridgeAppSecret } : {}),
+  ...(marketDataConfig.longbridgeAccessToken ? { 'X-Longbridge-Access-Token': marketDataConfig.longbridgeAccessToken } : {}),
+});
+
+const getHoldingOptionContract = (holding) => {
+  const display = getTradeOptionDisplay({
+    asset_type: 'OPTION',
+    symbol: holding.symbol,
+    underlying_symbol: holding.underlying_symbol,
+    strike_price: holding.strike_price,
+    expiry_date: holding.expiry_date,
+    option_type: holding.option_type,
+    contract_symbol: holding.contract_symbol || holding.asset_id,
+  });
+
+  return display?.contractSymbol
+    || buildOCCContractSymbol({
+      underlying: holding.underlying_symbol || holding.symbol,
+      expiration: holding.expiry_date,
+      optionType: holding.option_type,
+      strike: holding.strike_price,
+    })
+    || String(holding.asset_id || '').replace(/^OPTION_/i, '').trim().toUpperCase();
 };
 
 export default function HoldingsPage() {
@@ -40,6 +71,7 @@ export default function HoldingsPage() {
   const [authorSearch, setAuthorSearch] = useState('');
   const [selectedAuthor, setSelectedAuthor] = useState('');
   const [underlyingQuotes, setUnderlyingQuotes] = useState({});
+  const [optionQuotes, setOptionQuotes] = useState({});
 
   const activeAuthor = selectedAuthor || null;
   const filteredAuthors = authors.filter((author) =>
@@ -95,6 +127,58 @@ export default function HoldingsPage() {
       cancelled = true;
     };
   }, [holdings]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadOptionQuotes() {
+      const optionHoldings = holdings.filter((holding) => String(holding.type || '').toUpperCase() === 'OPTION');
+      const candidates = optionHoldings
+        .map((holding) => {
+          const underlying = String(holding.underlying_symbol || holding.symbol || '').trim().toUpperCase();
+          const contract = getHoldingOptionContract(holding);
+          if (!underlying || !contract) return null;
+          return {
+            key: `${holding.asset_id}-${holding.broker || ''}-${holding.author || '未标记'}`,
+            underlying,
+            contract,
+          };
+        })
+        .filter(Boolean);
+
+      if (!candidates.length) {
+        setOptionQuotes({});
+        return;
+      }
+
+      try {
+        const headers = buildMarketDataHeaders(marketDataConfig);
+        const entries = await Promise.all(candidates.map(async (candidate) => {
+          const params = new URLSearchParams({
+            symbol: candidate.underlying,
+            provider: marketDataConfig.optionProvider || 'auto',
+            contract: candidate.contract,
+          });
+          const res = await fetch(`/api/options-chain?${params.toString()}`, { headers });
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(json.error || '期权报价加载失败');
+          const quote = json?.options?.[0] || null;
+          return [candidate.key, quote ? { ...quote, provider: json.provider || quote.provider, generatedAt: json.generatedAt } : null];
+        }));
+        if (cancelled) return;
+        setOptionQuotes(Object.fromEntries(entries.filter(([, quote]) => quote)));
+      } catch (err) {
+        console.warn('Failed to load option holding quotes:', err);
+        if (!cancelled) setOptionQuotes({});
+      }
+    }
+
+    loadOptionQuotes();
+    const timer = window.setInterval(loadOptionQuotes, 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [holdings, marketDataConfig]);
 
   useEffect(() => {
     let cancelled = false;
@@ -404,6 +488,7 @@ export default function HoldingsPage() {
                   key={holdingKey}
                   holding={holding}
                   underlyingPrice={underlyingQuotes[String(holding.underlying_symbol || holding.symbol || '').trim().toUpperCase()]}
+                  optionQuote={optionQuotes[holdingKey]}
                   index={idx}
                   viewMode={viewMode}
                   isExpanded={isExpanded}

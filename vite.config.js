@@ -74,6 +74,7 @@ function localApiPlugin() {
     '/api/analyze-personality': './api/analyze-personality.js',
     '/api/share-background': './api/summarize.js',
     '/api/options-chain': './api/options-chain.js',
+    '/api/stock-snapshot': './api/stock-snapshot.js',
   };
 
   return {

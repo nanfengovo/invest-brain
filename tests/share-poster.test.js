@@ -111,12 +111,17 @@ test('market option section uses contract monitor cards instead of generic quote
 
 test('market data settings support MarketData.app option provider', () => {
   const api = readFileSync(new URL('../api/options-chain.js', import.meta.url), 'utf8');
+  const stockSnapshot = readFileSync(new URL('../api/stock-snapshot.js', import.meta.url), 'utf8');
+  const longbridge = readFileSync(new URL('../api/_lib/longbridge.js', import.meta.url), 'utf8');
   const settings = readFileSync(new URL('../src/pages/SettingsPage.jsx', import.meta.url), 'utf8');
   const appStore = readFileSync(new URL('../src/stores/useAppStore.js', import.meta.url), 'utf8');
   const alertRules = readFileSync(new URL('../api/_lib/alertRules.js', import.meta.url), 'utf8');
   const cloudAlerts = readFileSync(new URL('../src/utils/cloudAlerts.js', import.meta.url), 'utf8');
   const market = readFileSync(new URL('../src/pages/MarketPage.jsx', import.meta.url), 'utf8');
   const stockDetail = readFileSync(new URL('../src/pages/StockDetailPage.jsx', import.meta.url), 'utf8');
+  const holdings = readFileSync(new URL('../src/pages/HoldingsPage.jsx', import.meta.url), 'utf8');
+  const holdingCard = readFileSync(new URL('../src/components/Holdings/HoldingCard.jsx', import.meta.url), 'utf8');
+  const glossary = readFileSync(new URL('../src/utils/marketFieldGlossary.js', import.meta.url), 'utf8');
   const priceAlertRunner = readFileSync(new URL('../src/utils/priceAlertRunner.js', import.meta.url), 'utf8');
   const viteConfig = readFileSync(new URL('../vite.config.js', import.meta.url), 'utf8');
 
@@ -126,19 +131,52 @@ test('market data settings support MarketData.app option provider', () => {
   assert.match(api, /MARKETDATA_TOKEN/);
   assert.match(api, /MarketData\.app/);
   assert.match(api, /status === 203/);
+  assert.match(api, /fetchLongbridge/);
+  assert.match(api, /provider === 'longbridge'/);
+  assert.match(stockSnapshot, /fetchLongbridgeStockSnapshot/);
+  assert.match(stockSnapshot, /buildLongbridgeFallbackSnapshot/);
+  assert.match(stockSnapshot, /company/);
+  assert.match(stockSnapshot, /industryRank/);
+  assert.match(longbridge, /QuoteContext/);
+  assert.match(longbridge, /staticInfo/);
+  assert.match(longbridge, /optionQuote/);
+  assert.match(longbridge, /toLongbridgeOptionSymbol/);
   assert.match(settings, /MarketData\.app/);
   assert.match(settings, /免费层约 100 次\/日 API Credits/);
   assert.match(settings, /期权数据延迟约 24h/);
   assert.match(settings, /MarketData\.app Token（推荐）/);
+  assert.match(settings, /Longbridge/);
+  assert.match(settings, /Longbridge App Key/);
   assert.match(appStore, /marketDataToken/);
+  assert.match(appStore, /longbridgeAppKey/);
   assert.match(alertRules, /marketDataToken/);
+  assert.match(alertRules, /longbridgeAccessToken/);
   assert.match(alertRules, /'marketdata'/);
   assert.match(cloudAlerts, /marketDataToken/);
+  assert.match(cloudAlerts, /longbridgeAccessToken/);
   assert.match(market, /X-MarketData-Token/);
+  assert.match(market, /X-Longbridge-App-Key/);
   assert.match(market, /params\.set\('contract'/);
   assert.match(stockDetail, /X-MarketData-Token/);
+  assert.match(stockDetail, /X-Longbridge-App-Key/);
+  assert.match(stockDetail, /公司情报/);
+  assert.match(stockDetail, /期权字段解释/);
+  assert.match(stockDetail, /stock-detail__mode-switch/);
+  assert.match(stockDetail, /getFieldHelp/);
+  assert.match(holdings, /\/api\/options-chain/);
+  assert.match(holdings, /optionQuote=\{optionQuotes\[holdingKey\]\}/);
+  assert.match(holdingCard, /liveOptionPrice/);
+  assert.match(holdingCard, /unrealizedPnl/);
+  assert.match(holdingCard, /Mark/);
+  assert.match(glossary, /OPTION_FIELD_HELP/);
+  assert.match(glossary, /theta/);
+  assert.match(glossary, /vega/);
+  assert.match(glossary, /floatMarketCap/);
   assert.match(priceAlertRunner, /X-MarketData-Token/);
+  assert.match(priceAlertRunner, /contract: alert\.asset_id/);
+  assert.match(priceAlertRunner, /X-Longbridge-Access-Token/);
   assert.match(viteConfig, /\/api\/options-chain/);
+  assert.match(viteConfig, /\/api\/stock-snapshot/);
 });
 
 test('share poster background picker supports local upload and NVIDIA generation', () => {

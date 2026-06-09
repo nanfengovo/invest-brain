@@ -1,4 +1,9 @@
 import { fetchWithTimeout, YAHOO_HEADERS } from './_lib/yahoo.js';
+import {
+  fetchLongbridgeOptionQuote,
+  getLongbridgeCredentials,
+  hasLongbridgeCredentials,
+} from './_lib/longbridge.js';
 
 export const config = {
   maxDuration: 20,
@@ -358,6 +363,26 @@ async function fetchPolygon(symbol, expiration, token) {
   };
 }
 
+async function fetchLongbridge(symbol, expiration, credentials, filters = {}) {
+  const contractSymbol = String(filters.contract || '').replace(/^OPTION_/i, '').trim().toUpperCase();
+  if (!contractSymbol) {
+    return {
+      expirations: expiration ? [expiration] : [],
+      selectedExpiration: expiration || null,
+      options: [],
+      message: '长桥当前仅用于单合约期权报价增强，请传入 OCC 合约代码。',
+    };
+  }
+
+  const option = await fetchLongbridgeOptionQuote(contractSymbol, credentials);
+  return {
+    expirations: option?.expiration ? [option.expiration] : (expiration ? [expiration] : []),
+    selectedExpiration: option?.expiration || expiration || null,
+    options: option ? [option] : [],
+    message: option ? null : '长桥未返回该期权合约报价，请确认 OPRA OpenAPI 权限。',
+  };
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method Not Allowed' });
@@ -378,6 +403,7 @@ export default async function handler(req, res) {
       || '';
     const tradierToken = req.headers['x-tradier-token'] || process.env.TRADIER_TOKEN || '';
     const polygonToken = req.headers['x-polygon-token'] || process.env.POLYGON_API_KEY || '';
+    const longbridgeCredentials = getLongbridgeCredentials(req.headers || {});
 
     if (!symbol) {
       return res.status(400).json({ error: 'Missing symbol parameter' });
@@ -393,6 +419,7 @@ export default async function handler(req, res) {
       marketDataToken ? 'marketdata' : '',
       tradierToken ? 'tradier' : '',
       polygonToken ? 'polygon' : '',
+      hasLongbridgeCredentials(longbridgeCredentials) ? 'longbridge' : '',
     ].join(':');
     const cached = optionsCache.get(cacheKey);
     if (cached && Date.now() - cached.fetchedAt <= CACHE_TTL_MS) {
@@ -410,6 +437,14 @@ export default async function handler(req, res) {
         provider: 'MarketData.app',
         generatedAt: new Date().toISOString(),
         ...(await fetchMarketDataApp(symbol, expiration, marketDataToken, { strike, side, contract })),
+      };
+    } else if (provider === 'longbridge' || (provider === 'auto' && hasLongbridgeCredentials(longbridgeCredentials) && contract)) {
+      payload = {
+        success: true,
+        symbol,
+        provider: 'Longbridge',
+        generatedAt: new Date().toISOString(),
+        ...(await fetchLongbridge(symbol, expiration, longbridgeCredentials, { contract })),
       };
     } else if (provider === 'tradier' || (provider === 'auto' && tradierToken)) {
       payload = {

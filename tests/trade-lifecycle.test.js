@@ -301,6 +301,20 @@ test('keeps named stock trades separate from option contracts', () => {
   assert.equal(getTradeQuantityUnit(trade), '股');
 });
 
+test('cleans imported trailing ellipsis and restores known asset display names', () => {
+  assert.equal(getTradeAssetDisplay({
+    symbol: 'DRAM',
+    asset_name: 'Roundhill记忆...',
+    asset_type: 'ETF',
+  }), 'Roundhill Memory ETF');
+
+  assert.equal(getTradeAssetDisplay({
+    symbol: 'FOO',
+    asset_name: '测试资产…',
+    asset_type: 'STOCK',
+  }), '测试资产');
+});
+
 test('flags sell trades without matching buys', () => {
   const [sell] = annotateTradesWithLifecycle([
     {

@@ -7,6 +7,7 @@ import {
 } from '../../utils/tradeLifecycle';
 import { getDteMonitor, getMoneynessMonitor } from '../../utils/optionMonitoring';
 import { buildOptionHoldingMetrics } from '../../utils/optionPortfolio';
+import { getReadableAssetName } from '../../utils/displayText';
 import './HoldingCard.css';
 
 const TYPE_LABELS = {
@@ -132,7 +133,12 @@ export default function HoldingCard({
   const quoteProvider = optionMetrics.quoteProvider || marketQuote?.provider || marketQuote?.exchangeName || '';
   const title = isOption && optionDisplay?.title ? optionDisplay.title : holding.symbol;
   const typeLabel = TYPE_LABELS[assetType] || assetType;
-  const hasMeta = Boolean(isOption ? optionExpirationLabel : (holding.name || holding.symbol));
+  const assetName = getReadableAssetName({
+    symbol: holding.symbol,
+    name: holding.name,
+    fallback: holding.symbol,
+  });
+  const hasMeta = Boolean(isOption ? optionExpirationLabel : assetName);
   const shouldShowLivePnl = isOption || hasLivePrice || unrealizedPnl !== null;
   const pnlPercentText = isOption
     ? (Number.isFinite(unrealizedPnlPct) ? `${(unrealizedPnlPct * 100).toFixed(1)}%` : '--')
@@ -172,7 +178,7 @@ export default function HoldingCard({
               </span>
             ) : (
               <span className="holding-card__name">
-                {holding.name || holding.symbol}
+                {assetName}
               </span>
             )}
           </div>

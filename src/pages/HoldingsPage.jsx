@@ -12,6 +12,7 @@ import { buildOCCContractSymbol } from '../utils/optionsMarket';
 import { buildOptionHoldingMetrics, buildOptionRealtimeSummary } from '../utils/optionPortfolio';
 import { syncCloudAlerts } from '../utils/cloudAlerts';
 import { buildApiCacheKey, fetchJsonWithCache } from '../utils/apiCache';
+import { getReadableAssetName } from '../utils/displayText';
 import './HoldingsPage.css';
 
 const formatCurrency = (num) => {
@@ -54,6 +55,12 @@ const getHoldingSymbol = (holding = {}) => String(
     ? holding.underlying_symbol || holding.symbol
     : holding.symbol
 ).trim().toUpperCase();
+
+const getHoldingDisplayName = (holding = {}) => getReadableAssetName({
+  symbol: holding.symbol,
+  name: holding.name,
+  fallback: holding.symbol,
+});
 
 const getQuotePrice = (quote = {}) => toFiniteNumberOrNull(quote?.displayPrice ?? quote?.price ?? quote?.regularMarketPrice);
 
@@ -181,7 +188,7 @@ function buildAllocationModel(liveHoldings = []) {
     return {
       id: `${item.holding.asset_id}-${item.holding.broker || ''}-${item.holding.author || '未标记'}`,
       symbol: item.holding.symbol,
-      name: item.holding.name || item.holding.symbol,
+      name: getHoldingDisplayName(item.holding),
       type: assetType,
       typeLabel: assetType === 'OPTION' ? '期权' : assetType === 'ETF' ? 'ETF' : assetType === 'STOCK' ? '股票' : assetType,
       value: item.value,
@@ -469,7 +476,7 @@ export default function HoldingsPage() {
         symbol,
         name: isOption
           ? `${symbol} 标的`
-          : holding.name || holding.symbol || symbol,
+          : getHoldingDisplayName(holding),
         quoteType: normalizedType,
         typeDisp: assetType === 'ETF' ? 'ETF' : '股票',
         region: 'US',

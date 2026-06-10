@@ -165,19 +165,30 @@
 
 .holding-card__expiration {
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   flex-wrap: wrap;
-  gap: 3px 6px;
+  gap: 4px 6px;
   color: var(--holding-option-exp-color, #93c5fd);
-  background: var(--holding-option-exp-bg, rgba(96, 165, 250, 0.08));
-  border: 1px solid var(--holding-option-exp-border, rgba(96, 165, 250, 0.16));
-  border-radius: 8px;
-  padding: 3px 8px;
+  background: transparent;
+  border: 0;
+  padding: 0;
   line-height: 1.35;
 }
 
 .holding-card__expiration-part {
-  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  max-width: 100%;
+  padding: 3px 8px;
+  border: 1px solid var(--holding-option-exp-border, transparent);
+  border-radius: 8px;
+  background: var(--holding-option-exp-bg, transparent);
+  color: var(--holding-option-exp-color, #93c5fd);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  text-align: left;
+  white-space: normal;
 }
 
 .holding-card__expiration--calm {
@@ -214,6 +225,9 @@
   --holding-option-exp-color: #fff7ed;
   --holding-option-exp-bg: linear-gradient(135deg, rgba(239, 68, 68, 0.88), rgba(251, 146, 60, 0.68));
   --holding-option-exp-border: rgba(254, 226, 226, 0.5);
+}
+
+.holding-card__expiration--zero-dte .holding-card__expiration-part {
   box-shadow: 0 0 18px rgba(239, 68, 68, 0.24);
 }
 

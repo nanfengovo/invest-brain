@@ -10,6 +10,9 @@ test('holdings allocation shows every holding and keeps the donut interactive', 
   assert.doesNotMatch(page, /symbol:\s*'其他'/);
   assert.doesNotMatch(page, /othersValue/);
   assert.match(page, /handleAllocationChartClick/);
+  assert.match(page, /getHoldingDisplayName/);
+  assert.match(page, /name: getHoldingDisplayName\(item\.holding\)/);
+  assert.match(page, /getHoldingDisplayName\(holding\)/);
   assert.match(page, /onClick=\{handleAllocationChartClick\}/);
   assert.match(page, /aria-label=\{`持仓占比饼图，当前选中/);
   assert.match(page, /aria-pressed=\{selectedAllocation\?\.id === row\.id\}/);

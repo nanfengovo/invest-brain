@@ -8,6 +8,7 @@ import {
   normalizeStrike,
   normalizeUnderlying,
 } from './optionsMarket.js';
+import { getReadableAssetName } from './displayText.js';
 import { getTradeIdentityAssetKey } from './tradeDeduplication.js';
 
 const BUY_DIRECTIONS = new Set(['BUY', 'OPEN', 'BTO', '买入', '买', '开仓']);
@@ -155,7 +156,12 @@ export function getTradeAssetDisplay(trade = {}) {
   const parsed = getParsedOption(trade);
   const isOption = isOptionTrade(trade);
 
-  if (!isOption) return trade.asset_name || '';
+  if (!isOption) {
+    return getReadableAssetName({
+      symbol: trade.symbol,
+      name: trade.asset_name,
+    });
+  }
 
   const expiry = formatExpiryDate(parsed.expiry || trade.expiry_date);
   const strike = formatStrikePrice(parsed.strike || trade.strike_price);

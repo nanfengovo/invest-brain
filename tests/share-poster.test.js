@@ -223,10 +223,12 @@ test('market data settings support MarketData.app option provider', () => {
   assert.match(stockSnapshot, /company/);
   assert.match(stockSnapshot, /industryRank/);
   assert.match(longbridge, /getLongbridgeCredentials/);
+  assert.match(longbridge, /getLongbridgeBridgeConfig/);
   assert.match(longbridge, /buildSignature/);
   assert.doesNotMatch(longbridge, /import\('longbridge'\)/);
   assert.doesNotMatch(longbridge, /QuoteContext/);
   assert.doesNotMatch(longbridge, /optionQuote/);
+  assert.match(longbridge, /Longbridge Python SDK/);
   assert.match(longbridge, /OPRA US Options Quotes/);
   assert.doesNotMatch(longbridge, /FundamentalContext/);
   assert.match(longbridge, /Serverless Functions over the 250MB unzipped limit/);
@@ -246,12 +248,13 @@ test('market data settings support MarketData.app option provider', () => {
   assert.match(settings, /免费层约 100 次\/日 API Credits/);
   assert.match(settings, /期权数据延迟约 24h/);
   assert.match(settings, /MarketData\.app，其次 Longbridge、Tradier、Polygon/);
-  assert.match(settings, /Longbridge 官方 SDK 支持 optionQuote/);
+  assert.match(settings, /Longbridge 官方 Python SDK 支持 option_quote/);
   assert.match(settings, /MarketData\.app Token（推荐）/);
   assert.match(settings, /Longbridge/);
   assert.match(settings, /Longbridge App Key/);
   assert.match(appStore, /marketDataToken/);
   assert.match(appStore, /longbridgeAppKey/);
+  assert.match(appStore, /longbridgeBridgeUrl/);
   assert.match(alertRules, /marketDataToken/);
   assert.match(alertRules, /longbridgeAccessToken/);
   assert.match(alertRules, /'marketdata'/);
@@ -259,9 +262,11 @@ test('market data settings support MarketData.app option provider', () => {
   assert.match(cloudAlerts, /longbridgeAccessToken/);
   assert.match(market, /X-MarketData-Token/);
   assert.match(market, /X-Longbridge-App-Key/);
+  assert.match(market, /X-Longbridge-Bridge-Url/);
   assert.match(market, /params\.set\('contract'/);
   assert.match(stockDetail, /X-MarketData-Token/);
   assert.match(stockDetail, /X-Longbridge-App-Key/);
+  assert.match(stockDetail, /X-Longbridge-Bridge-Url/);
   assert.match(stockDetail, /公司情报/);
   assert.match(stockDetail, /期权字段解释/);
   assert.match(stockDetail, /查看行业排名解释/);
@@ -287,6 +292,7 @@ test('market data settings support MarketData.app option provider', () => {
   assert.match(holdings, /quoteUnavailable: true/);
   assert.match(holdings, /normalizeOptionQuoteError/);
   assert.match(holdings, /longbridgeAppSecret/);
+  assert.match(holdings, /X-Longbridge-Bridge-Url/);
   assert.match(holdings, /请求过于频繁或额度已用尽/);
   assert.match(holdings, /buildOptionRealtimeSummary/);
   assert.match(holdings, /Options Live Radar/);
@@ -321,6 +327,7 @@ test('market data settings support MarketData.app option provider', () => {
   assert.match(priceAlertRunner, /const contract = normalizeOptionContractKey\(alert\.asset_id\)/);
   assert.match(priceAlertRunner, /contract,/);
   assert.match(priceAlertRunner, /X-Longbridge-Access-Token/);
+  assert.match(priceAlertRunner, /X-Longbridge-Bridge-Url/);
   assert.match(viteConfig, /\/api\/options-chain/);
   assert.match(viteConfig, /\/api\/stock-snapshot/);
   assert.match(viteConfig, /\/api\/kline/);
@@ -386,6 +393,8 @@ test('share poster background picker supports local upload and AI generation', (
   assert.match(picker, /pollinations-flux/);
   assert.match(picker, /pollinations-turbo/);
   assert.match(picker, /provider: 'pollinations'/);
+  assert.match(picker, /local-fallback/);
+  assert.match(picker, /已改用本地背景继续生成/);
   assert.match(picker, /qwen-image/);
   assert.match(picker, /qwen-image-2512/);
   assert.match(picker, /flux\.2-klein-4b/);
@@ -415,7 +424,7 @@ test('share poster background picker supports local upload and AI generation', (
   assert.match(poster, /drawShareQr/);
   assert.match(poster, /DEFAULT_SHARE_SITE_URL/);
   assert.match(poster, /qrcode/);
-  assert.match(appStore, /defaultModel: 'qwen-image'/);
+  assert.match(appStore, /defaultModel: 'pollinations-flux'/);
   assert.match(appStore, /share_background_config/);
   assert.match(viteConfig, /\/api\/share-background/);
   assert.match(vercelConfig, /"source": "\/api\/share-background"/);

@@ -1,7 +1,9 @@
 import { fetchWithTimeout, YAHOO_HEADERS } from './_lib/yahoo.js';
 import {
   fetchLongbridgeOptionQuote,
+  getLongbridgeBridgeConfig,
   getLongbridgeCredentials,
+  hasLongbridgeBridgeConfig,
   hasLongbridgeCredentials,
 } from './_lib/longbridge.js';
 import { getNewYorkDateParts, getUsMarketStatus } from '../src/utils/marketHours.js';
@@ -685,7 +687,7 @@ async function fetchPolygon(symbol, expiration, token, filters = {}) {
   };
 }
 
-async function fetchLongbridge(symbol, expiration, credentials, filters = {}) {
+async function fetchLongbridge(symbol, expiration, credentials, bridgeConfig, filters = {}) {
   const contractSymbol = normalizeOptionContractKey(filters.contract);
   if (!contractSymbol) {
     return {
@@ -696,7 +698,7 @@ async function fetchLongbridge(symbol, expiration, credentials, filters = {}) {
     };
   }
 
-  const option = await fetchLongbridgeOptionQuote(contractSymbol, credentials);
+  const option = await fetchLongbridgeOptionQuote(contractSymbol, credentials, bridgeConfig);
   return {
     expirations: option?.expiration ? [option.expiration] : (expiration ? [expiration] : []),
     selectedExpiration: option?.expiration || expiration || null,
@@ -716,13 +718,14 @@ const OPTION_PROVIDER_LABELS = {
 export function buildAutoOptionProviderPlan({
   marketDataToken = '',
   hasLongbridge = false,
+  hasLongbridgeBridge = false,
   contract = '',
   tradierToken = '',
   polygonToken = '',
 } = {}) {
   const plan = [];
   if (marketDataToken) plan.push('marketdata');
-  if ((hasLongbridge || process.env.LONGBRIDGE_CLI_OPTION_FALLBACK !== '0') && contract) plan.push('longbridge');
+  if ((hasLongbridgeBridge || hasLongbridge || process.env.LONGBRIDGE_CLI_OPTION_FALLBACK !== '0') && contract) plan.push('longbridge');
   if (tradierToken) plan.push('tradier');
   if (polygonToken) plan.push('polygon');
   plan.push('yahoo');
@@ -795,6 +798,7 @@ export default async function handler(req, res) {
     const tradierToken = req.headers['x-tradier-token'] || process.env.TRADIER_TOKEN || '';
     const polygonToken = req.headers['x-polygon-token'] || process.env.POLYGON_API_KEY || '';
     const longbridgeCredentials = getLongbridgeCredentials(req.headers || {});
+    const longbridgeBridgeConfig = getLongbridgeBridgeConfig(req.headers || {});
 
     if (!symbol) {
       return res.status(400).json({ error: '缺少 symbol 参数' });
@@ -814,6 +818,9 @@ export default async function handler(req, res) {
       hasLongbridgeCredentials(longbridgeCredentials)
         ? `longbridge:${hashCredential(`${longbridgeCredentials.appKey}:${longbridgeCredentials.accessToken}`)}`
         : '',
+      hasLongbridgeBridgeConfig(longbridgeBridgeConfig)
+        ? `longbridge-bridge:${hashCredential(`${longbridgeBridgeConfig.bridgeUrl}:${longbridgeBridgeConfig.bridgeToken}`)}`
+        : '',
     ].join(':');
     const cached = getCachedOptions(cacheKey, CACHE_TTL_MS);
     if (cached) {
@@ -831,7 +838,7 @@ export default async function handler(req, res) {
       if (providerKey === 'marketdata') {
         result = await fetchMarketDataApp(symbol, expiration, marketDataToken, { strike, side, contract, includePrevious });
       } else if (providerKey === 'longbridge') {
-        result = await fetchLongbridge(symbol, expiration, longbridgeCredentials, { contract });
+        result = await fetchLongbridge(symbol, expiration, longbridgeCredentials, longbridgeBridgeConfig, { contract });
       } else if (providerKey === 'tradier') {
         result = await fetchTradier(symbol, expiration, tradierToken, { contract });
       } else if (providerKey === 'polygon') {
@@ -865,6 +872,7 @@ export default async function handler(req, res) {
           const autoPlan = buildAutoOptionProviderPlan({
             marketDataToken,
             hasLongbridge: hasLongbridgeCredentials(longbridgeCredentials),
+            hasLongbridgeBridge: hasLongbridgeBridgeConfig(longbridgeBridgeConfig),
             contract,
             tradierToken,
             polygonToken,

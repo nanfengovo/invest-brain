@@ -549,7 +549,7 @@ function drawStockSnapshotTemplate(ctx, config, accent = '#38bdf8', accent2 = '#
     ctx.fillText(metricValue, x + 22, y + 70);
   });
 
-  const panelY = 1168;
+  const panelY = 1150;
   [
     {
       label: '公司画像',
@@ -562,7 +562,7 @@ function drawStockSnapshotTemplate(ctx, config, accent = '#38bdf8', accent2 = '#
       x: 554,
     },
   ].forEach((panel) => {
-    roundRect(ctx, panel.x, panelY, 432, 128, 30);
+    roundRect(ctx, panel.x, panelY, 432, 116, 30);
     ctx.fillStyle = 'rgba(2, 6, 23, 0.46)';
     ctx.fill();
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.11)';
@@ -572,32 +572,39 @@ function drawStockSnapshotTemplate(ctx, config, accent = '#38bdf8', accent2 = '#
     ctx.fillText(panel.label, panel.x + 28, panelY + 42);
     ctx.fillStyle = '#f8fafc';
     ctx.font = '900 28px "PingFang SC", sans-serif';
-    clampText(ctx, panel.value, 360, 2)
-      .forEach((line, lineIndex) => ctx.fillText(line, panel.x + 28, panelY + 82 + lineIndex * 34));
+    clampText(ctx, panel.value, 360, 1)
+      .forEach((line) => ctx.fillText(line, panel.x + 28, panelY + 82));
   });
 
-  const qrSize = 92;
-  const qrX = POSTER_WIDTH - 216;
-  const qrY = 1258;
+  const footerY = 1294;
+  roundRect(ctx, 92, footerY, POSTER_WIDTH - 184, 98, 28);
+  ctx.fillStyle = 'rgba(2, 6, 23, 0.34)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+  ctx.stroke();
+
+  const qrSize = 68;
+  const qrX = POSTER_WIDTH - 190;
+  const qrY = footerY + 14;
   drawShareQr(ctx, config, qrX, qrY, qrSize, {
     background: '#f8fafc',
     module: '#0f172a',
     border: 'rgba(255, 255, 255, 0.16)',
     labelColor: 'rgba(203, 213, 225, 0.62)',
-    labelSize: 17,
-    labelOffset: 22,
+    labelSize: 13,
+    labelOffset: 16,
   });
 
-  const footerWidth = qrX - 146;
+  const footerWidth = qrX - 138;
   ctx.fillStyle = 'rgba(203, 213, 225, 0.66)';
   ctx.font = '600 20px "PingFang SC", sans-serif';
-  clampText(ctx, sourceLabel, footerWidth, 1).forEach((line) => ctx.fillText(line, 112, 1328));
+  clampText(ctx, sourceLabel, footerWidth, 1).forEach((line) => ctx.fillText(line, 112, footerY + 28));
   ctx.fillStyle = 'rgba(203, 213, 225, 0.48)';
   ctx.font = '600 19px "PingFang SC", sans-serif';
   clampText(ctx, config.footer || '仅供复盘参考，不构成投资建议', footerWidth, 1)
-    .forEach((line) => ctx.fillText(line, 112, 1362));
+    .forEach((line) => ctx.fillText(line, 112, footerY + 58));
   clampText(ctx, config.generatedAt || new Date().toLocaleString('zh-CN'), footerWidth, 1)
-    .forEach((line) => ctx.fillText(line, 112, 1392));
+    .forEach((line) => ctx.fillText(line, 112, footerY + 84));
 }
 
 function drawPosterBackground(ctx, config, accent, accent2) {
@@ -1168,9 +1175,14 @@ export const FREE_IMAGE_MODEL_RECOMMENDATIONS = [
     caveat: '通常需要 HF Token 和 Inference Providers 权限',
   },
   {
+    name: 'Pollinations FLUX',
+    fit: '当前默认分享背景模型，免配置、提示词变化更容易体现在背景里',
+    caveat: '公共免费源可能排队或限流，失败时会改用本地背景继续出图',
+  },
+  {
     name: 'Qwen-Image',
-    fit: '当前默认分享背景模型，中文语义和海报构图更稳',
-    caveat: '分享图关键文字仍建议由本地 Canvas 绘制',
+    fit: 'NVIDIA 备用分享背景模型，中文语义和海报构图较稳',
+    caveat: 'NVIDIA 预览端点可能调整，分享图关键文字仍由本地 Canvas 绘制',
   },
   {
     name: 'qwen-image-2512',

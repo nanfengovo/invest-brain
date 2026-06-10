@@ -101,6 +101,8 @@ async function fetchConfiguredOptionPrice(alert, marketDataConfig = {}) {
       ...(marketDataConfig.longbridgeAppKey ? { 'x-longbridge-app-key': marketDataConfig.longbridgeAppKey } : {}),
       ...(marketDataConfig.longbridgeAppSecret ? { 'x-longbridge-app-secret': marketDataConfig.longbridgeAppSecret } : {}),
       ...(marketDataConfig.longbridgeAccessToken ? { 'x-longbridge-access-token': marketDataConfig.longbridgeAccessToken } : {}),
+      ...(marketDataConfig.longbridgeBridgeUrl ? { 'x-longbridge-bridge-url': marketDataConfig.longbridgeBridgeUrl } : {}),
+      ...(marketDataConfig.longbridgeBridgeToken ? { 'x-longbridge-bridge-token': marketDataConfig.longbridgeBridgeToken } : {}),
     },
   };
   const res = createOptionsChainResponse();

@@ -51,7 +51,8 @@ const MODEL_ENDPOINTS = {
   },
 };
 
-const DEFAULT_MODEL = 'qwen-image';
+const DEFAULT_MODEL = 'pollinations-flux';
+const DEFAULT_NVIDIA_MODEL = 'qwen-image';
 const DEFAULT_POLLINATIONS_MODEL = 'pollinations-flux';
 const FALLBACK_MODELS = [
   'qwen-image',
@@ -76,7 +77,8 @@ function nearestSize(value, fallback, steps = NIM_SIZE_STEPS) {
 function normalizeModel(model) {
   const value = String(model || '').trim();
   if (MODEL_ENDPOINTS[value]) return MODEL_ENDPOINTS[value].model;
-  return ALLOWED_MODELS.includes(value) ? value : DEFAULT_MODEL;
+  if (ALLOWED_MODELS.includes(value) && !value.startsWith('pollinations-')) return value;
+  return DEFAULT_NVIDIA_MODEL;
 }
 
 function normalizePollinationsModel(model) {
@@ -93,6 +95,7 @@ function normalizeProvider(provider, requestedModel) {
   const value = String(provider || '').trim().toLowerCase();
   if (value === 'pollinations') return 'pollinations';
   if (String(requestedModel || '').toLowerCase().startsWith('pollinations-')) return 'pollinations';
+  if (!value && !String(requestedModel || '').trim()) return 'pollinations';
   return 'nvidia';
 }
 

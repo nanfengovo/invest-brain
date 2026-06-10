@@ -17,6 +17,8 @@ const DEFAULT_MARKET_DATA_CONFIG = {
   longbridgeAppKey: '',
   longbridgeAppSecret: '',
   longbridgeAccessToken: '',
+  longbridgeBridgeUrl: '',
+  longbridgeBridgeToken: '',
 };
 
 export function toFiniteNumber(value) {
@@ -79,6 +81,8 @@ export function normalizeMarketDataConfig(config = {}) {
     longbridgeAppKey: String(merged.longbridgeAppKey || ''),
     longbridgeAppSecret: String(merged.longbridgeAppSecret || ''),
     longbridgeAccessToken: String(merged.longbridgeAccessToken || ''),
+    longbridgeBridgeUrl: String(merged.longbridgeBridgeUrl || ''),
+    longbridgeBridgeToken: String(merged.longbridgeBridgeToken || ''),
   };
 }
 

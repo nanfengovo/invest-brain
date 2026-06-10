@@ -43,8 +43,10 @@ test('holdings allocation shows every holding and keeps the donut interactive', 
   assert.match(database, /卖出平仓/);
   assert.match(database, /HAVING total_quantity > 0\.0001/);
   assert.match(database, /tradeExpiredOptionSql/);
-  assert.match(database, /AND NOT \(\$\{tradeExpiredOptionSql\(\)\} AND \$\{tradeBuyDirectionSql\(\)\}\)/);
+  assert.match(database, /\$\{tradeSellDirectionSql\(\)\}[\s\S]*\$\{tradeBuyDirectionSql\(\)\}/);
+  assert.match(database, /AND NOT \$\{tradeExpiredOptionSql\(\)\}/);
   assert.match(database, /COALESCE\(t\.lifecycle_status, 'ACTIVE'\) NOT IN \('EXPIRED_WORTHLESS', 'EXERCISED', 'ASSIGNED', 'CLOSED_TRADED'\)/);
+  assert.match(database, /\$\{tradeSellDirectionSql\('candidate\.direction'\)\}[\s\S]*\$\{tradeBuyDirectionSql\('candidate\.direction'\)\}/);
   assert.match(database, /getTradesByAssetAndBroker/);
   assert.match(database, /usePositionKey/);
 });

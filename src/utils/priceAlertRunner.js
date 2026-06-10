@@ -32,6 +32,8 @@ function buildMarketDataHeaders(marketDataConfig = {}) {
     ...(marketDataConfig.longbridgeAppKey ? { 'X-Longbridge-App-Key': marketDataConfig.longbridgeAppKey } : {}),
     ...(marketDataConfig.longbridgeAppSecret ? { 'X-Longbridge-App-Secret': marketDataConfig.longbridgeAppSecret } : {}),
     ...(marketDataConfig.longbridgeAccessToken ? { 'X-Longbridge-Access-Token': marketDataConfig.longbridgeAccessToken } : {}),
+    ...(marketDataConfig.longbridgeBridgeUrl ? { 'X-Longbridge-Bridge-Url': marketDataConfig.longbridgeBridgeUrl } : {}),
+    ...(marketDataConfig.longbridgeBridgeToken ? { 'X-Longbridge-Bridge-Token': marketDataConfig.longbridgeBridgeToken } : {}),
   };
 }
 

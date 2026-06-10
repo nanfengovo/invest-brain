@@ -5,6 +5,7 @@ import {
   buildTradePortfolioSummary,
   getOrphanSellLifecycleItems,
   getTradeAssetDisplay,
+  getTradeDirectionKind,
   getTradeQuantityUnit,
   getTradeOptionDisplay,
   getOptionExpirationLabel,
@@ -83,6 +84,35 @@ test('calculates realized pnl for closed buy and sell pairs', () => {
   assert.equal(trades[0].lifecycle.realizedPnl, 370);
   assert.equal(shouldShowOptionExpirationLabel(trades[0]), false);
   assert.equal(shouldShowOptionExpirationLabel(trades[1]), false);
+});
+
+test('recognizes broker close directions as sells for closed loops', () => {
+  const trades = annotateTradesWithLifecycle([
+    {
+      id: 'b1',
+      symbol: 'BB',
+      asset_type: 'OPTION',
+      contract_symbol: 'BB260821C00013000',
+      direction: '买入开仓',
+      quantity: 1,
+      price: 0.7,
+    },
+    {
+      id: 's1',
+      symbol: 'BB',
+      asset_type: 'OPTION',
+      contract_symbol: 'BB260821C00013000',
+      direction: 'SELL_TO_CLOSE',
+      quantity: 1,
+      price: 1.1,
+    },
+  ]);
+
+  assert.equal(trades[0].lifecycle.status, 'CLOSED');
+  assert.equal(trades[1].lifecycle.status, 'CLOSED');
+  assert.equal(Number(trades[0].lifecycle.realizedPnl.toFixed(2)), 40);
+  assert.equal(getTradeDirectionKind('卖出平仓'), 'SELL');
+  assert.equal(getTradeDirectionKind('sell-to-close'), 'SELL');
 });
 
 test('matches option buys and sells even when broker metadata differs', () => {

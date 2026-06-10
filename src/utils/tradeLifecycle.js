@@ -11,8 +11,40 @@ import {
 import { getReadableAssetName } from './displayText.js';
 import { getTradeIdentityAssetKey } from './tradeDeduplication.js';
 
-const BUY_DIRECTIONS = new Set(['BUY', 'OPEN', 'BTO', '买入', '买', '开仓']);
-const SELL_DIRECTIONS = new Set(['SELL', 'CLOSE', 'STC', '卖出', '卖', '平仓']);
+const BUY_DIRECTIONS = new Set([
+  'BUY',
+  'OPEN',
+  'BTO',
+  'BUY_TO_OPEN',
+  'BUY_OPEN',
+  'OPEN_BUY',
+  'BOT',
+  '买入',
+  '买',
+  '开仓',
+  '买入开仓',
+  '开仓买入',
+  '买入_开仓',
+  '开仓_买入',
+]);
+const SELL_DIRECTIONS = new Set([
+  'SELL',
+  'CLOSE',
+  'STC',
+  'SELL_TO_CLOSE',
+  'SELL_CLOSE',
+  'CLOSE_SELL',
+  'SOLD',
+  'SLD',
+  '卖出',
+  '卖',
+  '平仓',
+  '已卖出',
+  '卖出平仓',
+  '平仓卖出',
+  '卖出_平仓',
+  '平仓_卖出',
+]);
 
 function normalizeOptionType(value) {
   return normalizeMarketOptionType(value);
@@ -313,7 +345,10 @@ export function getTradeMultiplier(trade = {}) {
 }
 
 export function getTradeDirectionKind(direction) {
-  const value = String(direction || '').trim().toUpperCase();
+  const value = String(direction || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s/-]+/g, '_');
   if (BUY_DIRECTIONS.has(value)) return 'BUY';
   if (SELL_DIRECTIONS.has(value)) return 'SELL';
   return 'OTHER';

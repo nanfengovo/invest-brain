@@ -543,6 +543,8 @@ function SettingsPage() {
       longbridgeAppKey: String(marketDataInput.longbridgeAppKey || '').trim(),
       longbridgeAppSecret: String(marketDataInput.longbridgeAppSecret || '').trim(),
       longbridgeAccessToken: String(marketDataInput.longbridgeAccessToken || '').trim(),
+      longbridgeBridgeUrl: String(marketDataInput.longbridgeBridgeUrl || '').trim(),
+      longbridgeBridgeToken: String(marketDataInput.longbridgeBridgeToken || '').trim(),
     };
 
     try {
@@ -1103,7 +1105,7 @@ function SettingsPage() {
             <div className="settings-card__content">
               <div className="settings-card__label">背景来源与 AI 模型</div>
               <div className="settings-card__desc">
-                分享时可选择本地背景、上传图片或用 Pollinations / NVIDIA 生成背景；标题、收益、二维码和期权信息仍由本地 Canvas 绘制。
+                分享时可选择本地背景、上传图片或用 Pollinations / NVIDIA 生成背景；外部模型失败会自动改用本地背景，标题、收益、二维码和期权信息仍由本地 Canvas 绘制。
               </div>
             </div>
           </div>
@@ -1114,7 +1116,7 @@ function SettingsPage() {
 	                { label: 'Pollinations 免费尝试', value: 'pollinations' },
 	                { label: 'NVIDIA AI', value: 'nvidia' },
 	              ]}
-              value={[shareBackgroundInput.provider || 'local']}
+              value={[shareBackgroundInput.provider || 'pollinations']}
               onChange={(value) => {
                 if (!value.length) return;
                 setShareBackgroundInput((current) => ({ ...current, provider: value[0] }));
@@ -1130,7 +1132,7 @@ function SettingsPage() {
                 { label: 'FLUX.1 Schnell', value: 'flux.1-schnell' },
                 { label: 'SD 3.5 Large', value: 'stabilityai/stable-diffusion-3.5-large' },
               ]}
-              value={[shareBackgroundInput.defaultModel || 'qwen-image']}
+              value={[shareBackgroundInput.defaultModel || 'pollinations-flux']}
               onChange={(value) => {
                 if (!value.length) return;
                 setShareBackgroundInput((current) => ({ ...current, defaultModel: value[0] }));
@@ -1185,7 +1187,7 @@ function SettingsPage() {
             />
             <div className="settings-card__provider-note">
               <strong>MarketData.app 建议优先使用。</strong>
-              免费层约 100 次/日 API Credits，期权数据延迟约 24h，适合复盘和低频监控；试用或付费套餐可升级更低延迟/实时 OPRA。Longbridge 官方 SDK 支持 optionQuote，期权报价需要 OPRA US Options Quotes 的 OpenAPI 权限；本地会优先尝试 Longbridge CLI，线上仍建议配置 MarketData.app/Tradier/Polygon 作为实时 OPRA 主源。
+              免费层约 100 次/日 API Credits，期权数据延迟约 24h，适合复盘和低频监控；试用或付费套餐可升级更低延迟/实时 OPRA。Longbridge 官方 Python SDK 支持 option_quote，可配置下方 SDK 桥作为线上补充，仍需要 OPRA US Options Quotes 的 OpenAPI 权限。
             </div>
             <div className="settings-card__input-wrapper">
               <Input
@@ -1238,6 +1240,23 @@ function SettingsPage() {
                 type="password"
                 value={marketDataInput.longbridgeAccessToken || ''}
                 onChange={(value) => setMarketDataInput((current) => ({ ...current, longbridgeAccessToken: value }))}
+                clearable
+              />
+            </div>
+            <div className="settings-card__input-wrapper">
+              <Input
+                placeholder="Longbridge Python SDK 桥地址（可选，如 https://xxx/option-quote）"
+                value={marketDataInput.longbridgeBridgeUrl || ''}
+                onChange={(value) => setMarketDataInput((current) => ({ ...current, longbridgeBridgeUrl: value }))}
+                clearable
+              />
+            </div>
+            <div className="settings-card__input-wrapper">
+              <Input
+                placeholder="SDK 桥访问 Token（可选）"
+                type="password"
+                value={marketDataInput.longbridgeBridgeToken || ''}
+                onChange={(value) => setMarketDataInput((current) => ({ ...current, longbridgeBridgeToken: value }))}
                 clearable
               />
             </div>

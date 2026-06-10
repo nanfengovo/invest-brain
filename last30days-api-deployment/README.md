@@ -54,6 +54,36 @@ python price_alert_scheduler.py --interval-seconds 300
 python price_alert_scheduler.py --once
 ```
 
+## 📈 长桥 Python SDK 期权报价桥
+
+如果 Vercel 端的长桥 HTTP 方式拿不到某些期权实时价，可以把这里作为补充报价桥。它使用长桥官方 Python SDK 的 `option_quote` 能力，移动端在“行情数据源与价格提醒”里填入桥地址后，会优先请求 SDK，再回退到原有数据源。
+
+Streamlit Community Cloud 里可打开兼容调试入口查看 SDK 返回内容：
+
+```text
+https://your-app-name.streamlit.app/?api=option_quote
+```
+
+但 Streamlit 本质是 UI 运行时，Vercel 自动补价更建议使用标准 Python Web 服务的 WSGI 入口 `option_quote_api:app`，请求示例：
+
+```bash
+curl "https://your-python-host/option-quote?symbols=AAPL260618C00100000.US" \
+  -H "Authorization: Bearer your_bridge_token"
+```
+
+Streamlit Secrets 需要加入：
+
+```toml
+LONGPORT_APP_KEY = "你的长桥 App Key"
+LONGPORT_APP_SECRET = "你的长桥 App Secret"
+LONGPORT_ACCESS_TOKEN = "你的长桥 Access Token"
+
+# 可选；配置后前端也要填同一个 SDK 桥访问 Token
+LONGBRIDGE_OPTION_BRIDGE_TOKEN = "your_bridge_token"
+```
+
+注意：美股期权实时价仍需要长桥 OpenAPI 的 OPRA US Options Quotes 权限。App/PC 客户端能看到行情，不一定代表 OpenAPI 已开通同一权限。
+
 ## 🔌 如何在移动端配合使用？
 
 系统部署成功后，你会得到一个专属的 URL（例如 `https://your-app-name.streamlit.app`）。

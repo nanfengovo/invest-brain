@@ -22,6 +22,8 @@ const DEFAULT_MARKET_DATA_CONFIG = {
   longbridgeAppKey: '',
   longbridgeAppSecret: '',
   longbridgeAccessToken: '',
+  longbridgeBridgeUrl: '',
+  longbridgeBridgeToken: '',
 };
 
 async function loadJsonSetting(key, fallback) {

@@ -241,9 +241,14 @@ const saveActiveMarketRegion = (region) => {
 };
 
 const buildMarketDataHeaders = (marketDataConfig = {}) => ({
+  ...(marketDataConfig.tradierToken ? { 'X-Tradier-Token': marketDataConfig.tradierToken } : {}),
+  ...(marketDataConfig.polygonToken ? { 'X-Polygon-Token': marketDataConfig.polygonToken } : {}),
+  ...(marketDataConfig.marketDataToken ? { 'X-MarketData-Token': marketDataConfig.marketDataToken } : {}),
   ...(marketDataConfig.longbridgeAppKey ? { 'X-Longbridge-App-Key': marketDataConfig.longbridgeAppKey } : {}),
   ...(marketDataConfig.longbridgeAppSecret ? { 'X-Longbridge-App-Secret': marketDataConfig.longbridgeAppSecret } : {}),
   ...(marketDataConfig.longbridgeAccessToken ? { 'X-Longbridge-Access-Token': marketDataConfig.longbridgeAccessToken } : {}),
+  ...(marketDataConfig.longbridgeBridgeUrl ? { 'X-Longbridge-Bridge-Url': marketDataConfig.longbridgeBridgeUrl } : {}),
+  ...(marketDataConfig.longbridgeBridgeToken ? { 'X-Longbridge-Bridge-Token': marketDataConfig.longbridgeBridgeToken } : {}),
 });
 
 export default function MarketPage() {
@@ -444,14 +449,7 @@ export default function MarketPage() {
           if (candidate.optionType) params.set('side', candidate.optionType.toLowerCase());
           const res = await fetch(`/api/options-chain?${params.toString()}`, {
             signal: activeController.signal,
-            headers: {
-              ...(marketDataConfig.tradierToken ? { 'X-Tradier-Token': marketDataConfig.tradierToken } : {}),
-              ...(marketDataConfig.polygonToken ? { 'X-Polygon-Token': marketDataConfig.polygonToken } : {}),
-              ...(marketDataConfig.marketDataToken ? { 'X-MarketData-Token': marketDataConfig.marketDataToken } : {}),
-              ...(marketDataConfig.longbridgeAppKey ? { 'X-Longbridge-App-Key': marketDataConfig.longbridgeAppKey } : {}),
-              ...(marketDataConfig.longbridgeAppSecret ? { 'X-Longbridge-App-Secret': marketDataConfig.longbridgeAppSecret } : {}),
-              ...(marketDataConfig.longbridgeAccessToken ? { 'X-Longbridge-Access-Token': marketDataConfig.longbridgeAccessToken } : {}),
-            },
+            headers: buildMarketDataHeaders(marketDataConfig),
           });
           const json = await res.json();
           if (!res.ok) throw new Error(json.error || '期权行情加载失败');

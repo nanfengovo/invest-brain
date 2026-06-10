@@ -569,7 +569,13 @@ export const db = {
       FROM trades candidate
       WHERE ${candidateWorkspaceSql} = COALESCE(NULLIF(TRIM(trades.workspace_scope), ''), 'personal')
         AND ${candidateAuthorSql} = ${outerAuthorSql}
-        AND COALESCE(candidate.lifecycle_status, 'ACTIVE') NOT IN ('EXPIRED_WORTHLESS', 'EXERCISED', 'ASSIGNED', 'CLOSED_TRADED')
+        AND (
+          ${tradeSellDirectionSql('candidate.direction')}
+          OR (
+            ${tradeBuyDirectionSql('candidate.direction')}
+            AND COALESCE(candidate.lifecycle_status, 'ACTIVE') NOT IN ('EXPIRED_WORTHLESS', 'EXERCISED', 'ASSIGNED', 'CLOSED_TRADED')
+          )
+        )
         AND ${sameOptionPositionSql})`;
     const params = [normalizeWorkspaceScope(scope)];
     return this.exec(
@@ -983,8 +989,14 @@ export const db = {
 	       FROM trades t
 	       JOIN assets a ON t.asset_id = a.id
 	       WHERE 1 = 1
-	         AND COALESCE(t.lifecycle_status, 'ACTIVE') NOT IN ('EXPIRED_WORTHLESS', 'EXERCISED', 'ASSIGNED', 'CLOSED_TRADED')
-	         AND NOT (${tradeExpiredOptionSql()} AND ${tradeBuyDirectionSql()})`;
+         AND (
+           ${tradeSellDirectionSql()}
+           OR (
+             ${tradeBuyDirectionSql()}
+             AND COALESCE(t.lifecycle_status, 'ACTIVE') NOT IN ('EXPIRED_WORTHLESS', 'EXERCISED', 'ASSIGNED', 'CLOSED_TRADED')
+             AND NOT ${tradeExpiredOptionSql()}
+           )
+         )`;
     const params = [];
     sql = appendWorkspaceFilter(sql, params, scope);
     sql = appendAuthorFilter(sql, params, author);

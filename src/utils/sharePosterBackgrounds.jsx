@@ -6,7 +6,7 @@ const NVIDIA_MODELS = [
   {
     label: 'Qwen Image',
     value: 'qwen-image',
-    description: '默认推荐，中文语义和海报构图更稳',
+    description: 'NVIDIA 备用源，若预览端点不可用会自动兜底',
   },
   {
     label: 'Qwen Image 2512',
@@ -29,6 +29,13 @@ const NVIDIA_MODELS = [
     description: '画面质感优先，适合封面级背景',
   },
 ];
+
+function hashText(value = '') {
+  return [...String(value || '')].reduce((hash, char) => {
+    const next = ((hash << 5) - hash + char.charCodeAt(0)) | 0;
+    return Math.abs(next);
+  }, 29);
+}
 
 const POLLINATIONS_MODELS = [
   {
@@ -180,6 +187,23 @@ async function chooseLocalBackground() {
   return LOCAL_BACKGROUNDS.find((item) => item.value === action.key)?.background || null;
 }
 
+function buildLocalFallbackBackground(posterConfig = {}, errorMessage = '') {
+  const pool = LOCAL_BACKGROUNDS.filter((item) => item.value !== 'pop-profit');
+  const seed = [
+    posterConfig.title,
+    posterConfig.subtitle,
+    posterConfig.typeLabel,
+    errorMessage,
+    Date.now(),
+  ].filter(Boolean).join('|');
+  const selected = pool[hashText(seed) % pool.length] || LOCAL_BACKGROUNDS[0];
+  return {
+    ...(selected.background || {}),
+    source: 'local-fallback',
+    fallbackReason: errorMessage || 'AI 背景生成失败',
+  };
+}
+
 async function chooseUploadedBackground() {
   const file = await pickImageFile();
   if (!file) return null;
@@ -236,7 +260,7 @@ function showAiPromptDialog({ prompt, model, provider }) {
             <input
               className="share-background-dialog__input"
               defaultValue={nextModel}
-              placeholder="qwen-image"
+              placeholder="pollinations-flux"
               onChange={(event) => {
                 nextModel = event.target.value;
               }}
@@ -292,7 +316,7 @@ async function chooseAiModel(config) {
       text: item.label,
       description: item.description,
       provider: item.provider,
-      bold: item.value === (config.defaultModel || 'qwen-image'),
+      bold: item.value === (config.defaultModel || 'pollinations-flux'),
     })),
   });
   return action || null;
@@ -356,8 +380,8 @@ async function generateAiBackground(posterConfig = {}) {
     const readableMessage = /Body is unusable|Failed to fetch|NetworkError/i.test(message)
       ? 'AI 背景接口响应异常或网络不可用'
       : (message || 'AI 背景生成失败');
-    Toast.show({ content: `${readableMessage}，请换模型或稍后重试` });
-    return null;
+    Toast.show({ content: `${readableMessage}，已改用本地背景继续生成` });
+    return buildLocalFallbackBackground(posterConfig, readableMessage);
   }
 }
 

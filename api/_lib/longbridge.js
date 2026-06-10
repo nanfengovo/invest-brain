@@ -5,6 +5,7 @@ import { toLongbridgeMarketSymbol } from './marketSymbols.js';
 const LONGBRIDGE_HTTP_URL = process.env.LONGBRIDGE_HTTP_URL || 'https://openapi.longbridge.com';
 const LONGBRIDGE_HTTP_TIMEOUT_MS = 6_000;
 const LONGBRIDGE_CLI_TIMEOUT_MS = 2_800;
+const LONGBRIDGE_BRIDGE_TIMEOUT_MS = 6_000;
 
 function pickCredential(headers = {}, key, fallback = '') {
   const normalizedKey = key.toLowerCase();
@@ -26,8 +27,22 @@ export function getLongbridgeCredentials(headers = {}) {
   };
 }
 
+export function getLongbridgeBridgeConfig(headers = {}) {
+  const bridgeUrl = pickCredential(headers, 'longbridge_bridge_url', process.env.LONGBRIDGE_OPTION_BRIDGE_URL);
+  const bridgeToken = pickCredential(headers, 'longbridge_bridge_token', process.env.LONGBRIDGE_OPTION_BRIDGE_TOKEN);
+
+  return {
+    bridgeUrl: String(bridgeUrl || '').trim(),
+    bridgeToken: String(bridgeToken || '').trim(),
+  };
+}
+
 export function hasLongbridgeCredentials(credentials = {}) {
   return Boolean(credentials.appKey && credentials.appSecret && credentials.accessToken);
+}
+
+export function hasLongbridgeBridgeConfig(config = {}) {
+  return Boolean(String(config.bridgeUrl || '').trim());
 }
 
 function toNumber(value) {
@@ -122,45 +137,68 @@ function parseOptionSymbolForQuote(contractSymbol) {
   };
 }
 
+function normalizeLongbridgeExpiry(value) {
+  const text = String(value || '').trim();
+  if (!text) return null;
+  const compact = text.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (compact) return `${compact[1]}-${compact[2]}-${compact[3]}`;
+  const short = text.match(/^(\d{2})(\d{2})(\d{2})$/);
+  if (short) return `20${short[1]}-${short[2]}-${short[3]}`;
+  return text;
+}
+
 function normalizeLongbridgeCliOptionRow(row, fallbackSymbol) {
   if (!row || typeof row !== 'object') return null;
+  const extend = row.option_extend || row.optionExtend || {};
+  const flatRow = { ...extend, ...row };
   const contractSymbol = pickText(
-    row.symbol,
-    row.contractSymbol,
-    row.contract_symbol,
-    row.optionSymbol,
-    row.option_symbol,
+    flatRow.symbol,
+    flatRow.contractSymbol,
+    flatRow.contract_symbol,
+    flatRow.optionSymbol,
+    flatRow.option_symbol,
     fallbackSymbol
   )?.replace(/\.US$/i, '');
   const parsed = parseOptionSymbolForQuote(contractSymbol);
-  const bid = pickNumber(row.bid, row.bidPrice, row.bid_price);
-  const ask = pickNumber(row.ask, row.askPrice, row.ask_price);
-  const last = pickNumber(row.lastDone, row.last_done, row.last, row.price, row.latestPrice, row.latest_price);
-  const mark = pickNumber(row.mark, row.mid, row.midPrice, row.mid_price)
+  const bid = pickNumber(flatRow.bid, flatRow.bidPrice, flatRow.bid_price);
+  const ask = pickNumber(flatRow.ask, flatRow.askPrice, flatRow.ask_price);
+  const last = pickNumber(flatRow.lastDone, flatRow.last_done, flatRow.last, flatRow.price, flatRow.latestPrice, flatRow.latest_price);
+  const previousClose = pickNumber(flatRow.previousClose, flatRow.previous_close, flatRow.prevClose, flatRow.prev_close);
+  const mark = pickNumber(flatRow.mark, flatRow.mid, flatRow.midPrice, flatRow.mid_price)
     ?? (bid !== null && ask !== null && ask >= bid ? Number(((bid + ask) / 2).toFixed(4)) : last);
+  const change = pickNumber(flatRow.change, flatRow.netChange, flatRow.net_change)
+    ?? (last !== null && previousClose !== null ? Number((last - previousClose).toFixed(4)) : null);
+  const percentChange = pickNumber(flatRow.percentChange, flatRow.percent_change, flatRow.changePercent, flatRow.change_percent)
+    ?? (change !== null && previousClose ? Number(((change / previousClose) * 100).toFixed(4)) : null);
 
   if (!contractSymbol || mark === null) return null;
   return {
     contractSymbol,
-    underlying: pickText(row.underlying, row.underlyingSymbol, row.underlying_symbol) || parsed.underlying || null,
-    type: String(pickText(row.type, row.optionType, row.option_type, row.contractType, row.contract_type) || parsed.type || '').toUpperCase(),
-    expiration: pickText(row.expiration, row.expiry, row.expiryDate, row.expiry_date) || parsed.expiration || null,
-    strike: pickNumber(row.strike, row.strikePrice, row.strike_price) ?? parsed.strike ?? null,
+    underlying: pickText(flatRow.underlying, flatRow.underlyingSymbol, flatRow.underlying_symbol) || parsed.underlying || null,
+    type: String(pickText(flatRow.type, flatRow.optionType, flatRow.option_type, flatRow.direction) || parsed.type || '').toUpperCase().replace(/^C$/, 'CALL').replace(/^P$/, 'PUT'),
+    expiration: normalizeLongbridgeExpiry(pickText(flatRow.expiration, flatRow.expiry, flatRow.expiryDate, flatRow.expiry_date)) || parsed.expiration || null,
+    strike: pickNumber(flatRow.strike, flatRow.strikePrice, flatRow.strike_price) ?? parsed.strike ?? null,
     last,
     bid,
     ask,
     mark,
-    change: pickNumber(row.change, row.netChange, row.net_change),
-    percentChange: pickNumber(row.percentChange, row.percent_change, row.changePercent, row.change_percent),
-    volume: pickNumber(row.volume),
-    openInterest: pickNumber(row.openInterest, row.open_interest),
-    impliedVolatility: normalizePercent(row.impliedVolatility ?? row.implied_volatility ?? row.iv),
-    delta: pickNumber(row.delta),
-    gamma: pickNumber(row.gamma),
-    theta: pickNumber(row.theta),
-    vega: pickNumber(row.vega),
-    rho: pickNumber(row.rho),
-    provider: 'Longbridge CLI',
+    previousClose,
+    previousCloseDate: null,
+    previousCloseSource: previousClose !== null ? 'longbridge_prev_close' : null,
+    dayChangeSource: previousClose !== null ? 'longbridge_prev_close' : null,
+    dayChangeNote: previousClose !== null ? '日变动使用长桥 SDK 返回的期权昨收计算。' : null,
+    change,
+    percentChange,
+    volume: pickNumber(flatRow.volume),
+    openInterest: pickNumber(flatRow.openInterest, flatRow.open_interest),
+    impliedVolatility: normalizePercent(flatRow.impliedVolatility ?? flatRow.implied_volatility ?? flatRow.iv),
+    delta: pickNumber(flatRow.delta),
+    gamma: pickNumber(flatRow.gamma),
+    theta: pickNumber(flatRow.theta),
+    vega: pickNumber(flatRow.vega),
+    rho: pickNumber(flatRow.rho),
+    updated: pickNumber(flatRow.timestamp, flatRow.updated, flatRow.update_time),
+    provider: flatRow.provider || 'Longbridge SDK',
   };
 }
 
@@ -220,6 +258,76 @@ async function requestLongbridgeCliOptionPrice(contractSymbol) {
   }
   if (errors.length) throw new Error(errors.join('；'));
   return null;
+}
+
+function buildLongbridgeBridgeUrl(bridgeUrl, symbol, token = '') {
+  const url = new URL(String(bridgeUrl || '').trim());
+  url.searchParams.set('symbols', symbol);
+  url.searchParams.set('api', url.searchParams.get('api') || 'option_quote');
+  url.searchParams.set('format', url.searchParams.get('format') || 'json');
+  if (token && !url.searchParams.get('token') && /streamlit\.app/i.test(url.hostname)) {
+    url.searchParams.set('token', token);
+  }
+  return url;
+}
+
+function extractLongbridgeBridgePayload(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    // Continue to marker extraction below.
+  }
+
+  const markerMatch = raw.match(/IB_OPTION_QUOTE_JSON_START([\s\S]*?)IB_OPTION_QUOTE_JSON_END/);
+  if (!markerMatch) return null;
+  const jsonText = markerMatch[1]
+    .replace(/&quot;/g, '"')
+    .replace(/&#34;/g, '"')
+    .replace(/&amp;/g, '&')
+    .trim();
+  return JSON.parse(jsonText);
+}
+
+async function requestLongbridgeBridgeOptionPrice(contractSymbol, bridgeConfig = {}) {
+  if (!hasLongbridgeBridgeConfig(bridgeConfig)) return null;
+  const symbol = toLongbridgeOptionSymbol(contractSymbol);
+  if (!symbol) return null;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), LONGBRIDGE_BRIDGE_TIMEOUT_MS);
+  try {
+    const url = buildLongbridgeBridgeUrl(bridgeConfig.bridgeUrl, symbol, bridgeConfig.bridgeToken);
+    const response = await fetch(url.toString(), {
+      signal: controller.signal,
+      headers: {
+        Accept: 'application/json,text/html;q=0.9,*/*;q=0.8',
+        ...(bridgeConfig.bridgeToken ? { Authorization: `Bearer ${bridgeConfig.bridgeToken}` } : {}),
+      },
+    });
+    const body = await response.text();
+    if (!response.ok) {
+      throw new Error(`长桥 Python SDK 补充服务请求失败（HTTP ${response.status}）。`);
+    }
+    const payload = extractLongbridgeBridgePayload(body);
+    const rows = pickLongbridgeCliRows(payload);
+    const row = rows.find((item) => String(item?.symbol || '').replace(/\.US$/i, '') === symbol.replace(/\.US$/i, ''))
+      || rows[0]
+      || (payload && typeof payload === 'object' ? payload : null);
+    const option = normalizeLongbridgeCliOptionRow(row, symbol);
+    if (option) {
+      return {
+        ...option,
+        provider: 'Longbridge Python SDK',
+      };
+    }
+    throw new Error(payload?.error || `长桥 Python SDK 补充服务未返回 ${symbol} 的可用期权报价。`);
+  } catch (error) {
+    throw new Error(normalizeSdkError(error, '长桥 Python SDK 补充服务'));
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function normalizePercent(value) {
@@ -1433,14 +1541,23 @@ export async function fetchLongbridgeStockSnapshot(symbol, credentials) {
   );
 }
 
-export async function fetchLongbridgeOptionQuote(contractSymbol, credentials) {
+export async function fetchLongbridgeOptionQuote(contractSymbol, credentials, bridgeConfig = {}) {
   const lbSymbol = toLongbridgeOptionSymbol(contractSymbol);
   if (!lbSymbol) return null;
   const errors = [];
+  try {
+    const bridgeQuote = await requestLongbridgeBridgeOptionPrice(contractSymbol, bridgeConfig);
+    if (bridgeQuote) return bridgeQuote;
+  } catch (error) {
+    errors.push(error.message || normalizeSdkError(error, '长桥 Python SDK 补充服务'));
+  }
+
   if (!hasLongbridgeCredentials(credentials)) {
-    errors.push('未配置 Longbridge App Key、App Secret 或 Access Token。');
+    errors.push(hasLongbridgeBridgeConfig(bridgeConfig)
+      ? '长桥 Python SDK 补充服务未返回可用报价，且本机未配置 Longbridge App Key、App Secret 或 Access Token。'
+      : '未配置 Longbridge Python SDK 补充服务地址，也未配置 Longbridge App Key、App Secret 或 Access Token。');
   } else if (process.env.VERCEL) {
-    errors.push('长桥官方 Node SDK 需要 100MB+ 原生包，线上暂不启用；请优先配置 MarketData.app/Tradier/Polygon 实时 OPRA，或在本地使用 Longbridge CLI 兜底。');
+    errors.push('长桥官方 Node SDK 需要 100MB+ 原生包，线上暂不启用；请配置 Longbridge Python SDK 补充服务地址，或使用 MarketData.app/Tradier/Polygon 实时 OPRA 主源。');
   } else {
     errors.push('当前运行环境未启用长桥官方 Node SDK，以避免 Vercel 函数包体超限；本地会继续尝试 Longbridge CLI。');
   }

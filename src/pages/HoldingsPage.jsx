@@ -411,6 +411,8 @@ const buildMarketDataHeaders = (marketDataConfig = {}) => ({
   ...(marketDataConfig.longbridgeAppKey ? { 'X-Longbridge-App-Key': marketDataConfig.longbridgeAppKey } : {}),
   ...(marketDataConfig.longbridgeAppSecret ? { 'X-Longbridge-App-Secret': marketDataConfig.longbridgeAppSecret } : {}),
   ...(marketDataConfig.longbridgeAccessToken ? { 'X-Longbridge-Access-Token': marketDataConfig.longbridgeAccessToken } : {}),
+  ...(marketDataConfig.longbridgeBridgeUrl ? { 'X-Longbridge-Bridge-Url': marketDataConfig.longbridgeBridgeUrl } : {}),
+  ...(marketDataConfig.longbridgeBridgeToken ? { 'X-Longbridge-Bridge-Token': marketDataConfig.longbridgeBridgeToken } : {}),
 });
 
 const hashCredential = (value) => {
@@ -431,6 +433,9 @@ const getMarketDataConfigFingerprint = (marketDataConfig = {}) => [
   marketDataConfig.marketDataToken ? `marketdata:${hashCredential(marketDataConfig.marketDataToken)}` : '',
   marketDataConfig.longbridgeAppKey && marketDataConfig.longbridgeAppSecret && marketDataConfig.longbridgeAccessToken
     ? `longbridge:${hashCredential(`${marketDataConfig.longbridgeAppKey}:${marketDataConfig.longbridgeAppSecret}:${marketDataConfig.longbridgeAccessToken}`)}`
+    : '',
+  marketDataConfig.longbridgeBridgeUrl
+    ? `longbridge-bridge:${hashCredential(`${marketDataConfig.longbridgeBridgeUrl}:${marketDataConfig.longbridgeBridgeToken || ''}`)}`
     : '',
 ].filter(Boolean).join(':') || 'public';
 

@@ -25,11 +25,13 @@ const DEFAULT_MARKET_DATA_CONFIG = {
   longbridgeAppKey: '',
   longbridgeAppSecret: '',
   longbridgeAccessToken: '',
+  longbridgeBridgeUrl: '',
+  longbridgeBridgeToken: '',
 };
 const DEFAULT_SHARE_BACKGROUND_CONFIG = {
-  provider: 'local',
+  provider: 'pollinations',
   nvidiaApiKey: '',
-  defaultModel: 'qwen-image',
+  defaultModel: 'pollinations-flux',
 };
 
 const normalizeMarketWatchItem = (item) => {

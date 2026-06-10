@@ -10,6 +10,7 @@ import urllib.error
 import urllib.request
 from html import escape
 from pathlib import Path
+from longbridge_option_bridge import build_option_quote_payload, dumps_payload
 from price_alert_scheduler import config_from_env, start_background_scheduler
 
 # --- 页面配置 ---
@@ -195,6 +196,14 @@ def load_streamlit_secrets_into_env():
         "CRON_SECRET",
         "PRICE_ALERT_RUN_ON_START",
         "PRICE_ALERT_LOG_LEVEL",
+        "LONGPORT_APP_KEY",
+        "LONGPORT_APP_SECRET",
+        "LONGPORT_ACCESS_TOKEN",
+        "LONGBRIDGE_APP_KEY",
+        "LONGBRIDGE_APP_SECRET",
+        "LONGBRIDGE_ACCESS_TOKEN",
+        "LONGBRIDGE_OPTION_BRIDGE_TOKEN",
+        "IB_OPTION_BRIDGE_TOKEN",
     ):
         try:
             if key in st.secrets:
@@ -223,6 +232,21 @@ ensure_price_alert_scheduler()
 target_symbol = get_query_param("q", "")
 report_language = get_query_param("lang", "zh").lower()
 use_chinese_report = report_language in ("zh", "zh-cn", "cn", "chinese")
+api_mode = get_query_param("api", "").lower()
+
+if api_mode in ("option_quote", "option-quote", "longbridge_option_quote"):
+    load_streamlit_secrets_into_env()
+    bridge_token = get_query_param("token", "") or get_query_param("bridge_token", "")
+    option_payload = build_option_quote_payload(
+        get_query_param("symbols", "") or get_query_param("symbol", ""),
+        token=bridge_token,
+    )
+    option_payload_text = dumps_payload(option_payload)
+    st.code(
+        f"IB_OPTION_QUOTE_JSON_START{option_payload_text}IB_OPTION_QUOTE_JSON_END",
+        language="json",
+    )
+    st.stop()
 
 st.markdown(
     f"""

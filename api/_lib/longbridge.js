@@ -1,8 +1,10 @@
 import crypto from 'node:crypto';
+import { execFile } from 'node:child_process';
 import { toLongbridgeMarketSymbol } from './marketSymbols.js';
 
 const LONGBRIDGE_HTTP_URL = process.env.LONGBRIDGE_HTTP_URL || 'https://openapi.longbridge.com';
 const LONGBRIDGE_HTTP_TIMEOUT_MS = 6_000;
+const LONGBRIDGE_CLI_TIMEOUT_MS = 2_800;
 
 function pickCredential(headers = {}, key, fallback = '') {
   const normalizedKey = key.toLowerCase();
@@ -105,6 +107,102 @@ function pickNumber(...values) {
     if (number !== null) return number;
   }
   return null;
+}
+
+function parseOptionSymbolForQuote(contractSymbol) {
+  const text = String(contractSymbol || '').replace(/^OPTION_/i, '').replace(/\.US$/i, '').trim().toUpperCase();
+  const match = text.match(/^([A-Z.]+)(\d{6})([CP])(\d{6,8})$/);
+  if (!match) return {};
+  const [, underlying, yymmdd, side, strikeRaw] = match;
+  return {
+    underlying,
+    expiration: `20${yymmdd.slice(0, 2)}-${yymmdd.slice(2, 4)}-${yymmdd.slice(4, 6)}`,
+    type: side === 'P' ? 'PUT' : 'CALL',
+    strike: Number(strikeRaw) / (strikeRaw.length === 8 ? 1000 : 1000),
+  };
+}
+
+function normalizeLongbridgeCliOptionRow(row, fallbackSymbol) {
+  if (!row || typeof row !== 'object') return null;
+  const contractSymbol = pickText(
+    row.symbol,
+    row.contractSymbol,
+    row.contract_symbol,
+    row.optionSymbol,
+    row.option_symbol,
+    fallbackSymbol
+  )?.replace(/\.US$/i, '');
+  const parsed = parseOptionSymbolForQuote(contractSymbol);
+  const bid = pickNumber(row.bid, row.bidPrice, row.bid_price);
+  const ask = pickNumber(row.ask, row.askPrice, row.ask_price);
+  const last = pickNumber(row.lastDone, row.last_done, row.last, row.price, row.latestPrice, row.latest_price);
+  const mark = pickNumber(row.mark, row.mid, row.midPrice, row.mid_price)
+    ?? (bid !== null && ask !== null && ask >= bid ? Number(((bid + ask) / 2).toFixed(4)) : last);
+
+  if (!contractSymbol || mark === null) return null;
+  return {
+    contractSymbol,
+    underlying: pickText(row.underlying, row.underlyingSymbol, row.underlying_symbol) || parsed.underlying || null,
+    type: String(pickText(row.type, row.optionType, row.option_type, row.contractType, row.contract_type) || parsed.type || '').toUpperCase(),
+    expiration: pickText(row.expiration, row.expiry, row.expiryDate, row.expiry_date) || parsed.expiration || null,
+    strike: pickNumber(row.strike, row.strikePrice, row.strike_price) ?? parsed.strike ?? null,
+    last,
+    bid,
+    ask,
+    mark,
+    change: pickNumber(row.change, row.netChange, row.net_change),
+    percentChange: pickNumber(row.percentChange, row.percent_change, row.changePercent, row.change_percent),
+    volume: pickNumber(row.volume),
+    openInterest: pickNumber(row.openInterest, row.open_interest),
+    impliedVolatility: normalizePercent(row.impliedVolatility ?? row.implied_volatility ?? row.iv),
+    delta: pickNumber(row.delta),
+    gamma: pickNumber(row.gamma),
+    theta: pickNumber(row.theta),
+    vega: pickNumber(row.vega),
+    rho: pickNumber(row.rho),
+    provider: 'Longbridge CLI',
+  };
+}
+
+function pickLongbridgeCliRows(payload) {
+  if (Array.isArray(payload)) return payload;
+  return firstArray(
+    payload?.data,
+    payload?.list,
+    payload?.items,
+    payload?.quotes,
+    payload?.securities,
+    payload?.result,
+    payload?.data?.list,
+    payload?.data?.items,
+    payload?.data?.quotes
+  );
+}
+
+async function requestLongbridgeCliOptionPrice(contractSymbol) {
+  if (process.env.VERCEL || process.env.LONGBRIDGE_CLI_OPTION_FALLBACK === '0') return null;
+  const cliSymbol = String(contractSymbol || '').replace(/^OPTION_/i, '').replace(/\.US$/i, '').trim().toUpperCase();
+  if (!/^[A-Z.]+\d{6}[CP]\d{8}$/.test(cliSymbol)) return null;
+
+  const runCli = () => new Promise((resolve, reject) => {
+    execFile(
+      'longbridge',
+      ['option', 'quote', cliSymbol, '--format', 'json'],
+      { timeout: LONGBRIDGE_CLI_TIMEOUT_MS, maxBuffer: 1024 * 1024 },
+      (error, stdout, stderr) => {
+        if (error) {
+          reject(new Error(stderr?.trim() || error.message || '长桥 CLI 期权报价失败'));
+          return;
+        }
+        resolve(stdout);
+      }
+    );
+  });
+
+  const stdout = await runCli();
+  const payload = JSON.parse(String(stdout || '{}'));
+  const row = pickLongbridgeCliRows(payload)[0] || (payload && typeof payload === 'object' ? payload : null);
+  return normalizeLongbridgeCliOptionRow(row, cliSymbol);
 }
 
 function normalizePercent(value) {
@@ -1303,8 +1401,12 @@ export async function fetchLongbridgeStockSnapshot(symbol, credentials) {
 }
 
 export async function fetchLongbridgeOptionQuote(contractSymbol, credentials) {
-  if (!hasLongbridgeCredentials(credentials)) return null;
   const lbSymbol = toLongbridgeOptionSymbol(contractSymbol);
   if (!lbSymbol) return null;
-  return null;
+  try {
+    return await requestLongbridgeCliOptionPrice(contractSymbol);
+  } catch (error) {
+    if (!hasLongbridgeCredentials(credentials)) return null;
+    throw new Error(normalizeSdkError(error, '长桥期权报价'));
+  }
 }

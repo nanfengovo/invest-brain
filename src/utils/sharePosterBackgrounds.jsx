@@ -316,7 +316,11 @@ async function generateAiBackground(posterConfig = {}) {
     };
   } catch (error) {
     Toast.clear();
-    Toast.show({ content: `${error.message || 'AI 背景生成失败'}，已使用本地背景` });
+    const message = String(error?.message || '').trim();
+    const readableMessage = /Body is unusable|Failed to fetch|NetworkError/i.test(message)
+      ? 'AI 背景接口响应异常或网络不可用'
+      : (message || 'AI 背景生成失败');
+    Toast.show({ content: `${readableMessage}，已使用本地背景` });
     return null;
   }
 }

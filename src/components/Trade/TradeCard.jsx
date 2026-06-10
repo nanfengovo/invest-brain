@@ -60,6 +60,13 @@ function formatQuantityWithUnit(num, unit) {
   return `${formatQuantity(num)} ${unit || ''}`.trim();
 }
 
+function getOptionExpirationParts(label) {
+  return String(label || '')
+    .split('·')
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
 function getLifecycleBadge(lifecycle, directionType) {
   if (!lifecycle || lifecycle.status === 'UNTRACKED') return null;
   const unit = lifecycle.unit || '';
@@ -113,7 +120,7 @@ function getLifecycleBadge(lifecycle, directionType) {
  * @param {number} [props.index=0] - Index for stagger animation delay
  * @param {function} [props.onEdit] - Edit callback
  */
-export default function TradeCard({ trade, index = 0, onEdit, compactMode = false }) {
+export default function TradeCard({ trade, index = 0, onEdit, compactMode = false, loopClosed = false }) {
   const deleteTrade = useTradeStore((s) => s.deleteTrade);
   const [actionSheetVisible, setActionSheetVisible] = useState(false);
 
@@ -133,6 +140,9 @@ export default function TradeCard({ trade, index = 0, onEdit, compactMode = fals
   const titleText = isOption && optionTitle ? optionTitle : displaySymbol;
   const showOptionExpiration = shouldShowOptionExpirationLabel(trade);
   const hasOptionExpiration = isOption && showOptionExpiration && trade.option_expiration_label;
+  const optionExpirationParts = hasOptionExpiration
+    ? getOptionExpirationParts(trade.option_expiration_label)
+    : [];
   const hasStockAssetMeta = !isOption && Boolean(assetDisplay);
   const hasAssetMeta = hasOptionExpiration || hasStockAssetMeta;
 
@@ -226,7 +236,7 @@ export default function TradeCard({ trade, index = 0, onEdit, compactMode = fals
   return (
     <SwipeAction rightActions={swipeActions} className="trade-card__swipe">
       <div
-        className={`trade-card ${isBuy ? 'trade-card--buy' : 'trade-card--sell'} ${compactMode ? 'trade-card--compact' : ''}`}
+        className={`trade-card ${isBuy ? 'trade-card--buy' : 'trade-card--sell'} ${compactMode ? 'trade-card--compact' : ''} ${loopClosed ? 'trade-card--loop-closed' : ''}`}
         style={{ animationDelay }}
         onClick={() => setActionSheetVisible(true)}
       >
@@ -253,8 +263,16 @@ export default function TradeCard({ trade, index = 0, onEdit, compactMode = fals
               </div>
               <div className={`trade-card__meta-row ${hasAssetMeta ? '' : 'trade-card__meta-row--empty'}`}>
                 {hasOptionExpiration ? (
-                  <div className={`trade-card__asset-name trade-card__asset-name--option trade-card__asset-name--option-${expirationTone}`}>
-                    {trade.option_expiration_label}
+                  <div
+                    className={`trade-card__asset-name trade-card__asset-name--option trade-card__asset-name--option-${expirationTone}`}
+                    aria-label={trade.option_expiration_label}
+                    title={trade.option_expiration_label}
+                  >
+                    {optionExpirationParts.map((part) => (
+                      <span key={part} className="trade-card__option-expiration-part">
+                        {part}
+                      </span>
+                    ))}
                   </div>
                 ) : hasStockAssetMeta ? (
                   <div className="trade-card__asset-name">{assetDisplay}</div>
@@ -264,6 +282,11 @@ export default function TradeCard({ trade, index = 0, onEdit, compactMode = fals
                 {lifecycleBadge && (
                   <span className={`trade-card__lifecycle trade-card__lifecycle--${lifecycleBadge.type}`}>
                     {lifecycleBadge.label}
+                  </span>
+                )}
+                {loopClosed && (
+                  <span className="trade-card__loop-tag">
+                    闭环已结算
                   </span>
                 )}
                 <span className="trade-card__author-tag">

@@ -40,6 +40,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  min-width: 0;
 }
 
 /* ── Left Side: Badge + Symbol ── */
@@ -98,10 +99,12 @@
 .trade-card__title-row {
   gap: 7px;
   min-height: 22px;
+  flex-wrap: wrap;
 }
 
 .trade-card__meta-row {
   min-height: 20px;
+  align-items: flex-start;
 }
 
 .trade-card__meta-row--empty::before {
@@ -126,9 +129,8 @@
   flex: 0 1 auto;
   min-width: 0;
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .trade-card__asset-name {
@@ -136,18 +138,27 @@
   color: var(--color-text-muted);
   min-width: 0;
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .trade-card__asset-name--option {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px 6px;
   color: var(--option-exp-color, #93c5fd);
   background: var(--option-exp-bg, transparent);
   border: 1px solid var(--option-exp-border, transparent);
-  border-radius: var(--radius-full);
-  padding: 2px 7px;
+  border-radius: 8px;
+  padding: 3px 8px;
   max-width: 100%;
+  line-height: 1.35;
+}
+
+.trade-card__option-expiration-part {
+  display: inline;
+  white-space: nowrap;
 }
 
 .trade-card__asset-name--option-calm {
@@ -229,6 +240,21 @@
   line-height: 1;
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+.trade-card__loop-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(251, 113, 133, 0.28);
+  background: rgba(251, 113, 133, 0.12);
+  color: #fb7185;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .trade-card__lifecycle--open {
@@ -333,22 +359,25 @@
 .trade-card__right {
   text-align: right;
   flex-shrink: 0;
-  width: 98px;
+  width: clamp(78px, 24vw, 98px);
   display: flex;
   flex-direction: column;
   align-items: flex-end;
+  min-width: 0;
 }
 
 .trade-card__price-qty {
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono',
     Menlo, Consolas, monospace;
   font-variant-numeric: tabular-nums;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--color-text-primary);
   letter-spacing: -0.01em;
   line-height: 1.3;
-  white-space: nowrap;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .trade-card__total {
@@ -359,7 +388,30 @@
   color: var(--color-text-secondary);
   margin-top: 2px;
   letter-spacing: -0.01em;
-  white-space: nowrap;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.trade-card--loop-closed {
+  border-color: rgba(251, 113, 133, 0.24);
+  background:
+    linear-gradient(135deg, rgba(251, 113, 133, 0.08), transparent 42%),
+    var(--color-glass-card);
+}
+
+.trade-card--loop-closed .trade-card__symbol,
+.trade-card--loop-closed .trade-card__price-qty,
+.trade-card--loop-closed .trade-card__total {
+  color: rgba(251, 113, 133, 0.88);
+  text-decoration-line: line-through;
+  text-decoration-color: rgba(251, 113, 133, 0.95);
+  text-decoration-thickness: 2px;
+  text-decoration-skip-ink: none;
+}
+
+.trade-card--loop-closed .trade-card__asset-name {
+  opacity: 0.82;
 }
 
 .trade-card__time {
@@ -391,9 +443,8 @@
   color: var(--color-accent-light);
   border: 1px solid rgba(99, 102, 241, 0.2);
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .trade-card__decision-tag::before {
@@ -414,9 +465,8 @@
   color: var(--color-text-secondary);
   border: 1px solid rgba(136, 153, 170, 0.12);
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .trade-card__account-tag::before {
@@ -437,9 +487,8 @@
   color: #22d3ee;
   border: 1px solid rgba(6, 182, 212, 0.2);
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .trade-card__broker-tag::before {
@@ -487,7 +536,7 @@
 
 .trade-card--compact .trade-card__body {
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .trade-card--compact .trade-card__direction-badge {
@@ -516,19 +565,17 @@
 
 .trade-card--compact .trade-card__symbol {
   font-size: 15px;
-  max-width: 128px;
+  max-width: 100%;
 }
 
 .trade-card--compact .trade-card__asset-name {
   font-size: 10px;
-  max-width: 168px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  max-width: 100%;
 }
 
 .trade-card--compact .trade-card__asset-name--option {
-  max-width: 172px;
+  max-width: 100%;
+  padding: 3px 7px;
 }
 
 .trade-card--compact .trade-card__option-type {
@@ -551,7 +598,7 @@
 
 .trade-card--compact .trade-card__right {
   text-align: right;
-  width: 90px;
+  width: clamp(76px, 23vw, 90px);
 }
 
 .trade-card--compact .trade-card__price-qty {

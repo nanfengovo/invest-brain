@@ -171,16 +171,21 @@ function drawMetricCard(ctx, metric, x, y, width, height, accent) {
 
   ctx.fillStyle = 'rgba(148, 163, 184, 0.78)';
   ctx.font = '500 28px "PingFang SC", "Noto Sans CJK SC", sans-serif';
-  ctx.fillText(metric.label, x + 28, y + 44);
+  clampText(ctx, metric.label || '--', width - 56, 1)
+    .forEach((line) => ctx.fillText(line, x + 28, y + 40));
 
   ctx.fillStyle = metric.tone === 'loss' ? '#fb7185' : metric.tone === 'profit' ? '#2dd4bf' : accent;
-  setFittedFont(ctx, metric.value || '--', width - 56, { size: 46, min: 28 });
-  ctx.fillText(String(metric.value || '--'), x + 28, y + 96);
+  const valueText = String(metric.value || '--');
+  const valueTop = y + 84;
+  setFittedFont(ctx, valueText, width - 56, { size: 42, min: 24 });
+  clampText(ctx, valueText, width - 56, 2)
+    .forEach((line, index) => ctx.fillText(line, x + 28, valueTop + index * 42));
 
   if (metric.hint) {
     ctx.fillStyle = 'rgba(148, 163, 184, 0.58)';
-    ctx.font = '500 23px "PingFang SC", sans-serif';
-    ctx.fillText(String(metric.hint), x + 28, y + height - 26);
+    ctx.font = '500 22px "PingFang SC", sans-serif';
+    clampText(ctx, metric.hint, width - 56, 1)
+      .forEach((line) => ctx.fillText(line, x + 28, y + height - 24));
   }
   ctx.restore();
 }
@@ -663,13 +668,13 @@ function drawSignalCardTemplate(ctx, config, accent, accent2) {
         ctx,
         metric,
         POSTER_PADDING + 44 + col * (cardWidth + gap),
-        y + row * 154,
+        y + row * 176,
         cardWidth,
-        132,
+        154,
         accent,
       );
     });
-    y += Math.ceil(metrics.length / 2) * 154 + 32;
+    y += Math.ceil(metrics.length / 2) * 176 + 32;
   }
 
   if (summary) {

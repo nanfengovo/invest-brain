@@ -633,7 +633,11 @@ function SettingsPage() {
       const totalCount = tradeCount + infoCount + decisionCount + viewpointCount;
       if (totalCount === 0) {
         Toast.clear();
-        Toast.show({ content: scope === 'team' ? '没有可发布到团队的数据，请先标记情报、决策或确认有个人交易记录' : '当前花名下没有可同步的个人工作区数据' });
+        Toast.show({
+          content: scope === 'team'
+            ? '没有可发布到团队的数据，请先标记情报、决策或确认有个人交易记录'
+            : '当前花名下仍没有可备份数据；已尝试认领未标记记录，请确认个人工作区有交易、情报、决策或观点',
+        });
         return;
       }
 

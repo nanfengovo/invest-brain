@@ -60,7 +60,9 @@ const formatDate = (dateStr) => {
 export default function HoldingCard({
   holding,
   underlyingPrice = null,
+  marketQuote = null,
   optionQuote = null,
+  liveMetrics = null,
   index = 0,
   viewMode = 'compact',
   isExpanded = false,
@@ -72,7 +74,7 @@ export default function HoldingCard({
 }) {
   const assetType = String(holding.type || 'STOCK').toUpperCase();
   const isOption = assetType === 'OPTION';
-  const optionMetrics = buildOptionHoldingMetrics(holding, optionQuote);
+  const optionMetrics = liveMetrics || buildOptionHoldingMetrics(holding, optionQuote);
   const quoteUnavailable = optionMetrics.quoteUnavailable;
   const optionDisplay = isOption ? getTradeOptionDisplay({
     asset_type: 'OPTION',
@@ -114,9 +116,19 @@ export default function HoldingCard({
     optionDailyMissingReason,
     pnlTone,
   } = optionMetrics;
+  const livePrice = toFiniteNumberOrNull(optionMetrics.livePrice ?? liveOptionPrice);
+  const hasLivePrice = Boolean(optionMetrics.hasLivePrice ?? hasLiveOptionPrice);
+  const dayPnl = toFiniteNumberOrNull(optionMetrics.dayPnl ?? optionDayChange);
+  const dayPnlPct = toFiniteNumberOrNull(optionMetrics.dayPnlPct ?? optionDayChangePct);
+  const nonOptionPnlPct = toFiniteNumberOrNull(optionMetrics.unrealizedPnlPct);
+  const quoteProvider = optionMetrics.quoteProvider || marketQuote?.provider || marketQuote?.exchangeName || '';
   const title = isOption && optionDisplay?.title ? optionDisplay.title : holding.symbol;
   const typeLabel = TYPE_LABELS[assetType] || assetType;
   const hasMeta = Boolean(isOption ? optionExpirationLabel : (holding.name || holding.symbol));
+  const shouldShowLivePnl = isOption || hasLivePrice || unrealizedPnl !== null;
+  const pnlPercentText = isOption
+    ? (Number.isFinite(unrealizedPnlPct) ? `${(unrealizedPnlPct * 100).toFixed(1)}%` : '--')
+    : (nonOptionPnlPct !== null ? `${nonOptionPnlPct.toFixed(1)}%` : '--');
 
   return (
     <div
@@ -194,13 +206,15 @@ export default function HoldingCard({
           <div className="holding-card__position-value text-mono">
             ${formatCurrency(positionValue)}
           </div>
-          {isOption && (
+          {shouldShowLivePnl && (
             <div className={`holding-card__live-pnl holding-card__live-pnl--${pnlTone} text-mono`}>
               {quoteUnavailable
                 ? '报价不可用'
-                : hasLiveOptionPrice
-                ? `${formatSignedCurrency(unrealizedPnl)} · ${Number.isFinite(unrealizedPnlPct) ? `${(unrealizedPnlPct * 100).toFixed(1)}%` : '--'}`
-                : '等待期权报价'}
+                : hasLivePrice
+                  ? `${formatSignedCurrency(unrealizedPnl)} · ${pnlPercentText}`
+                  : isOption
+                    ? '等待期权报价'
+                    : '成本价估值'}
             </div>
           )}
           <div className="holding-card__quantity text-mono">
@@ -212,6 +226,11 @@ export default function HoldingCard({
           {isOption && hasLiveOptionPrice && (
             <div className="holding-card__live-mark text-mono">
               Mark ${formatCurrency(liveOptionPrice)}
+            </div>
+          )}
+          {!isOption && hasLivePrice && (
+            <div className="holding-card__live-mark text-mono">
+              现价 ${formatCurrency(livePrice)}
             </div>
           )}
         </div>
@@ -280,6 +299,23 @@ export default function HoldingCard({
               {optionDailyMissingReason}
             </div>
           )}
+        </div>
+      )}
+
+      {!isOption && marketQuote && hasLivePrice && (
+        <div className="holding-card__quote-panel holding-card__quote-panel--stock">
+          <div className="holding-card__quote-head">
+            <span>{quoteProvider || '股票报价'}</span>
+            <strong>{marketQuote.extendedMarket?.label || '实时/延迟行情'}</strong>
+          </div>
+          <div className="holding-card__quote-strip">
+            <span>现价 ${formatCurrency(livePrice)}</span>
+            <span className={`holding-card__quote-chip--${dayPnl > 0 ? 'profit' : dayPnl < 0 ? 'loss' : 'neutral'}`}>
+              今日 {dayPnl !== null ? formatSignedCurrency(dayPnl) : '--'}
+            </span>
+            <span>涨跌幅 {dayPnlPct !== null ? formatPercent(dayPnlPct) : '--'}</span>
+            <span>成本 ${formatCurrency(optionMetrics.costBasis)}</span>
+          </div>
         </div>
       )}
 

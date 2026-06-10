@@ -698,12 +698,49 @@ export const db = {
   async backfillTradeAuthor(author) {
     const normalizedAuthor = String(author || '').trim();
     if (!normalizedAuthor) return { changes: 0 };
-    return this.exec(
-      `UPDATE trades
-          SET author = ?
-        WHERE author IS NULL OR TRIM(author) = ''`,
-      [normalizedAuthor]
-    );
+    const shouldClaimAuthor = `(author IS NULL OR TRIM(author) = '' OR TRIM(author) = '未标记')`;
+    const shouldClaimSourceAuthor = `(source_author IS NULL OR TRIM(source_author) = '' OR TRIM(source_author) = '未标记')`;
+    return this.transaction([
+      {
+        sql: `UPDATE trades
+                SET author = ?,
+                    source_author = CASE WHEN ${shouldClaimSourceAuthor} THEN ? ELSE source_author END,
+                    sync_status = CASE WHEN sync_status = 'mirror' THEN sync_status ELSE 'local' END
+              WHERE ${TRADE_WORKSPACE_NO_ALIAS_SQL} = 'personal'
+                AND ${shouldClaimAuthor}`,
+        params: [normalizedAuthor, normalizedAuthor],
+      },
+      {
+        sql: `UPDATE informations
+                SET author = ?,
+                    source_author = CASE WHEN ${shouldClaimSourceAuthor} THEN ? ELSE source_author END,
+                    sync_status = CASE WHEN sync_status = 'mirror' THEN sync_status ELSE 'local' END,
+                    updated_at = unixepoch()
+              WHERE ${INFO_WORKSPACE_NO_ALIAS_SQL} = 'personal'
+                AND ${shouldClaimAuthor}`,
+        params: [normalizedAuthor, normalizedAuthor],
+      },
+      {
+        sql: `UPDATE decisions
+                SET author = ?,
+                    source_author = CASE WHEN ${shouldClaimSourceAuthor} THEN ? ELSE source_author END,
+                    sync_status = CASE WHEN sync_status = 'mirror' THEN sync_status ELSE 'local' END,
+                    updated_at = unixepoch()
+              WHERE ${DECISION_WORKSPACE_NO_ALIAS_SQL} = 'personal'
+                AND ${shouldClaimAuthor}`,
+        params: [normalizedAuthor, normalizedAuthor],
+      },
+      {
+        sql: `UPDATE viewpoints
+                SET author = ?,
+                    source_author = CASE WHEN ${shouldClaimSourceAuthor} THEN ? ELSE source_author END,
+                    sync_status = CASE WHEN sync_status = 'mirror' THEN sync_status ELSE 'local' END,
+                    updated_at = unixepoch()
+              WHERE ${VIEWPOINT_WORKSPACE_NO_ALIAS_SQL} = 'personal'
+                AND ${shouldClaimAuthor}`,
+        params: [normalizedAuthor, normalizedAuthor],
+      },
+    ]);
   },
 
   async clearTradeWorkspace(scope = 'team') {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Toast } from 'antd-mobile';
 import { useTradeStore } from '../stores/useTradeStore';
 import { useAppStore } from '../stores/useAppStore';
@@ -9,7 +9,7 @@ import HoldingCard from '../components/Holdings/HoldingCard';
 import { parseOptionAlertInput } from '../utils/optionMonitoring';
 import { getTradeOptionDisplay } from '../utils/tradeLifecycle';
 import { buildOCCContractSymbol } from '../utils/optionsMarket';
-import { buildOptionRealtimeSummary } from '../utils/optionPortfolio';
+import { buildOptionHoldingMetrics, buildOptionRealtimeSummary } from '../utils/optionPortfolio';
 import { syncCloudAlerts } from '../utils/cloudAlerts';
 import { buildApiCacheKey, fetchJsonWithCache } from '../utils/apiCache';
 import './HoldingsPage.css';
@@ -33,6 +33,245 @@ const formatOptionAlertDefault = (value) => {
   const number = Number(value);
   return Number.isFinite(number) && number > 0 ? `>${number.toFixed(2)}` : '>';
 };
+
+const toFiniteNumberOrNull = (value) => {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+};
+
+const formatPercentValue = (value, digits = 1) => {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '--';
+  const prefix = number > 0 ? '+' : '';
+  return `${prefix}${number.toFixed(digits)}%`;
+};
+
+const getHoldingAssetType = (holding = {}) => String(holding.type || 'STOCK').toUpperCase();
+
+const getHoldingSymbol = (holding = {}) => String(
+  getHoldingAssetType(holding) === 'OPTION'
+    ? holding.underlying_symbol || holding.symbol
+    : holding.symbol
+).trim().toUpperCase();
+
+const getQuotePrice = (quote = {}) => toFiniteNumberOrNull(quote?.displayPrice ?? quote?.price ?? quote?.regularMarketPrice);
+
+const getQuoteChange = (quote = {}) => toFiniteNumberOrNull(quote?.displayAbsChange ?? quote?.absChange);
+
+const buildStockHoldingMetrics = (holding = {}, quote = null) => {
+  const quantity = Number(holding.total_quantity ?? holding.quantity) || 0;
+  const avgCost = Number(holding.avg_cost ?? holding.price) || 0;
+  const livePrice = getQuotePrice(quote);
+  const hasLivePrice = livePrice !== null && livePrice >= 0;
+  const unitPrice = hasLivePrice ? livePrice : avgCost;
+  const costBasis = quantity * avgCost;
+  const positionValue = quantity * unitPrice;
+  const unrealizedPnl = hasLivePrice ? positionValue - costBasis : null;
+  const unrealizedPnlPct = hasLivePrice && costBasis > 0 ? (unrealizedPnl / costBasis) * 100 : null;
+  const dayChangeUnit = getQuoteChange(quote);
+  const dayPnl = hasLivePrice && dayChangeUnit !== null ? dayChangeUnit * quantity : null;
+  const dayPnlPct = toFiniteNumberOrNull(quote?.displayPctChange ?? quote?.pctChange);
+  const pnlTone = unrealizedPnl > 0 ? 'profit' : unrealizedPnl < 0 ? 'loss' : 'neutral';
+
+  return {
+    assetType: getHoldingAssetType(holding),
+    quantity,
+    avgCost,
+    multiplier: 1,
+    livePrice,
+    hasLivePrice,
+    positionValue,
+    costBasis,
+    unrealizedPnl,
+    unrealizedPnlPct,
+    dayPnl,
+    dayPnlPct,
+    pnlTone,
+    quoteProvider: quote?.provider || quote?.exchangeName || '',
+    quoteUnavailable: Boolean(quote?.error),
+  };
+};
+
+const buildLiveHoldingMetrics = (holding = {}, quote = null, optionQuote = null) => {
+  const assetType = getHoldingAssetType(holding);
+  if (assetType === 'OPTION') {
+    const optionMetrics = buildOptionHoldingMetrics(holding, optionQuote);
+    return {
+      ...optionMetrics,
+      assetType,
+      livePrice: optionMetrics.liveOptionPrice,
+      hasLivePrice: optionMetrics.hasLiveOptionPrice,
+      dayPnl: optionMetrics.optionDayChange,
+      dayPnlPct: optionMetrics.optionDayChangePct,
+      quoteProvider: optionQuote?.provider || '',
+    };
+  }
+  return buildStockHoldingMetrics(holding, quote);
+};
+
+const getPortfolioTone = (value) => (value > 0 ? 'profit' : value < 0 ? 'loss' : 'neutral');
+
+const getAllocationColor = (index) => [
+  '#38bdf8',
+  '#2dd4bf',
+  '#a78bfa',
+  '#f59e0b',
+  '#fb7185',
+  '#22c55e',
+  '#f472b6',
+  '#94a3b8',
+][index % 8];
+
+function buildPortfolioRealtimeSummary(liveHoldings = []) {
+  return liveHoldings.reduce((summary, holding) => {
+    const metrics = holding.liveMetrics || {};
+    const value = Number(metrics.positionValue) || 0;
+    const cost = Number(metrics.costBasis) || 0;
+    const unrealized = Number(metrics.unrealizedPnl);
+    const dayPnl = Number(metrics.dayPnl);
+    const hasLivePrice = Boolean(metrics.hasLivePrice);
+
+    summary.count += 1;
+    summary.marketValue += value;
+    summary.costBasis += cost;
+    if (Number.isFinite(unrealized)) summary.unrealizedPnl += unrealized;
+    else summary.unrealizedMissing += 1;
+    if (Number.isFinite(dayPnl)) summary.dayPnl += dayPnl;
+    else summary.dayPnlMissing += 1;
+    if (hasLivePrice) summary.quoted += 1;
+    return summary;
+  }, {
+    count: 0,
+    quoted: 0,
+    marketValue: 0,
+    costBasis: 0,
+    unrealizedPnl: 0,
+    unrealizedMissing: 0,
+    dayPnl: 0,
+    dayPnlMissing: 0,
+  });
+}
+
+function buildAllocationModel(liveHoldings = []) {
+  const positiveHoldings = liveHoldings
+    .map((holding) => ({
+      holding,
+      value: Math.max(Number(holding.liveMetrics?.positionValue) || 0, 0),
+    }))
+    .filter((item) => item.value > 0)
+    .sort((a, b) => b.value - a.value);
+  const total = positiveHoldings.reduce((sum, item) => sum + item.value, 0);
+  if (total <= 0) {
+    return {
+      total,
+      rows: [],
+      conic: 'rgba(148, 163, 184, 0.18) 0deg 360deg',
+    };
+  }
+
+  let cursor = 0;
+  const topRows = positiveHoldings.slice(0, 5).map((item, index) => {
+    const percent = item.value / total;
+    const start = cursor;
+    const end = cursor + percent * 360;
+    cursor = end;
+    return {
+      symbol: item.holding.symbol,
+      name: item.holding.name || item.holding.symbol,
+      type: getHoldingAssetType(item.holding),
+      value: item.value,
+      percent,
+      color: getAllocationColor(index),
+      start,
+      end,
+    };
+  });
+  const topValue = topRows.reduce((sum, item) => sum + item.value, 0);
+  const othersValue = total - topValue;
+  const rows = othersValue > 0.01
+    ? [
+        ...topRows,
+        {
+          symbol: '其他',
+          name: `${positiveHoldings.length - topRows.length} 个持仓`,
+          type: 'OTHER',
+          value: othersValue,
+          percent: othersValue / total,
+          color: getAllocationColor(topRows.length),
+          start: cursor,
+          end: 360,
+        },
+      ]
+    : topRows;
+  const conic = rows
+    .map((row) => `${row.color} ${row.start.toFixed(1)}deg ${row.end.toFixed(1)}deg`)
+    .join(', ');
+
+  return { total, rows, conic };
+}
+
+function buildPortfolioInsights(liveHoldings = [], realtimeSummary = {}, allocation = {}) {
+  const typeTotals = liveHoldings.reduce((map, holding) => {
+    const type = getHoldingAssetType(holding);
+    const value = Math.max(Number(holding.liveMetrics?.positionValue) || 0, 0);
+    map[type] = (map[type] || 0) + value;
+    return map;
+  }, {});
+  const total = Math.max(Number(realtimeSummary.marketValue) || 0, 0);
+  const optionWeight = total > 0 ? (typeTotals.OPTION || 0) / total : 0;
+  const topWeight = allocation.rows?.[0]?.percent || 0;
+  const quotedRatio = realtimeSummary.count > 0 ? realtimeSummary.quoted / realtimeSummary.count : 0;
+  const nearExpiryCount = liveHoldings.filter((holding) => {
+    if (getHoldingAssetType(holding) !== 'OPTION') return false;
+    const expiry = holding.expiry_date;
+    if (!expiry) return false;
+    const date = new Date(`${expiry}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return false;
+    const today = new Date();
+    const days = Math.ceil((date - new Date(today.getFullYear(), today.getMonth(), today.getDate())) / 86400000);
+    return days >= 0 && days <= 7;
+  }).length;
+
+  const typeLabel = optionWeight >= 0.45
+    ? '期权进攻型'
+    : (typeTotals.ETF || 0) / Math.max(total, 1) >= 0.35
+      ? 'ETF 均衡型'
+      : topWeight >= 0.45
+        ? '集中持仓型'
+        : '股票均衡型';
+
+  const insights = [
+    {
+      label: '组合类型',
+      value: typeLabel,
+      tone: optionWeight >= 0.45 || topWeight >= 0.45 ? 'warning' : 'info',
+      detail: optionWeight >= 0.45
+        ? `期权市值占比 ${(optionWeight * 100).toFixed(1)}%，组合弹性高，建议每天确认到期日、IV 和最大亏损。`
+        : topWeight >= 0.45
+          ? `第一大持仓占比 ${(topWeight * 100).toFixed(1)}%，单一标的会主导净值波动，可考虑分批降集中度。`
+          : '持仓类型相对分散，适合继续用仓位上限和止损价维护纪律。',
+    },
+    {
+      label: '实时覆盖',
+      value: `${realtimeSummary.quoted}/${realtimeSummary.count}`,
+      tone: quotedRatio >= 0.8 ? 'good' : 'warning',
+      detail: quotedRatio >= 0.8
+        ? '大多数仓位已有实时/准实时价格，顶部估值可以作为当前组合参考。'
+        : '仍有仓位缺少实时价，估值已用成本价兜底；建议先补齐行情源 Token 或检查标的代码。',
+    },
+    {
+      label: '风险提醒',
+      value: nearExpiryCount > 0 ? `${nearExpiryCount} 个短期期权` : '暂无末日期权',
+      tone: nearExpiryCount > 0 ? 'danger' : 'good',
+      detail: nearExpiryCount > 0
+        ? '7 天内到期的期权需要优先处理，尤其是深度 OTM 或低流动性合约，避免时间价值快速归零。'
+        : '近期到期压力较低，可以把复盘重点放在持仓逻辑和仓位再平衡上。',
+    },
+  ];
+
+  return { typeTotals, typeLabel, insights };
+}
 
 const buildMarketDataHeaders = (marketDataConfig = {}) => ({
   ...(marketDataConfig.tradierToken ? { 'X-Tradier-Token': marketDataConfig.tradierToken } : {}),
@@ -119,14 +358,28 @@ const getOptionHoldingSignature = (holdings = []) => holdings
   .sort()
   .join('|');
 
+const getHoldingMarketSignature = (holdings = []) => holdings
+  .map((holding) => [
+    getHoldingAssetType(holding),
+    getHoldingSymbol(holding),
+    holding.asset_id,
+    holding.broker,
+    holding.author,
+  ].map((item) => String(item || '').trim()).join(':'))
+  .sort()
+  .join('|');
+
 export default function HoldingsPage() {
   const { holdings, summary, holdingsLoading, refreshHoldings } =
     useTradeStore();
   const workspaceScope = useAppStore((s) => s.workspaceScope);
   const notificationConfig = useAppStore((s) => s.notificationConfig);
   const marketDataConfig = useAppStore((s) => s.marketDataConfig);
+  const marketWatchlist = useAppStore((s) => s.marketWatchlist);
+  const addMarketWatchItem = useAppStore((s) => s.addMarketWatchItem);
   const marketDataFingerprint = getMarketDataConfigFingerprint(marketDataConfig);
   const isTeamWorkspace = workspaceScope === 'team';
+  const autoWatchSignatureRef = useRef('');
 
   const [expandedId, setExpandedId] = useState(null);
   const [expandedTrades, setExpandedTrades] = useState([]);
@@ -141,10 +394,11 @@ export default function HoldingsPage() {
   const [authors, setAuthors] = useState([]);
   const [authorSearch, setAuthorSearch] = useState('');
   const [selectedAuthor, setSelectedAuthor] = useState('');
-  const [underlyingQuotes, setUnderlyingQuotes] = useState({});
+  const [marketQuotes, setMarketQuotes] = useState({});
   const [optionQuotes, setOptionQuotes] = useState({});
   const [optionAlertSheet, setOptionAlertSheet] = useState(null);
   const optionHoldingSignature = useMemo(() => getOptionHoldingSignature(holdings), [holdings]);
+  const holdingMarketSignature = useMemo(() => getHoldingMarketSignature(holdings), [holdings]);
 
   const activeAuthor = selectedAuthor || null;
   const filteredAuthors = authors.filter((author) =>
@@ -164,25 +418,24 @@ export default function HoldingsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    async function loadUnderlyingQuotes() {
+    async function loadMarketQuotes() {
       const symbols = Array.from(new Set(
         holdings
-          .filter((holding) => String(holding.type || '').toUpperCase() === 'OPTION')
-          .map((holding) => String(holding.underlying_symbol || holding.symbol || '').trim().toUpperCase())
+          .map(getHoldingSymbol)
           .filter(Boolean)
       ));
 
       if (symbols.length === 0) {
-        setUnderlyingQuotes({});
+        setMarketQuotes({});
         return;
       }
 
       try {
-        const url = `/api/market?symbols=${encodeURIComponent(symbols.join(','))}`;
+        const url = `/api/market?symbols=${encodeURIComponent(symbols.join(','))}&extended=1`;
         const { data: json } = await fetchJsonWithCache(url, {
           headers: buildMarketDataHeaders(marketDataConfig),
         }, {
-          cacheKey: buildApiCacheKey(['holdings-underlying', symbols.sort().join(','), marketDataFingerprint]),
+          cacheKey: buildApiCacheKey(['holdings-market-quotes', symbols.sort().join(','), marketDataFingerprint]),
           ttlMs: 5_000,
           staleTtlMs: 60_000,
           timeoutMs: 6_000,
@@ -191,22 +444,58 @@ export default function HoldingsPage() {
         const nextQuotes = {};
         symbols.forEach((symbol) => {
           const item = json?.data?.[symbol];
-          const price = Number(item?.displayPrice ?? item?.price);
-          if (Number.isFinite(price)) {
-            nextQuotes[symbol] = price;
+          const price = getQuotePrice(item);
+          if (price !== null) {
+            nextQuotes[symbol] = item;
           }
         });
-        setUnderlyingQuotes(nextQuotes);
+        setMarketQuotes(nextQuotes);
       } catch (err) {
-        console.warn('Failed to load option underlying quotes:', err);
+        console.warn('Failed to load holdings market quotes:', err);
       }
     }
 
-    loadUnderlyingQuotes();
+    loadMarketQuotes();
+    const timer = window.setInterval(loadMarketQuotes, 30_000);
     return () => {
       cancelled = true;
+      window.clearInterval(timer);
     };
-  }, [optionHoldingSignature, marketDataConfig, marketDataFingerprint]);
+  }, [holdingMarketSignature, marketDataConfig, marketDataFingerprint]);
+
+  useEffect(() => {
+    const symbols = Array.from(new Set(holdings.map(getHoldingSymbol).filter(Boolean)));
+    const signature = symbols.sort().join('|');
+    if (!signature || autoWatchSignatureRef.current === signature) return;
+
+    const existing = new Set((marketWatchlist || []).map((item) => String(item.symbol || '').toUpperCase()));
+    let added = 0;
+    holdings.forEach((holding) => {
+      const symbol = getHoldingSymbol(holding);
+      if (!symbol || existing.has(symbol)) return;
+      const assetType = getHoldingAssetType(holding);
+      const isOption = assetType === 'OPTION';
+      const normalizedType = assetType === 'ETF' ? 'ETF' : 'EQUITY';
+      const didAdd = addMarketWatchItem({
+        symbol,
+        name: isOption
+          ? `${symbol} 标的`
+          : holding.name || holding.symbol || symbol,
+        quoteType: normalizedType,
+        typeDisp: assetType === 'ETF' ? 'ETF' : '股票',
+        region: 'US',
+      });
+      if (didAdd) {
+        existing.add(symbol);
+        added += 1;
+      }
+    });
+
+    if (added > 0) {
+      console.info(`已自动把 ${added} 个持仓标的加入关注列表`);
+    }
+    autoWatchSignatureRef.current = signature;
+  }, [addMarketWatchItem, holdings, marketWatchlist]);
 
   useEffect(() => {
     let cancelled = false;
@@ -415,6 +704,9 @@ export default function HoldingsPage() {
 
     const underlyingSymbol = String(holding.underlying_symbol || holding.symbol || '').trim().toUpperCase();
     const contractSymbol = optionDisplay?.contractSymbol || String(holding.asset_id || '').replace(/^OPTION_/i, '');
+    const holdingKey = `${holding.asset_id}-${holding.broker || ''}-${holding.author || '未标记'}`;
+    const quote = optionQuotes[holdingKey];
+    const defaultTarget = toFiniteNumberOrNull(quote?.mark ?? quote?.last ?? holding.avg_cost);
     await db.addPriceAlert({
       id: crypto.randomUUID(),
       symbol: underlyingSymbol,
@@ -461,9 +753,35 @@ export default function HoldingsPage() {
     ? '仅查看该提交人的活跃仓位、成交流向与已实现结果'
     : isTeamWorkspace
       ? '聚合团队同步记录，快速识别当前组合暴露'
-      : '从本地交易记录自动汇总，保持私有优先';
+      : '从本地交易记录自动汇总，叠加行情实时估值';
   const netFlow = totalBuys - totalSells;
   const netFlowLabel = netFlow >= 0 ? '净投入' : '净回收';
+
+  const liveHoldings = useMemo(() => holdings.map((holding) => {
+    const holdingKey = `${holding.asset_id}-${holding.broker || ''}-${holding.author || '未标记'}`;
+    const symbol = getHoldingSymbol(holding);
+    return {
+      ...holding,
+      liveMetrics: buildLiveHoldingMetrics(holding, marketQuotes[symbol], optionQuotes[holdingKey]),
+      marketQuote: marketQuotes[symbol] || null,
+      optionQuote: optionQuotes[holdingKey] || null,
+    };
+  }), [holdings, marketQuotes, optionQuotes]);
+
+  const realtimeSummary = useMemo(() => buildPortfolioRealtimeSummary(liveHoldings), [liveHoldings]);
+  const allocation = useMemo(() => buildAllocationModel(liveHoldings), [liveHoldings]);
+  const portfolioInsights = useMemo(
+    () => buildPortfolioInsights(liveHoldings, realtimeSummary, allocation),
+    [liveHoldings, realtimeSummary, allocation]
+  );
+  const realtimePnlClass = getPortfolioTone(realtimeSummary.unrealizedPnl);
+  const realtimeDayClass = getPortfolioTone(realtimeSummary.dayPnl);
+  const realtimeCoverage = realtimeSummary.count
+    ? `${realtimeSummary.quoted}/${realtimeSummary.count}`
+    : '0/0';
+  const realtimePnlPct = realtimeSummary.costBasis > 0
+    ? (realtimeSummary.unrealizedPnl / realtimeSummary.costBasis) * 100
+    : null;
   const optionRealtimeSummary = buildOptionRealtimeSummary(holdings, optionQuotes);
   const hasOptionRealtimeSummary = optionRealtimeSummary.count > 0;
   const optionRealtimePnlClass = optionRealtimeSummary.unrealizedPnl > 0
@@ -521,8 +839,8 @@ export default function HoldingsPage() {
 
           <div className="holdings-page__summary-strip">
             <div className="holdings-page__summary-strip-item">
-              <span>当前口径</span>
-              <strong>{portfolioModeLabel}</strong>
+              <span>行情覆盖</span>
+              <strong>{realtimeCoverage}</strong>
             </div>
             <div className="holdings-page__summary-strip-item">
               <span>{netFlowLabel}</span>
@@ -533,33 +851,88 @@ export default function HoldingsPage() {
           <div className="holdings-page__summary-grid">
             <div className="holdings-page__summary-item">
               <div className="holdings-page__summary-item-value text-mono">
-                ${formatCurrency(totalBuys)}
+                ${formatCurrency(realtimeSummary.marketValue)}
               </div>
-              <div className="holdings-page__summary-item-label">总买入</div>
-            </div>
-            <div className="holdings-page__summary-item">
-              <div className="holdings-page__summary-item-value text-mono">
-                ${formatCurrency(totalSells)}
-              </div>
-              <div className="holdings-page__summary-item-label">总卖出</div>
+              <div className="holdings-page__summary-item-label">实时估值</div>
             </div>
             <div className="holdings-page__summary-item">
               <div
-                className={`holdings-page__summary-item-value holdings-page__summary-item-value--${pnlClass} text-mono`}
+                className={`holdings-page__summary-item-value holdings-page__summary-item-value--${realtimePnlClass} text-mono`}
               >
+                {formatSignedCurrency(realtimeSummary.unrealizedPnl)}
+              </div>
+              <div className="holdings-page__summary-item-label">
+                未实现盈亏 {realtimePnlPct !== null ? formatPercentValue(realtimePnlPct) : ''}
+              </div>
+            </div>
+            <div className="holdings-page__summary-item">
+              <div
+                className={`holdings-page__summary-item-value holdings-page__summary-item-value--${realtimeDayClass} text-mono`}
+              >
+                {formatSignedCurrency(realtimeSummary.dayPnl)}
+              </div>
+              <div className="holdings-page__summary-item-label">今日变动</div>
+            </div>
+            <div className="holdings-page__summary-item">
+              <div className="holdings-page__summary-item-value text-mono">
                 {pnlPrefix}${formatCurrency(realizedPnl)}
               </div>
               <div className="holdings-page__summary-item-label">已实现盈亏</div>
             </div>
-            <div className="holdings-page__summary-item">
-              <div className="holdings-page__summary-item-value text-mono">
-                {holdings.length}
-              </div>
-              <div className="holdings-page__summary-item-label">活跃持仓</div>
-            </div>
           </div>
         </div>
       </div>
+
+      {allocation.rows.length > 0 && (
+        <div className="holdings-page__section">
+          <div className="holdings-page__allocation glass-card">
+            <div className="holdings-page__allocation-head">
+              <div>
+                <span className="holdings-page__allocation-eyebrow">Allocation AI</span>
+                <h3>持仓占比</h3>
+              </div>
+              <span className="holdings-page__allocation-type">
+                {portfolioInsights.typeLabel}
+              </span>
+            </div>
+
+            <div className="holdings-page__allocation-body">
+              <div
+                className="holdings-page__allocation-chart"
+                style={{ '--allocation-chart': allocation.conic }}
+                aria-label="持仓占比饼图"
+              >
+                <div>
+                  <strong className="text-mono">${formatCurrency(allocation.total)}</strong>
+                  <span>实时市值</span>
+                </div>
+              </div>
+              <div className="holdings-page__allocation-list">
+                {allocation.rows.map((row) => (
+                  <div key={`${row.symbol}-${row.type}`} className="holdings-page__allocation-row">
+                    <span style={{ '--row-color': row.color }} />
+                    <div>
+                      <strong>{row.symbol}</strong>
+                      <em>{row.name}</em>
+                    </div>
+                    <b className="text-mono">{(row.percent * 100).toFixed(1)}%</b>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="holdings-page__insight-grid">
+              {portfolioInsights.insights.map((item) => (
+                <div key={item.label} className={`holdings-page__insight holdings-page__insight--${item.tone}`}>
+                  <span>{item.label}</span>
+                  <strong>{item.value}</strong>
+                  <p>{item.detail}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {hasOptionRealtimeSummary && (
         <div className="holdings-page__section">
@@ -692,17 +1065,21 @@ export default function HoldingsPage() {
             ))}
           </div>
         ) : holdings.length > 0 ? (
-          <div className="holdings-page__list">
-            {holdings.map((holding, idx) => {
+            <div className="holdings-page__list">
+            {liveHoldings.map((holding, idx) => {
               const holdingKey = `${holding.asset_id}-${holding.broker || ''}-${holding.author || '未标记'}`;
               const isExpanded = expandedId === holdingKey;
+              const symbol = getHoldingSymbol(holding);
+              const underlyingPrice = getQuotePrice(marketQuotes[symbol]);
 
               return (
                 <HoldingCard
                   key={holdingKey}
                   holding={holding}
-                  underlyingPrice={underlyingQuotes[String(holding.underlying_symbol || holding.symbol || '').trim().toUpperCase()]}
+                  underlyingPrice={underlyingPrice}
+                  marketQuote={marketQuotes[symbol]}
                   optionQuote={optionQuotes[holdingKey]}
+                  liveMetrics={holding.liveMetrics}
                   index={idx}
                   viewMode={viewMode}
                   isExpanded={isExpanded}

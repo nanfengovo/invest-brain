@@ -7,8 +7,69 @@ import TradeCard from '../components/Trade/TradeCard';
 import TradeFilter from '../components/Trade/TradeFilter';
 import EmptyState from '../components/common/EmptyState';
 import { toDateGroupKey } from '../utils/time';
-import { annotateTradesWithLifecycle } from '../utils/tradeLifecycle';
+import {
+  annotateTradesWithLifecycle,
+  formatLifecyclePnl,
+  getTradeDirectionKind,
+} from '../utils/tradeLifecycle';
 import './TradesPage.css';
+
+const getTradeTimeMs = (trade = {}) => {
+  const time = new Date(trade.trade_time).getTime();
+  return Number.isFinite(time) ? time : 0;
+};
+
+const isClosedTradeLoop = (trades = []) => {
+  const lifecycle = trades[0]?.lifecycle;
+  if (lifecycle?.status !== 'CLOSED') return false;
+  const hasBuy = trades.some((trade) => getTradeDirectionKind(trade.direction) === 'BUY');
+  const hasSell = trades.some((trade) => getTradeDirectionKind(trade.direction) === 'SELL');
+  return hasBuy && hasSell;
+};
+
+function buildTradeEntries(trades = []) {
+  const groupedByLifecycle = new Map();
+  trades.forEach((trade) => {
+    const key = trade.lifecycle?.key || trade.id;
+    if (!groupedByLifecycle.has(key)) groupedByLifecycle.set(key, []);
+    groupedByLifecycle.get(key).push(trade);
+  });
+
+  const loopTradeIds = new Set();
+  const loopEntries = [];
+  groupedByLifecycle.forEach((groupTrades, key) => {
+    if (!isClosedTradeLoop(groupTrades)) return;
+    const sortedTrades = [...groupTrades].sort((a, b) => getTradeTimeMs(a) - getTradeTimeMs(b));
+    sortedTrades.forEach((trade) => loopTradeIds.add(trade.id));
+    const latestTrade = sortedTrades.reduce((latest, trade) => (
+      getTradeTimeMs(trade) >= getTradeTimeMs(latest) ? trade : latest
+    ), sortedTrades[0]);
+    const lifecycle = latestTrade.lifecycle || sortedTrades[0]?.lifecycle || {};
+    loopEntries.push({
+      kind: 'loop',
+      id: `loop-${key}`,
+      key,
+      trades: sortedTrades,
+      lifecycle,
+      latestTrade,
+      latestTime: getTradeTimeMs(latestTrade),
+      title: latestTrade.option_display?.title || latestTrade.underlying_symbol || latestTrade.symbol || '闭环交易',
+      pnl: Number(lifecycle.realizedPnl) || 0,
+    });
+  });
+
+  const singleEntries = trades
+    .filter((trade) => !loopTradeIds.has(trade.id))
+    .map((trade) => ({
+      kind: 'trade',
+      id: trade.id,
+      trade,
+      latestTrade: trade,
+      latestTime: getTradeTimeMs(trade),
+    }));
+
+  return [...loopEntries, ...singleEntries].sort((a, b) => b.latestTime - a.latestTime);
+}
 
 export default function TradesPage() {
   const [showForm, setShowForm] = useState(false);
@@ -74,6 +135,50 @@ export default function TradesPage() {
     });
   }, [trades, filters]);
 
+  const filteredEntries = useMemo(() => buildTradeEntries(filteredTrades), [filteredTrades]);
+
+  const renderTradeEntry = (entry, idx) => {
+    if (entry.kind !== 'loop') {
+      return (
+        <TradeCard
+          key={entry.id}
+          trade={entry.trade}
+          index={idx}
+          onEdit={handleEditTrade}
+          compactMode={filters.compactMode}
+        />
+      );
+    }
+
+    const pnlTone = entry.pnl >= 0 ? 'profit' : 'loss';
+    return (
+      <div key={entry.id} className={`trade-loop trade-loop--${pnlTone}`}>
+        <div className="trade-loop__header">
+          <div>
+            <span className="trade-loop__eyebrow">闭环交易</span>
+            <strong>{entry.title}</strong>
+          </div>
+          <div className={`trade-loop__pnl trade-loop__pnl--${pnlTone}`}>
+            <span>已实现</span>
+            <b>{formatLifecyclePnl(entry.pnl)}</b>
+          </div>
+        </div>
+        <div className="trade-loop__items">
+          {entry.trades.map((trade, tradeIndex) => (
+            <TradeCard
+              key={trade.id}
+              trade={trade}
+              index={tradeIndex}
+              onEdit={handleEditTrade}
+              compactMode={filters.compactMode}
+              loopClosed
+            />
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   const renderList = () => {
     if (tradesLoading && trades.length === 0) {
       return (
@@ -95,7 +200,7 @@ export default function TradesPage() {
       );
     }
 
-    if (filteredTrades.length === 0) {
+    if (filteredEntries.length === 0) {
       return (
         <EmptyState
           icon="📉"
@@ -108,35 +213,32 @@ export default function TradesPage() {
     if (filters.groupBy === 'NONE') {
       return (
         <div className="trades-page__list">
-          {filteredTrades.map((trade, idx) => (
-            <TradeCard key={trade.id} trade={trade} index={idx} onEdit={handleEditTrade} compactMode={filters.compactMode} />
-          ))}
+          {filteredEntries.map(renderTradeEntry)}
         </div>
       );
     }
 
     // Grouping
     const groups = {};
-    filteredTrades.forEach(t => {
+    filteredEntries.forEach((entry) => {
+      const t = entry.latestTrade;
       let key = '未分类';
       if (filters.groupBy === 'DATE' || filters.groupBy === 'DAY' || filters.groupBy === 'WEEK' || filters.groupBy === 'MONTH') {
         key = toDateGroupKey(t.trade_time, filters.groupBy === 'DATE' ? 'DAY' : filters.groupBy);
       } else if (filters.groupBy === 'ASSET') {
-        key = t.option_display?.title || t.underlying_symbol || t.symbol || '未知标的';
+        key = entry.title || t.option_display?.title || t.underlying_symbol || t.symbol || '未知标的';
       }
       if (!groups[key]) groups[key] = [];
-      groups[key].push(t);
+      groups[key].push(entry);
     });
 
     return (
       <div className="trades-page__list">
-        {Object.entries(groups).map(([groupKey, groupTrades], gIdx) => (
+        {Object.entries(groups).map(([groupKey, groupEntries]) => (
           <div key={groupKey} className="trade-group">
             <div className="trade-group__header">{groupKey}</div>
             <div className="trade-group__items">
-              {groupTrades.map((t, idx) => (
-                <TradeCard key={t.id} trade={t} index={idx} onEdit={handleEditTrade} compactMode={filters.compactMode} />
-              ))}
+              {groupEntries.map(renderTradeEntry)}
             </div>
           </div>
         ))}

@@ -123,14 +123,24 @@ function normalizeSyncDump(data, userId, scope) {
   }
 
   const normalizedUserId = String(userId || '').trim();
+  const isUnclaimedAuthor = (author) => {
+    const text = String(author || '').trim();
+    return !text || text === '未标记';
+  };
   const belongsToUser = (row) => {
     const author = String(row?.author || row?.source_author || '').trim();
-    return !normalizedUserId || author === normalizedUserId;
+    if (!normalizedUserId) return true;
+    if (author === normalizedUserId) return true;
+    return scope === 'personal' && isUnclaimedAuthor(author);
   };
   const normalizeCollaborativeRow = (row) => ({
     ...row,
-    author: String(row.author || normalizedUserId || '未标记').trim() || '未标记',
-    source_author: String(row.source_author || row.author || normalizedUserId || '未标记').trim() || '未标记',
+    author: scope === 'personal' && isUnclaimedAuthor(row.author || row.source_author)
+      ? normalizedUserId
+      : (String(row.author || normalizedUserId || '未标记').trim() || '未标记'),
+    source_author: scope === 'personal' && isUnclaimedAuthor(row.source_author || row.author)
+      ? normalizedUserId
+      : (String(row.source_author || row.author || normalizedUserId || '未标记').trim() || '未标记'),
     workspace_scope: scope,
     source_scope: scope,
     origin_id: row.origin_id || row.id,
@@ -142,8 +152,12 @@ function normalizeSyncDump(data, userId, scope) {
       .filter(belongsToUser)
       .map((trade) => ({
         ...trade,
-        author: String(trade.author || normalizedUserId || '未标记').trim() || '未标记',
-        source_author: String(trade.source_author || trade.author || normalizedUserId || '未标记').trim() || '未标记',
+        author: scope === 'personal' && isUnclaimedAuthor(trade.author || trade.source_author)
+          ? normalizedUserId
+          : (String(trade.author || normalizedUserId || '未标记').trim() || '未标记'),
+        source_author: scope === 'personal' && isUnclaimedAuthor(trade.source_author || trade.author)
+          ? normalizedUserId
+          : (String(trade.source_author || trade.author || normalizedUserId || '未标记').trim() || '未标记'),
         workspace_scope: scope,
         source_scope: scope,
         origin_id: trade.origin_id || trade.id,

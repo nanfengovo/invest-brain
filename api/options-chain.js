@@ -669,7 +669,7 @@ export function buildAutoOptionProviderPlan({
 } = {}) {
   const plan = [];
   if (marketDataToken) plan.push('marketdata');
-  if (hasLongbridge && contract) plan.push('longbridge');
+  if ((hasLongbridge || process.env.LONGBRIDGE_CLI_OPTION_FALLBACK !== '0') && contract) plan.push('longbridge');
   if (tradierToken) plan.push('tradier');
   if (polygonToken) plan.push('polygon');
   plan.push('yahoo');

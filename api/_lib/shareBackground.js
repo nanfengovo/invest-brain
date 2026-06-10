@@ -78,9 +78,16 @@ async function callOpenAiCompatibleImageApi({ apiKey, model, prompt, width, heig
     }),
   });
 
-  const payload = await response.json().catch(async () => ({ error: await response.text() }));
+  const responseText = await response.text();
+  const payload = responseText ? (() => {
+    try {
+      return JSON.parse(responseText);
+    } catch {
+      return { error: responseText };
+    }
+  })() : {};
   if (!response.ok) {
-    throw new Error(payload?.error?.message || payload?.error || `NVIDIA API ${response.status}`);
+    throw new Error(payload?.error?.message || payload?.error || `NVIDIA 图像接口请求失败（HTTP ${response.status}）`);
   }
   return payload;
 }
@@ -106,9 +113,16 @@ async function callDirectModelEndpoint({ apiKey, model, prompt, width, height })
     body: JSON.stringify(body),
   });
 
-  const payload = await response.json().catch(async () => ({ error: await response.text() }));
+  const responseText = await response.text();
+  const payload = responseText ? (() => {
+    try {
+      return JSON.parse(responseText);
+    } catch {
+      return { error: responseText };
+    }
+  })() : {};
   if (!response.ok) {
-    throw new Error(payload?.error?.message || payload?.error || `NVIDIA API ${response.status}`);
+    throw new Error(payload?.error?.message || payload?.error || `NVIDIA 图像接口请求失败（HTTP ${response.status}）`);
   }
   return payload;
 }

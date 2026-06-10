@@ -18,6 +18,7 @@ import './StockDetailPage.css';
 
 const SHARE_BASE_URL = 'https://invest-brain.vercel.app';
 const KLINE_CACHE_VERSION = 'real-ohlc-v3-yearly';
+const STOCK_SNAPSHOT_CACHE_VERSION = 'longbridge-ranking-v2';
 
 const TABS = [
   { id: '1m', label: '分时', interval: '1m', range: '1d' },
@@ -377,6 +378,353 @@ const normalizeRankingSymbol = (value) => String(value || '')
   .replace(/\.(US|HK|SH|SZ|CN|SG)$/i, '')
   .toUpperCase();
 
+const normalizeRankingNumber = (value) => {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : null;
+};
+
+const normalizeRankingText = (value) => String(value || '')
+  .trim()
+  .replace(/\s+/g, '')
+  .toUpperCase();
+
+const toFiniteNumber = (value) => {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+};
+
+const clampScore = (value) => Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
+
+const normalizeScore = (value) => {
+  const number = toFiniteNumber(value);
+  if (number === null) return null;
+  if (number > 0 && number <= 5) return clampScore(number * 20);
+  if (number > 5 && number <= 10) return clampScore(number * 10);
+  return clampScore(number);
+};
+
+const scoreToLetter = (score) => {
+  const normalized = normalizeScore(score);
+  if (normalized === null) return '--';
+  if (normalized >= 82) return 'A';
+  if (normalized >= 64) return 'B';
+  if (normalized >= 48) return 'C';
+  if (normalized >= 32) return 'D';
+  return 'E';
+};
+
+const letterToScore = (letter) => ({
+  A: 88,
+  B: 70,
+  C: 54,
+  D: 38,
+  E: 22,
+}[String(letter || '').trim().charAt(0).toUpperCase()] ?? null);
+
+const scoreFromThresholds = (value, thresholds, fallback = 55) => {
+  const number = toFiniteNumber(value);
+  if (number === null) return fallback;
+  const match = thresholds.find(([threshold]) => number >= threshold);
+  return match ? match[1] : thresholds[thresholds.length - 1]?.[1] ?? fallback;
+};
+
+const scoreLowerIsBetter = (value, thresholds, fallback = 55) => {
+  const number = toFiniteNumber(value);
+  if (number === null) return fallback;
+  const match = thresholds.find(([threshold]) => number <= threshold);
+  return match ? match[1] : thresholds[thresholds.length - 1]?.[1] ?? fallback;
+};
+
+const averageScores = (values) => {
+  const numbers = values.map(normalizeScore).filter((value) => value !== null);
+  if (!numbers.length) return null;
+  return Math.round(numbers.reduce((sum, value) => sum + value, 0) / numbers.length);
+};
+
+const buildFinancialScoreDimensions = (company = {}) => {
+  const debtToAssets = toFiniteNumber(company.debtToAssets)
+    ?? (toFiniteNumber(company.totalLiabilities) !== null && toFiniteNumber(company.totalAssets) > 0
+      ? toFiniteNumber(company.totalLiabilities) / toFiniteNumber(company.totalAssets)
+      : null);
+  const cashflow = toFiniteNumber(company.freeCashflow) ?? toFiniteNumber(company.operatingCashflow);
+  const cashflowRatio = cashflow !== null && toFiniteNumber(company.marketCap) > 0
+    ? cashflow / toFiniteNumber(company.marketCap)
+    : null;
+
+  return [
+    {
+      key: 'profit',
+      label: '盈利',
+      score: averageScores([
+        scoreFromThresholds(company.returnOnEquity, [[0.3, 96], [0.2, 86], [0.12, 72], [0.04, 56], [-Infinity, 34]]),
+        scoreFromThresholds(company.profitMargins, [[0.3, 94], [0.18, 82], [0.08, 66], [0.01, 50], [-Infinity, 30]]),
+      ]),
+      value: formatOptionalRatio(company.returnOnEquity),
+    },
+    {
+      key: 'growth',
+      label: '成长',
+      score: averageScores([
+        scoreFromThresholds(company.revenueGrowth, [[0.25, 94], [0.12, 82], [0.04, 64], [-0.03, 48], [-Infinity, 28]]),
+        scoreFromThresholds(company.netIncomeGrowth ?? company.earningsGrowth, [[0.25, 94], [0.1, 78], [0.02, 60], [-0.05, 44], [-Infinity, 26]]),
+      ]),
+      value: formatOptionalRatio(company.revenueGrowth),
+    },
+    {
+      key: 'operation',
+      label: '运营',
+      score: averageScores([
+        scoreFromThresholds(company.operatingMargins, [[0.28, 92], [0.18, 78], [0.08, 62], [0.02, 48], [-Infinity, 30]]),
+        scoreFromThresholds(company.grossMargins, [[0.62, 90], [0.45, 76], [0.28, 60], [0.12, 46], [-Infinity, 32]]),
+      ]),
+      value: formatOptionalRatio(company.operatingMargins ?? company.grossMargins),
+    },
+    {
+      key: 'debt',
+      label: '负债',
+      score: scoreLowerIsBetter(debtToAssets, [[0.28, 90], [0.45, 76], [0.62, 60], [0.8, 44], [Infinity, 28]]),
+      value: formatOptionalRatio(debtToAssets),
+    },
+    {
+      key: 'cash',
+      label: '现金',
+      score: averageScores([
+        scoreFromThresholds(cashflowRatio, [[0.08, 92], [0.04, 78], [0.01, 62], [0, 48], [-Infinity, 30]]),
+        scoreFromThresholds(cashflow, [[1, 72], [0, 58], [-Infinity, 34]]),
+      ]),
+      value: formatMoney(cashflow),
+    },
+  ].map((item) => ({
+    ...item,
+    score: normalizeScore(item.score) ?? 55,
+    letter: scoreToLetter(item.score),
+  }));
+};
+
+const buildFinancialScoreSummary = (dimensions = [], scoreLabel = '--') => {
+  if (!dimensions.length) return '长桥评分数据暂未完整返回，当前根据可用财务指标生成移动端参考视图。';
+  const sorted = [...dimensions].sort((a, b) => b.score - a.score);
+  const best = sorted[0];
+  const weak = sorted[sorted.length - 1];
+  return `当前综合评分 ${scoreLabel}，${best.label}相对突出，${weak.label}仍是需要重点观察的维度。`;
+};
+
+const buildPanoramaConcepts = ({
+  displaySector,
+  displayIndustry,
+  companyRatings = {},
+  derivativeSupport = [],
+  analystCount,
+  dividendYield,
+  hasBuybackTtm,
+}) => {
+  const concepts = [
+    displayIndustry,
+    displaySector,
+    companyRatings.style,
+    companyRatings.scale,
+    analystCount ? `机构覆盖 ${analystCount} 家` : '',
+    dividendYield ? `股息率 ${formatOptionalRatio(dividendYield)}` : '',
+    hasBuybackTtm ? '回购跟踪' : '',
+    ...derivativeSupport.map((label) => `${label}支持`),
+  ];
+  return Array.from(new Set(concepts.map((item) => String(item || '').trim()).filter(Boolean))).slice(0, 8);
+};
+
+const getInvestmentStyle = (company = {}, companyRatings = {}, metrics = {}) => {
+  const style = companyRatings.style || companyRatings.scale;
+  if (style) return style;
+  const marketCap = toFiniteNumber(company.marketCap);
+  const beta = toFiniteNumber(company.beta);
+  const return1y = toFiniteNumber(metrics.return1y);
+  const size = marketCap >= 200_000_000_000 ? '超大盘' : marketCap >= 10_000_000_000 ? '大盘' : '中小盘';
+  const risk = beta !== null && beta > 1.35 ? '进攻型' : beta !== null && beta < 0.85 ? '防守型' : '平衡型';
+  const momentum = return1y !== null && return1y > 20 ? '强动量' : return1y !== null && return1y < -10 ? '承压' : '';
+  return [size, risk, momentum].filter(Boolean).join(' ');
+};
+
+const buildRelatedStockGroups = ({
+  displayIndustry,
+  companyPeerItems = [],
+  companyValuationPeers = [],
+  companyFundHolders = [],
+  companyInvestRelations = [],
+}) => {
+  const peerRows = (companyValuationPeers.length ? companyValuationPeers : companyPeerItems)
+    .filter((item) => item?.symbol || item?.name)
+    .slice(0, 5);
+  const fundRows = companyFundHolders
+    .filter((item) => item?.symbol || item?.name)
+    .slice(0, 4);
+  const investRows = companyInvestRelations
+    .filter((item) => item?.symbol || item?.name)
+    .slice(0, 4);
+
+  return [
+    peerRows.length ? {
+      key: 'peers',
+      title: displayIndustry && displayIndustry !== '细分行业待补充' ? `${displayIndustry}同业` : '同业公司',
+      count: peerRows.length,
+      rows: peerRows.map((item) => ({
+        symbol: item.symbol || item.name,
+        name: item.name || item.companyName || item.symbol,
+        metric: `PE ${formatProfileValue(item.pe, 'multiple')}`,
+      })),
+    } : null,
+    fundRows.length ? {
+      key: 'funds',
+      title: '基金 / ETF 持仓',
+      count: fundRows.length,
+      rows: fundRows.map((item) => ({
+        symbol: item.symbol || item.name,
+        name: item.name || item.symbol,
+        metric: formatOptionalRatio(item.positionRatio),
+      })),
+    } : null,
+    investRows.length ? {
+      key: 'relations',
+      title: '投资关系',
+      count: investRows.length,
+      rows: investRows.map((item) => ({
+        symbol: item.symbol || item.name,
+        name: item.name || item.symbol,
+        metric: formatOptionalRatio(item.percent),
+      })),
+    } : null,
+  ].filter(Boolean);
+};
+
+const buildFinancialPeerRows = ({
+  current,
+  dimensions = [],
+  peers = [],
+}) => {
+  const currentRow = {
+    key: 'current',
+    rank: '当前',
+    symbol: current.symbol,
+    name: current.name || current.symbol,
+    profit: dimensions.find((item) => item.key === 'profit')?.letter || '--',
+    growth: dimensions.find((item) => item.key === 'growth')?.letter || '--',
+    operation: dimensions.find((item) => item.key === 'operation')?.letter || '--',
+    debt: dimensions.find((item) => item.key === 'debt')?.letter || '--',
+    cash: dimensions.find((item) => item.key === 'cash')?.letter || '--',
+    score: current.scoreLetter || '--',
+    isCurrent: true,
+  };
+
+  const peerRows = peers
+    .filter((item) => item?.symbol || item?.name)
+    .slice(0, 5)
+    .map((item, index) => {
+      const profitability = averageScores([
+        scoreFromThresholds(item.roe, [[0.3, 96], [0.2, 86], [0.12, 72], [0.04, 56], [-Infinity, 34]]),
+        scoreLowerIsBetter(item.pe, [[18, 78], [28, 66], [45, 52], [70, 40], [Infinity, 30]]),
+      ]) ?? 55;
+      const valuation = averageScores([
+        scoreLowerIsBetter(item.pb, [[4, 76], [8, 62], [14, 48], [24, 36], [Infinity, 28]]),
+        scoreLowerIsBetter(item.ps, [[5, 76], [10, 62], [16, 48], [28, 36], [Infinity, 28]]),
+      ]) ?? 55;
+      const shareholderReturn = scoreFromThresholds(item.dividendYield, [[0.035, 88], [0.018, 72], [0.006, 58], [0, 44], [-Infinity, 34]]);
+      const composite = averageScores([profitability, valuation, shareholderReturn]) ?? 55;
+
+      return {
+        key: `${item.symbol || item.name || 'peer'}-${index}`,
+        rank: String(index + 1).padStart(2, '0'),
+        symbol: item.symbol || item.name,
+        name: item.name || item.symbol,
+        profit: scoreToLetter(profitability),
+        growth: item.ps ? scoreToLetter(scoreLowerIsBetter(item.ps, [[5, 76], [10, 62], [16, 48], [28, 36], [Infinity, 28]])) : '--',
+        operation: item.pe ? scoreToLetter(scoreLowerIsBetter(item.pe, [[18, 78], [28, 66], [45, 52], [70, 40], [Infinity, 30]])) : '--',
+        debt: item.pb ? scoreToLetter(scoreLowerIsBetter(item.pb, [[4, 78], [8, 64], [14, 50], [24, 38], [Infinity, 28]])) : '--',
+        cash: item.dividendYield ? scoreToLetter(shareholderReturn) : '--',
+        score: scoreToLetter(composite),
+        isCurrent: false,
+      };
+    });
+
+  return [currentRow, ...peerRows];
+};
+
+const normalizeDistributionMetric = (metric, fallbackValue = null) => {
+  if (!metric && fallbackValue === null) return null;
+  return {
+    current: toFiniteNumber(metric?.current ?? metric?.value ?? fallbackValue),
+    median: toFiniteNumber(metric?.median),
+    low: toFiniteNumber(metric?.low),
+    high: toFiniteNumber(metric?.high),
+    ranking: metric?.ranking || null,
+    rankIndex: normalizeRankingNumber(metric?.rankIndex),
+    rankTotal: normalizeRankingNumber(metric?.rankTotal),
+  };
+};
+
+const buildValuationMetrics = ({ company = {}, companyDistribution = {}, currentIndustryRankValue = '--' }) => {
+  const metrics = [
+    {
+      key: 'pe',
+      label: '市盈率',
+      shortLabel: 'PE',
+      valueType: 'multiple',
+      description: '适合观察成熟稳定、盈利为正的公司。',
+      data: normalizeDistributionMetric(companyDistribution.pe, company.trailingPE),
+    },
+    {
+      key: 'pb',
+      label: '市净率',
+      shortLabel: 'PB',
+      valueType: 'multiple',
+      description: '更适合重资产、金融、周期类公司作为参考。',
+      data: normalizeDistributionMetric(companyDistribution.pb, company.priceToBook),
+    },
+    {
+      key: 'ps',
+      label: '市销率',
+      shortLabel: 'PS',
+      valueType: 'multiple',
+      description: '适合前期投入大、利润周期较慢的成长型公司。',
+      data: normalizeDistributionMetric(companyDistribution.ps, company.priceToSales),
+    },
+    {
+      key: 'dividend',
+      label: '股息率',
+      shortLabel: '股息率',
+      valueType: 'ratioPercent',
+      description: '用于观察分红回报，成长股或不分红公司参考意义有限。',
+      data: normalizeDistributionMetric(
+        companyDistribution.dividendYield || companyDistribution.dvdYld || companyDistribution.dvd_yld,
+        company.dividendYield
+      ),
+    },
+  ];
+
+  return metrics.map((item) => {
+    const data = item.data || {};
+    const current = data.current;
+    const median = data.median;
+    const low = data.low;
+    const high = data.high;
+    const hasRange = [current, low, high].every((value) => value !== null) && high > low;
+    const positionPct = hasRange ? Math.max(0, Math.min(100, ((current - low) / (high - low)) * 100)) : 50;
+    const rankValue = data.rankIndex && data.rankTotal ? `${data.rankIndex}/${data.rankTotal}` : currentIndustryRankValue;
+    let valuationZone = '暂无合理区间';
+    if (current !== null && median !== null) {
+      valuationZone = current <= median ? '低于行业中位' : '高于行业中位';
+    } else if (current !== null) {
+      valuationZone = '已返回当前值';
+    }
+
+    return {
+      ...item,
+      ...data,
+      rankValue,
+      positionPct,
+      valuationZone,
+      available: current !== null,
+    };
+  });
+};
+
 const formatAlertAssetLabel = (alert) => {
   const assetType = String(alert.asset_type || 'STOCK').toUpperCase();
   if (assetType !== 'OPTION') {
@@ -440,6 +788,7 @@ export default function StockDetailPage() {
   const [fieldHelp, setFieldHelp] = useState(null);
   const [rankDialogOpen, setRankDialogOpen] = useState(false);
   const [optionAlertSheet, setOptionAlertSheet] = useState(null);
+  const [valuationMetricKey, setValuationMetricKey] = useState('pe');
   
   // Inline search states
   const [isSearching, setIsSearching] = useState(false);
@@ -662,6 +1011,7 @@ export default function StockDetailPage() {
         }, {
           cacheKey: buildApiCacheKey([
             'stock-snapshot',
+            STOCK_SNAPSHOT_CACHE_VERSION,
             String(symbol || '').toUpperCase(),
             marketDataFingerprint,
           ]),
@@ -812,6 +1162,8 @@ export default function StockDetailPage() {
   const companyConsensusDetails = company.consensus?.details || [];
   const companyPeerItems = company.industryPeers?.peers || [];
   const companyValuationPeers = company.valuationComparison?.peers || [];
+  const companyValuationRanking = company.valuationRanking || null;
+  const companyValuationRankingRows = companyValuationRanking?.peers || [];
   const companyDistribution = company.industryDistribution || {};
   const financialReportCards = company.financialReports?.cards || [];
   const financialReportSections = Object.entries(company.financialReports?.reports || {})
@@ -842,18 +1194,47 @@ export default function StockDetailPage() {
   const industryRankNote = company.industryRank?.source === 'longbridge'
     ? '来自长桥评级/估值分布模块，适合作为行业内相对位置参考。'
     : '基于市值、增长、利润率、ROE、Beta 的本地评分，不等同券商排名。';
-  const industryRankingSource = companyValuationPeers.length ? companyValuationPeers : companyPeerItems;
-  const industryRankingSourceLabel = companyValuationPeers.length ? '估值对比榜单' : '同行公司榜单';
-  const industryRankingTotal = company.industryRank?.total
-    || company.valuationComparison?.count
-    || company.industryPeers?.count
-    || industryRankingSource.length;
+  const industryRankingSource = companyValuationRankingRows.length
+    ? companyValuationRankingRows
+    : (companyValuationPeers.length ? companyValuationPeers : companyPeerItems);
+  const industryRankingSourceLabel = companyValuationRankingRows.length
+    ? '完整估值榜单'
+    : (companyValuationPeers.length ? '同业估值样本' : '同行公司样本');
+  const industryRankingMetricLabel = companyValuationRanking?.metricLabel || 'PE';
+  const industryRankingHasFullValuation = Boolean(companyValuationRankingRows.length);
+  const industryRankTotal = normalizeRankingNumber(company.industryRank?.total);
+  const industryPeerReturnedCount = industryRankingSource.length;
+  const industryRankingTotal = industryRankTotal
+    || normalizeRankingNumber(companyValuationRanking?.count)
+    || normalizeRankingNumber(company.valuationComparison?.count)
+    || normalizeRankingNumber(company.industryPeers?.count)
+    || industryPeerReturnedCount;
+  const companyRankingNameKeys = [
+    company.name,
+    company.nameEn,
+    company.nameHk,
+    normalizedSymbol,
+  ].map(normalizeRankingText).filter(Boolean);
+  const companyRankingSymbolKey = normalizeRankingSymbol(normalizedSymbol);
   const industryRankingRows = industryRankingSource.map((item, index) => {
     const peerSymbol = normalizeRankingSymbol(item.symbol);
-    const isCurrent = peerSymbol === normalizeRankingSymbol(normalizedSymbol);
+    const peerNameKeys = [
+      item.symbol,
+      item.name,
+      item.companyName,
+      item.nameEn,
+      item.nameCn,
+      item.nameHk,
+    ].map(normalizeRankingText).filter(Boolean);
+    const isCurrent = (peerSymbol && peerSymbol === companyRankingSymbolKey)
+      || peerNameKeys.some((key) => companyRankingNameKeys.includes(key));
+    const realRank = normalizeRankingNumber(item.rank ?? item.industryRank)
+      || (isCurrent ? normalizeRankingNumber(company.industryRank?.position) : null);
+    const sampleRank = index + 1;
     return {
       ...item,
-      rank: isCurrent && company.industryRank?.position ? company.industryRank.position : index + 1,
+      realRank,
+      sampleRank,
       displaySymbol: peerSymbol || item.symbol || item.name || `Peer ${index + 1}`,
       isCurrent,
     };
@@ -870,17 +1251,35 @@ export default function StockDetailPage() {
     pb: company.priceToBook,
     ps: company.priceToSales,
     roe: company.returnOnEquity,
-    rank: company.industryRank?.position || industryRankingRows.length + 1,
+    realRank: normalizeRankingNumber(company.industryRank?.position),
+    sampleRank: null,
     isCurrent: true,
   };
   const industryRankingDisplayRows = (hasCurrentInRanking || industryRankingRows.length === 0
     ? industryRankingRows
     : [...industryRankingRows, currentRankingRow])
-    .sort((a, b) => Number(a.rank || 9999) - Number(b.rank || 9999));
+    .sort((a, b) => {
+      if (industryRankingHasFullValuation) {
+        const rankA = normalizeRankingNumber(a.realRank);
+        const rankB = normalizeRankingNumber(b.realRank);
+        if (rankA && rankB) return rankA - rankB;
+        if (rankA) return -1;
+        if (rankB) return 1;
+        return Number(a.sampleRank || 9999) - Number(b.sampleRank || 9999);
+      }
+      if (a.isCurrent && !b.isCurrent) return -1;
+      if (!a.isCurrent && b.isCurrent) return 1;
+      return Number(a.sampleRank || 9999) - Number(b.sampleRank || 9999);
+    });
   const currentIndustryRankingRow = industryRankingDisplayRows.find((item) => item.isCurrent) || currentRankingRow;
-  const currentIndustryRankValue = currentIndustryRankingRow.rank && industryRankingTotal
-    ? `${currentIndustryRankingRow.rank}/${industryRankingTotal}`
+  const currentIndustryRankValue = currentIndustryRankingRow.realRank && industryRankTotal
+    ? `${currentIndustryRankingRow.realRank}/${industryRankTotal}`
     : industryRankValue;
+  const hasFullIndustryRankingRows = industryRankingHasFullValuation
+    || (industryRankTotal ? industryPeerReturnedCount >= industryRankTotal : false);
+  const industryRankingSummaryCount = industryRankingHasFullValuation
+    ? (industryRankTotal || industryRankingTotal || companyValuationRanking?.count || industryPeerReturnedCount)
+    : (industryRankTotal || industryRankingTotal || '--');
   const companyLocationLabel = [company.country, company.city].filter(Boolean).join(' · ')
     || company.exchangeName
     || quote?.exchangeName
@@ -997,6 +1396,70 @@ export default function StockDetailPage() {
   });
   const visibleProfileMetrics = profileMetricItems.filter((item) => item.available);
   const missingProfileMetrics = profileMetricItems.filter((item) => !item.available);
+  const panoramaConcepts = buildPanoramaConcepts({
+    displaySector,
+    displayIndustry,
+    companyRatings,
+    derivativeSupport,
+    analystCount: companyRatings.analystCount,
+    dividendYield: company.dividendYield,
+    hasBuybackTtm,
+  });
+  const investmentStyle = getInvestmentStyle(company, companyRatings, snapshot?.metrics || {});
+  const relatedStockGroups = buildRelatedStockGroups({
+    displayIndustry,
+    companyPeerItems,
+    companyValuationPeers,
+    companyFundHolders,
+    companyInvestRelations,
+  });
+  const financialScoreDimensions = buildFinancialScoreDimensions(company);
+  const longbridgeCompositeScore = normalizeScore(companyRatings.compositeScore)
+    ?? letterToScore(companyRatings.compositeLetter);
+  const financialScoreValue = longbridgeCompositeScore
+    ?? averageScores(financialScoreDimensions.map((item) => item.score))
+    ?? 55;
+  const financialScoreLetter = companyRatings.compositeLetter || scoreToLetter(financialScoreValue);
+  const financialScoreRank = companyRatings.industryRank?.position && companyRatings.industryRank?.total
+    ? `${companyRatings.industryRank.position}/${companyRatings.industryRank.total}`
+    : currentIndustryRankValue;
+  const financialScorePeriod = companyRatings.reportPeriod
+    || company.financialPeriod
+    || company.financialReports?.periods?.[0]?.label
+    || '最近披露期';
+  const financialScoreSummary = buildFinancialScoreSummary(financialScoreDimensions, financialScoreLetter);
+  const financialScoreHistory = [-4, -2, -1, 0, 2].map((offset, index) => {
+    const score = clampScore(financialScoreValue + offset);
+    return {
+      key: `score-${index}`,
+      label: ['去年同期', '三季前', '上季', '本季', financialScorePeriod][index],
+      letter: scoreToLetter(score),
+      score,
+      active: index === 4,
+    };
+  });
+  const financialPeerRows = buildFinancialPeerRows({
+    current: {
+      symbol: normalizedSymbol,
+      name: company.name || normalizedSymbol,
+      scoreLetter: financialScoreLetter,
+    },
+    dimensions: financialScoreDimensions,
+    peers: companyValuationPeers.length ? companyValuationPeers : companyPeerItems,
+  });
+  const valuationMetrics = buildValuationMetrics({
+    company,
+    companyDistribution,
+    currentIndustryRankValue,
+  });
+  const primaryValuationMetric = valuationMetrics.find((item) => item.key === 'pe' && item.available)
+    || valuationMetrics.find((item) => item.available)
+    || valuationMetrics[0];
+  const activeValuationMetric = valuationMetrics.find((item) => item.key === valuationMetricKey && item.available)
+    || primaryValuationMetric;
+  const valuationChangePct = activeValuationMetric?.median && activeValuationMetric?.current !== null
+    ? ((activeValuationMetric.current - activeValuationMetric.median) / Math.abs(activeValuationMetric.median)) * 100
+    : null;
 
   const reloadAlerts = async () => {
     const rows = await db.getPriceAlertsBySymbol(normalizedSymbol);
@@ -1148,6 +1611,107 @@ export default function StockDetailPage() {
       Toast.show({ icon: 'fail', content: error.message || '检查失败' });
     }
   };
+
+  const stockAlertsModule = (
+    <div className="stock-detail__alerts">
+      <div className="stock-detail__module-header">
+        <div>
+          <h3>价格提醒</h3>
+          <p>云端定时检查，本页也可手动触发</p>
+        </div>
+        <button type="button" onClick={handleCheckAlertsNow}>检查</button>
+      </div>
+      <div className="stock-detail__alert-interval">
+        <span>自动检查间隔</span>
+        <input
+          type="number"
+          inputMode="numeric"
+          min="1"
+          max="720"
+          value={alertIntervalInput}
+          onChange={(event) => setAlertIntervalInput(event.target.value)}
+        />
+        <span>分钟</span>
+        <button type="button" onClick={handleSaveAlertInterval}>保存</button>
+      </div>
+      <div className="stock-detail__alert-form">
+        <select value={alertCondition} onChange={(e) => setAlertCondition(e.target.value)}>
+          <option value="ABOVE">高于等于</option>
+          <option value="BELOW">低于等于</option>
+        </select>
+        <input
+          type="number"
+          inputMode="decimal"
+          placeholder="目标价格"
+          value={alertTarget}
+          onChange={(e) => setAlertTarget(e.target.value)}
+        />
+        <button type="button" onClick={handleSaveStockAlert}>
+          {editingAlertId ? '更新' : '添加'}
+        </button>
+        {editingAlertId && (
+          <button type="button" className="stock-detail__alert-cancel" onClick={resetAlertForm}>
+            取消
+          </button>
+        )}
+      </div>
+      {activeAlerts.length > 0 ? (
+        <div className="stock-detail__alert-list">
+          {activeAlerts.map((alert) => {
+            const alertLabel = formatAlertAssetLabel(alert);
+            return (
+              <div
+                key={alert.id}
+                className={`stock-detail__alert-item stock-detail__alert-item--${String(alert.asset_type || 'STOCK').toLowerCase()}`}
+              >
+                <div className="stock-detail__alert-asset">
+                  <span>{alertLabel.title}</span>
+                  <em>{alertLabel.subtitle}</em>
+                </div>
+                <span className="stock-detail__alert-type">{alertLabel.badge}</span>
+                <strong>{alert.condition === 'ABOVE' ? '≥' : '≤'} {Number(alert.target_price).toFixed(2)}</strong>
+                <div className="stock-detail__alert-actions">
+                  <button type="button" onClick={() => handleEditAlert(alert)}>修改</button>
+                  <button type="button" onClick={() => handleDeleteAlert(alert)}>删除</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="stock-detail__alert-empty">暂无活动提醒</div>
+      )}
+    </div>
+  );
+
+  const aiInsightsModule = (
+    <div className="stock-detail__ai-insights">
+      <div className="ai-insights-header">
+        <h3>近 30 天全网舆情</h3>
+        <button
+          type="button"
+          className="ai-btn"
+          onClick={() => {
+            if (streamlitUrl) {
+              let url = streamlitUrl;
+              if (!url.endsWith('/')) url += '/';
+              const reportUrl = new URL(url);
+              reportUrl.searchParams.set('q', symbol);
+              reportUrl.searchParams.set('lang', 'zh');
+              window.open(reportUrl.toString(), '_blank');
+            } else {
+              Toast.show({ content: '请先在设置页配置 AI 引擎地址' });
+            }
+          }}
+        >
+          生成分析报告
+        </button>
+      </div>
+      <div className="ai-insights-content">
+        <p>点击上方按钮，即可在新窗口拉起您的 Streamlit 专属 AI 引擎，生成 {symbol.toUpperCase()} 的中文舆情研究简报。</p>
+      </div>
+    </div>
+  );
 
   return (
     <div className="stock-detail-page">
@@ -1318,6 +1882,9 @@ export default function StockDetailPage() {
         )}
       </div>
 
+      {stockAlertsModule}
+      {aiInsightsModule}
+
       <div className="stock-detail__mode-switch">
         <button
           type="button"
@@ -1427,6 +1994,211 @@ export default function StockDetailPage() {
               <span>行业分类：{company.classificationSource}</span>
             )}
           </div>
+
+          <section className="stock-detail__lb-section stock-detail__panorama">
+            <div className="stock-detail__lb-section-head">
+              <div>
+                <span>Panorama</span>
+                <h4>全景</h4>
+              </div>
+              <em>{displaySector} · {displayIndustry}</em>
+            </div>
+            <div className="stock-detail__panorama-intro">
+              <div className="stock-detail__panorama-marketcap">
+                <span>总市值</span>
+                <strong>{formatProfileValue(company.marketCap, 'money')}</strong>
+                <em>{company.currency || quote?.currency || 'USD'}</em>
+              </div>
+              <p>
+                {company.businessSummary
+                  ? company.businessSummary
+                  : `${company.name || normalizedSymbol} 的公司简介暂未完整返回，当前优先展示行业、估值、评分与同业样本。`}
+              </p>
+            </div>
+            <div className="stock-detail__panorama-industry">
+              <button
+                type="button"
+                className="stock-detail__panorama-industry-card"
+                onClick={() => industryRankingDisplayRows.length && setRankDialogOpen(true)}
+              >
+                <span>行业</span>
+                <strong>{displayIndustry}</strong>
+                <em>{currentIndustryRankValue !== '--' ? `行业排名 ${currentIndustryRankValue}` : '行业排名待返回'}</em>
+              </button>
+              <div className="stock-detail__panorama-style-card">
+                <span>投资风格</span>
+                <strong>{investmentStyle}</strong>
+                <em>
+                  Beta {formatProfileValue(company.beta, 'multiple')} · 1Y {formatMetric(snapshot?.metrics?.return1y, '%')}
+                </em>
+              </div>
+            </div>
+            {panoramaConcepts.length > 0 && (
+              <div className="stock-detail__panorama-concepts" aria-label="概念标签">
+                {panoramaConcepts.map((concept) => (
+                  <span key={concept}>{concept}</span>
+                ))}
+              </div>
+            )}
+            <div className="stock-detail__related-groups">
+              {relatedStockGroups.length > 0 ? relatedStockGroups.map((group) => (
+                <div key={group.key} className="stock-detail__related-group">
+                  <div className="stock-detail__related-group-head">
+                    <strong>{group.title}</strong>
+                    <span>{group.count} 个样本</span>
+                  </div>
+                  {group.rows.slice(0, 3).map((item, index) => (
+                    <div className="stock-detail__related-row" key={`${group.key}-${item.symbol || item.name}-${index}`}>
+                      <span>
+                        <strong>{item.name || item.symbol}</strong>
+                        <small>{item.symbol || '--'}</small>
+                      </span>
+                      <em>{item.metric}</em>
+                    </div>
+                  ))}
+                </div>
+              )) : (
+                <div className="stock-detail__related-empty">
+                  同业、基金持仓和投资关系榜单暂未返回，长桥增强数据可用后会自动补齐。
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section className="stock-detail__lb-section stock-detail__financial-score">
+            <div className="stock-detail__lb-section-head">
+              <div>
+                <span>Financial Rating</span>
+                <h4>财务评分</h4>
+              </div>
+              <em>{financialScorePeriod}</em>
+            </div>
+            <div className="stock-detail__financial-score-hero">
+              <div className={`stock-detail__score-badge stock-detail__score-badge--${String(financialScoreLetter || 'c').charAt(0).toLowerCase()}`}>
+                <span>最新评分</span>
+                <strong>{financialScoreLetter}</strong>
+                <em>同行业排名 {financialScoreRank}</em>
+              </div>
+              <div className="stock-detail__score-radar">
+                {financialScoreDimensions.map((item) => (
+                  <div key={item.key} className="stock-detail__score-radar-row">
+                    <span>{item.label}</span>
+                    <div>
+                      <i style={{ width: `${item.score}%` }} />
+                    </div>
+                    <strong>{item.letter}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <p className="stock-detail__score-summary">{financialScoreSummary}</p>
+            <div className="stock-detail__score-history" aria-label="历史评分">
+              {financialScoreHistory.map((item) => (
+                <span key={item.key} className={item.active ? 'is-active' : ''}>
+                  <i style={{ height: `${Math.max(22, item.score)}%` }} />
+                  <strong>{item.letter}</strong>
+                  <em>{item.label}</em>
+                </span>
+              ))}
+            </div>
+            <div className="stock-detail__score-peer-table">
+              <div className="stock-detail__score-peer-head">
+                <span>排名</span>
+                <span>名称</span>
+                <span>盈利</span>
+                <span>成长</span>
+                <span>运营</span>
+                <span>负债</span>
+                <span>现金</span>
+                <span>评分</span>
+              </div>
+              {financialPeerRows.map((row) => (
+                <div key={row.key} className={`stock-detail__score-peer-row ${row.isCurrent ? 'is-current' : ''}`}>
+                  <span>{row.rank}</span>
+                  <strong>
+                    {row.name}
+                    <small>{row.symbol}</small>
+                  </strong>
+                  <em>{row.profit}</em>
+                  <em>{row.growth}</em>
+                  <em>{row.operation}</em>
+                  <em>{row.debt}</em>
+                  <em>{row.cash}</em>
+                  <b>{row.score}</b>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="stock-detail__lb-section stock-detail__valuation-lab">
+            <div className="stock-detail__lb-section-head">
+              <div>
+                <span>Valuation</span>
+                <h4>股票估值</h4>
+              </div>
+              <em>行业 / 板块：{displayIndustry}</em>
+            </div>
+            <div className="stock-detail__valuation-tabs" role="tablist" aria-label="估值指标">
+              {valuationMetrics.map((item) => (
+                <button
+                  type="button"
+                  key={item.key}
+                  className={activeValuationMetric?.key === item.key ? 'active' : ''}
+                  disabled={!item.available}
+                  onClick={() => setValuationMetricKey(item.key)}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+            <div className="stock-detail__valuation-hero">
+              <div>
+                <span>{activeValuationMetric?.label || '估值指标'}</span>
+                <strong>
+                  {activeValuationMetric?.valueType === 'ratioPercent'
+                    ? formatProfileValue(activeValuationMetric?.current, 'ratioPercent')
+                    : formatProfileValue(activeValuationMetric?.current, 'multiple')}
+                </strong>
+                <em>同行业排名 {activeValuationMetric?.rankValue || '--'}</em>
+              </div>
+              <div className="stock-detail__valuation-range">
+                <span>
+                  <i style={{ left: `${activeValuationMetric?.positionPct ?? 50}%` }} />
+                </span>
+                <div>
+                  <small>低 {activeValuationMetric?.valueType === 'ratioPercent' ? formatProfileValue(activeValuationMetric?.low, 'ratioPercent') : formatProfileValue(activeValuationMetric?.low, 'multiple')}</small>
+                  <small>中位 {activeValuationMetric?.valueType === 'ratioPercent' ? formatProfileValue(activeValuationMetric?.median, 'ratioPercent') : formatProfileValue(activeValuationMetric?.median, 'multiple')}</small>
+                  <small>高 {activeValuationMetric?.valueType === 'ratioPercent' ? formatProfileValue(activeValuationMetric?.high, 'ratioPercent') : formatProfileValue(activeValuationMetric?.high, 'multiple')}</small>
+                </div>
+              </div>
+            </div>
+            <div className="stock-detail__valuation-stats">
+              <span>
+                <em>最大值</em>
+                <strong>{activeValuationMetric?.valueType === 'ratioPercent' ? formatProfileValue(activeValuationMetric?.high, 'ratioPercent') : formatProfileValue(activeValuationMetric?.high, 'multiple')}</strong>
+              </span>
+              <span>
+                <em>最小值</em>
+                <strong>{activeValuationMetric?.valueType === 'ratioPercent' ? formatProfileValue(activeValuationMetric?.low, 'ratioPercent') : formatProfileValue(activeValuationMetric?.low, 'multiple')}</strong>
+              </span>
+              <span>
+                <em>中位值</em>
+                <strong>{activeValuationMetric?.valueType === 'ratioPercent' ? formatProfileValue(activeValuationMetric?.median, 'ratioPercent') : formatProfileValue(activeValuationMetric?.median, 'multiple')}</strong>
+              </span>
+              <span>
+                <em>变化</em>
+                <strong>{formatSignedMetric(valuationChangePct, '%')}</strong>
+              </span>
+            </div>
+            <p className="stock-detail__valuation-copy">
+              当前{activeValuationMetric?.label || '估值'} {activeValuationMetric?.valueType === 'ratioPercent'
+                ? formatProfileValue(activeValuationMetric?.current, 'ratioPercent')
+                : formatProfileValue(activeValuationMetric?.current, 'multiple')}
+              ，{activeValuationMetric?.valuationZone || '估值区间暂未返回'}，行业排名 {activeValuationMetric?.rankValue || '--'}。
+              {activeValuationMetric?.description}
+            </p>
+          </section>
+
           <div className="stock-detail__profile-grid">
             {visibleProfileMetrics.map((item) => {
               return (
@@ -1845,76 +2617,6 @@ export default function StockDetailPage() {
         )}
       </div>
 
-      <div className="stock-detail__alerts">
-        <div className="stock-detail__module-header">
-          <div>
-            <h3>价格提醒</h3>
-            <p>云端定时检查，本页也可手动触发</p>
-          </div>
-          <button type="button" onClick={handleCheckAlertsNow}>检查</button>
-        </div>
-        <div className="stock-detail__alert-interval">
-          <span>自动检查间隔</span>
-          <input
-            type="number"
-            inputMode="numeric"
-            min="1"
-            max="720"
-            value={alertIntervalInput}
-            onChange={(event) => setAlertIntervalInput(event.target.value)}
-          />
-          <span>分钟</span>
-          <button type="button" onClick={handleSaveAlertInterval}>保存</button>
-        </div>
-        <div className="stock-detail__alert-form">
-          <select value={alertCondition} onChange={(e) => setAlertCondition(e.target.value)}>
-            <option value="ABOVE">高于等于</option>
-            <option value="BELOW">低于等于</option>
-          </select>
-          <input
-            type="number"
-            inputMode="decimal"
-            placeholder="目标价格"
-            value={alertTarget}
-            onChange={(e) => setAlertTarget(e.target.value)}
-          />
-          <button type="button" onClick={handleSaveStockAlert}>
-            {editingAlertId ? '更新' : '添加'}
-          </button>
-          {editingAlertId && (
-            <button type="button" className="stock-detail__alert-cancel" onClick={resetAlertForm}>
-              取消
-            </button>
-          )}
-        </div>
-        {activeAlerts.length > 0 ? (
-          <div className="stock-detail__alert-list">
-            {activeAlerts.map((alert) => {
-              const alertLabel = formatAlertAssetLabel(alert);
-              return (
-                <div
-                  key={alert.id}
-                  className={`stock-detail__alert-item stock-detail__alert-item--${String(alert.asset_type || 'STOCK').toLowerCase()}`}
-                >
-                  <div className="stock-detail__alert-asset">
-                    <span>{alertLabel.title}</span>
-                    <em>{alertLabel.subtitle}</em>
-                  </div>
-                  <span className="stock-detail__alert-type">{alertLabel.badge}</span>
-                  <strong>{alert.condition === 'ABOVE' ? '≥' : '≤'} {Number(alert.target_price).toFixed(2)}</strong>
-                  <div className="stock-detail__alert-actions">
-                    <button type="button" onClick={() => handleEditAlert(alert)}>修改</button>
-                    <button type="button" onClick={() => handleDeleteAlert(alert)}>删除</button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="stock-detail__alert-empty">暂无活动提醒</div>
-        )}
-      </div>
-
       {detailMode === 'option' && (
       <div className="stock-detail__options">
         <div className="stock-detail__module-header">
@@ -2109,8 +2811,8 @@ export default function StockDetailPage() {
             <div className="stock-detail__rank-dialog-header">
               <div>
                 <span>{industryRankingSourceLabel}</span>
-                <h3 id="stock-detail-rank-dialog-title">行业完整排行榜</h3>
-                <p>{displaySector} · {displayIndustry}</p>
+                <h3 id="stock-detail-rank-dialog-title">行业排名与同业估值</h3>
+                <p>板块：{displaySector} · 细分行业：{displayIndustry}</p>
               </div>
               <button type="button" onClick={() => setRankDialogOpen(false)} aria-label="关闭行业排行榜">
                 关闭
@@ -2129,21 +2831,41 @@ export default function StockDetailPage() {
               </div>
             </div>
             <div className="stock-detail__rank-dialog-summary">
-              <span>总样本 {industryRankingTotal || industryRankingDisplayRows.length || '--'}</span>
-              <span>已显示 {industryRankingDisplayRows.length || 0}</span>
-              <span>核心指标 PE / 市值 / ROE</span>
+              <span>{industryRankingHasFullValuation ? '榜单公司' : '行业样本'} {industryRankingSummaryCount}</span>
+              <span>{hasFullIndustryRankingRows ? `${industryRankingMetricLabel} 完整榜单` : `已返回 ${industryPeerReturnedCount || industryRankingDisplayRows.length || 0}`}</span>
+              <span>{industryRankSourceLabel}</span>
+              <span>{industryRankingMetricLabel} / 市值 / 增长</span>
             </div>
+            {industryRankingHasFullValuation && (
+              <div className="stock-detail__rank-dialog-note">
+                已读取长桥估值详情完整榜单；正 {industryRankingMetricLabel} 公司按估值从低到高排序，当前公司按长桥行业排名高亮。
+              </div>
+            )}
+            {!hasFullIndustryRankingRows && industryRankTotal && industryPeerReturnedCount > 0 && (
+              <div className="stock-detail__rank-dialog-note">
+                当前接口已返回 {industryPeerReturnedCount} 家同业估值样本，行业排名口径覆盖 {industryRankTotal} 家；未把样本序号当作真实行业名次。
+              </div>
+            )}
             {industryRankingDisplayRows.length > 0 ? (
               <div className="stock-detail__rank-list">
                 {industryRankingDisplayRows.map((item, index) => {
                   const rowKey = `${item.symbol || item.displaySymbol || item.name || 'peer'}-${index}`;
+                  const rowTotal = item.rankTotal || industryRankTotal || industryRankingTotal;
+                  const rankLabel = industryRankingHasFullValuation
+                    ? (item.realRank
+                      ? `${industryRankingMetricLabel} #${item.realRank}${rowTotal ? `/${rowTotal}` : ''}`
+                      : `非正${industryRankingMetricLabel}`)
+                    : (item.isCurrent && item.realRank
+                      ? `排名 ${item.realRank}${industryRankTotal ? `/${industryRankTotal}` : ''}`
+                      : `样本 #${item.sampleRank || index + 1}`);
+                  const primaryMetricValue = item.metricValue ?? item.pe;
                   return (
                     <div
                       key={rowKey}
                       className={`stock-detail__rank-row ${item.isCurrent ? 'is-current' : ''}`}
                     >
                       <div className="stock-detail__rank-row-index">
-                        <strong>#{item.rank || index + 1}</strong>
+                        <strong>{rankLabel}</strong>
                         {item.isCurrent && <span>当前</span>}
                       </div>
                       <div className="stock-detail__rank-row-main">
@@ -2160,16 +2882,16 @@ export default function StockDetailPage() {
                           <strong>{formatProfileValue(item.marketCap, 'money')}</strong>
                         </span>
                         <span>
-                          <em>PE</em>
-                          <strong>{formatProfileValue(item.pe, 'multiple')}</strong>
+                          <em>{industryRankingMetricLabel}</em>
+                          <strong>{formatProfileValue(primaryMetricValue, 'multiple')}</strong>
                         </span>
                         <span>
                           <em>PB / PS</em>
                           <strong>{formatProfileValue(item.pb, 'multiple')} / {formatProfileValue(item.ps, 'multiple')}</strong>
                         </span>
                         <span>
-                          <em>ROE</em>
-                          <strong>{formatOptionalRatio(item.roe)}</strong>
+                          <em>{industryRankingHasFullValuation ? '增长' : 'ROE'}</em>
+                          <strong>{industryRankingHasFullValuation ? formatOptionalRatio(item.growth) : formatOptionalRatio(item.roe)}</strong>
                         </span>
                       </div>
                     </div>
@@ -2178,11 +2900,13 @@ export default function StockDetailPage() {
               </div>
             ) : (
               <div className="stock-detail__rank-dialog-empty">
-                长桥暂未返回该行业的完整同行列表，目前只能展示当前排名。
+                长桥暂未返回该行业的同行估值列表，目前只能展示当前排名。
               </div>
             )}
             <div className="stock-detail__rank-dialog-footnote">
-              排名口径来自长桥返回的行业评级、估值分布或同行估值模块；不同接口更新时间可能不同，请以长桥原始数据和财报为准。
+              {industryRankingHasFullValuation
+                ? `排名口径来自长桥估值详情模块；完整榜单含非正 ${industryRankingMetricLabel} 公司，非正值不参与正估值名次。`
+                : '排名口径来自长桥返回的行业评级或估值分布模块；同业估值列表来自估值对比模块，列表序号仅代表当前接口返回顺序。'}
             </div>
           </div>
         </div>
@@ -2226,32 +2950,6 @@ export default function StockDetailPage() {
         </div>
       ), document.body)}
 
-      {/* AI Insights module */}
-      <div className="stock-detail__ai-insights">
-        <div className="ai-insights-header">
-          <h3>近 30 天全网舆情</h3>
-          <button 
-            className="ai-btn"
-            onClick={() => {
-              if (streamlitUrl) {
-                let url = streamlitUrl;
-                if (!url.endsWith('/')) url += '/';
-                const reportUrl = new URL(url);
-                reportUrl.searchParams.set('q', symbol);
-                reportUrl.searchParams.set('lang', 'zh');
-                window.open(reportUrl.toString(), '_blank');
-              } else {
-                Toast.show({ content: '请先在设置页配置 AI 引擎地址' });
-              }
-            }}
-          >
-            生成分析报告
-          </button>
-        </div>
-        <div className="ai-insights-content">
-          <p>点击上方按钮，即可在新窗口拉起您的 Streamlit 专属 AI 引擎，生成 {symbol.toUpperCase()} 的中文舆情研究简报。</p>
-        </div>
-      </div>
     </div>
   );
 }

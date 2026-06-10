@@ -225,6 +225,22 @@ function toLongbridgeCounterId(symbol) {
   return `ST/${market}/${code}`;
 }
 
+function parseLongbridgeCounterId(counterId) {
+  const match = String(counterId || '').match(/^(ST|IX)\/([^/]+)\/(.+)$/i);
+  if (!match) return null;
+  const [, type, marketRaw, codeRaw] = match;
+  const market = String(marketRaw || '').toUpperCase();
+  const code = String(codeRaw || '').toUpperCase();
+  if (!market || !code) return null;
+  return {
+    type: type.toUpperCase(),
+    market,
+    code,
+    symbol: `${code}.${market}`,
+    displaySymbol: code,
+  };
+}
+
 function getDefaultCurrencyForLongbridgeSymbol(symbol) {
   const market = String(symbol || '').split('.').pop()?.toUpperCase();
   if (market === 'HK') return 'HKD';
@@ -564,8 +580,8 @@ function normalizeIndustryDistribution(dist) {
       low: toNumber(dist.pe.low),
       high: toNumber(dist.pe.high),
       ranking: pickText(dist.pe.ranking),
-      rankIndex: toNumber(dist.pe.rankIndex),
-      rankTotal: toNumber(dist.pe.rankTotal),
+      rankIndex: toNumber(dist.pe.rankIndex ?? dist.pe.rank_index),
+      rankTotal: toNumber(dist.pe.rankTotal ?? dist.pe.rank_total),
     } : null,
     pb: dist?.pb ? {
       current: toNumber(dist.pb.value),
@@ -573,8 +589,8 @@ function normalizeIndustryDistribution(dist) {
       low: toNumber(dist.pb.low),
       high: toNumber(dist.pb.high),
       ranking: pickText(dist.pb.ranking),
-      rankIndex: toNumber(dist.pb.rankIndex),
-      rankTotal: toNumber(dist.pb.rankTotal),
+      rankIndex: toNumber(dist.pb.rankIndex ?? dist.pb.rank_index),
+      rankTotal: toNumber(dist.pb.rankTotal ?? dist.pb.rank_total),
     } : null,
     ps: dist?.ps ? {
       current: toNumber(dist.ps.value),
@@ -582,13 +598,13 @@ function normalizeIndustryDistribution(dist) {
       low: toNumber(dist.ps.low),
       high: toNumber(dist.ps.high),
       ranking: pickText(dist.ps.ranking),
-      rankIndex: toNumber(dist.ps.rankIndex),
-      rankTotal: toNumber(dist.ps.rankTotal),
+      rankIndex: toNumber(dist.ps.rankIndex ?? dist.ps.rank_index),
+      rankTotal: toNumber(dist.ps.rankTotal ?? dist.ps.rank_total),
     } : null,
     primaryMetric: metric ? {
       ranking: pickText(metric.ranking),
-      rankIndex: toNumber(metric.rankIndex),
-      rankTotal: toNumber(metric.rankTotal),
+      rankIndex: toNumber(metric.rankIndex ?? metric.rank_index),
+      rankTotal: toNumber(metric.rankTotal ?? metric.rank_total),
     } : null,
   };
 }
@@ -940,6 +956,105 @@ function normalizeValuationComparison(payload, symbol) {
   };
 }
 
+function normalizeValuationRanking(detail, symbol, parsedRank = null) {
+  const layoutMetrics = detail?.layouts || {};
+  const metricKey = layoutMetrics.pe ? 'pe' : Object.keys(layoutMetrics).find((key) => layoutMetrics[key]?.groups);
+  const groups = metricKey ? firstArray(layoutMetrics[metricKey]?.groups) : [];
+  const stocks = detail?.stocks || {};
+  const targetCounterId = toLongbridgeCounterId(symbol);
+  const targetSymbol = toLongbridgeStockSymbol(symbol).toUpperCase();
+  const flattened = groups
+    .flatMap((group, groupIndex) => firstArray(group?.list).map((item, groupItemIndex) => ({
+      item,
+      groupIndex,
+      groupItemIndex,
+    })))
+    .map(({ item, groupIndex, groupItemIndex }, index) => {
+      const counterId = pickText(item.counter_id, item.counterId);
+      const parsedCounter = parseLongbridgeCounterId(counterId);
+      const stock = counterId ? stocks[counterId] || {} : {};
+      const symbolText = parsedCounter?.symbol || pickText(item.symbol, item.ticker);
+      const displaySymbol = parsedCounter?.displaySymbol || pickText(item.ticker, item.symbol);
+      const metricValue = toNumber(item.value);
+      const isCurrent = Boolean(
+        (counterId && targetCounterId && counterId.toUpperCase() === targetCounterId.toUpperCase())
+          || (symbolText && symbolText.toUpperCase() === targetSymbol)
+      );
+      return {
+        counterId,
+        symbol: symbolText,
+        displaySymbol,
+        name: pickText(item.name, stock.name, displaySymbol),
+        marketCap: toNumber(stock.market_cap ?? stock.marketCap),
+        metricKey,
+        metricLabel: String(metricKey || 'pe').toUpperCase(),
+        metricValue,
+        pe: metricKey === 'pe' ? metricValue : null,
+        growth: percentToRatio(item.growth),
+        groupIndex,
+        groupItemIndex,
+        layoutIndex: index + 1,
+        isCurrent,
+        source: 'valuationRanking',
+      };
+    })
+    .filter((item) => item.counterId || item.symbol || item.name);
+
+  if (!flattened.length) {
+    return {
+      source: 'valuationDetail',
+      metricKey: metricKey || 'pe',
+      metricLabel: String(metricKey || 'pe').toUpperCase(),
+      peers: [],
+      count: 0,
+      rankableCount: 0,
+      current: null,
+      currentRank: parsedRank || null,
+    };
+  }
+
+  const rankable = flattened
+    .filter((item) => item.metricValue !== null && item.metricValue > 0)
+    .sort((a, b) => a.metricValue - b.metricValue);
+  const rankMap = new Map(rankable.map((item, index) => [item.counterId || item.symbol || `${item.name}-${item.layoutIndex}`, index + 1]));
+  const currentRank = parsedRank || null;
+  const total = currentRank?.total || flattened.length;
+  const peers = [
+    ...rankable,
+    ...flattened
+      .filter((item) => !(item.metricValue !== null && item.metricValue > 0))
+      .sort((a, b) => {
+        if (a.metricValue === null && b.metricValue === null) return a.layoutIndex - b.layoutIndex;
+        if (a.metricValue === null) return 1;
+        if (b.metricValue === null) return -1;
+        return b.metricValue - a.metricValue;
+      }),
+  ].map((item) => {
+    const rankKey = item.counterId || item.symbol || `${item.name}-${item.layoutIndex}`;
+    const rank = item.isCurrent && currentRank?.position
+      ? currentRank.position
+      : rankMap.get(rankKey) || null;
+    return {
+      ...item,
+      rank,
+      rankTotal: total,
+    };
+  });
+  const current = peers.find((item) => item.isCurrent) || null;
+
+  return {
+    source: 'valuationDetail',
+    metricKey: metricKey || 'pe',
+    metricLabel: String(metricKey || 'pe').toUpperCase(),
+    median: toNumber(detail?.peers?.[metricKey]?.industry_median ?? detail?.overview?.metrics?.[metricKey]?.industry_median),
+    peers,
+    count: flattened.length,
+    rankableCount: rankable.length,
+    current,
+    currentRank,
+  };
+}
+
 function normalizeLongbridgeCompany(symbol, company = {}, valuation = null, extras = {}) {
   const metrics = valuation?.metrics || {};
   const pe = latestValuationValue(metrics.pe);
@@ -977,6 +1092,7 @@ function normalizeLongbridgeCompany(symbol, company = {}, valuation = null, extr
     extras.valuationDetail?.description,
     extras.valuationDetail?.summary
   );
+  const valuationRanking = normalizeValuationRanking(extras.valuationDetail, symbol, textIndustryRank);
   const valuationDistributionRank = industryDistribution.primaryMetric && {
     tier: 'B',
     label: industryDistribution.primaryMetric.rankTotal
@@ -1077,6 +1193,7 @@ function normalizeLongbridgeCompany(symbol, company = {}, valuation = null, extr
       investRelations,
       buyback,
       valuationComparison,
+      valuationRanking,
       dataSources: {
         company: hasPayload(company),
         valuation: hasPayload(valuation),
@@ -1103,6 +1220,7 @@ function normalizeLongbridgeCompany(symbol, company = {}, valuation = null, extr
         investRelation: Boolean(investRelations?.total || investRelations?.forwardUrl),
         buyback: Boolean(buyback?.recent?.netBuybackTtm !== null || buyback?.history?.length),
         valuationComparison: Boolean(valuationComparison?.peers?.length),
+        valuationRanking: Boolean(valuationRanking?.peers?.length),
       },
       dataErrors: extras.dataErrors || {},
     },
@@ -1115,7 +1233,14 @@ export async function fetchLongbridgeStockSnapshot(symbol, credentials) {
   const counterId = toLongbridgeCounterId(symbol);
   if (!counterId) return null;
 
-  const [companyResult, valuationResult, industryValuationResult, valuationDetailResult, financialSnapshotResult] = await Promise.allSettled([
+  const [
+    companyResult,
+    valuationResult,
+    industryValuationResult,
+    industryDistributionResult,
+    valuationDetailResult,
+    financialSnapshotResult,
+  ] = await Promise.allSettled([
     requestLongbridge('/v1/quote/comp-overview', credentials, {
       query: { counter_id: counterId },
     }),
@@ -1127,6 +1252,9 @@ export async function fetchLongbridgeStockSnapshot(symbol, credentials) {
       },
     }),
     requestLongbridge('/v1/quote/industry-valuation-comparison', credentials, {
+      query: { counter_id: counterId },
+    }),
+    requestLongbridge('/v1/quote/industry-valuation-distribution', credentials, {
       query: { counter_id: counterId },
     }),
     requestLongbridge('/v1/quote/valuation/detail', credentials, {
@@ -1151,6 +1279,9 @@ export async function fetchLongbridgeStockSnapshot(symbol, credentials) {
   if (industryValuationResult.status === 'rejected') {
     mergedDataErrors.httpIndustryValuation = industryValuationResult.reason?.message || '长桥 HTTP 同业估值失败';
   }
+  if (industryDistributionResult.status === 'rejected') {
+    mergedDataErrors.httpIndustryDistribution = industryDistributionResult.reason?.message || '长桥 HTTP 行业估值分布失败';
+  }
   if (valuationDetailResult.status === 'rejected') {
     mergedDataErrors.httpValuationDetail = valuationDetailResult.reason?.message || '长桥 HTTP 估值详情失败';
   }
@@ -1163,6 +1294,7 @@ export async function fetchLongbridgeStockSnapshot(symbol, credentials) {
     valuationResult.status === 'fulfilled' ? valuationResult.value : null,
     {
       industryValuation: industryValuationResult.status === 'fulfilled' ? industryValuationResult.value : null,
+      industryDistribution: industryDistributionResult.status === 'fulfilled' ? industryDistributionResult.value : null,
       valuationDetail: valuationDetailResult.status === 'fulfilled' ? valuationDetailResult.value : null,
       financialSnapshot: financialSnapshotResult.status === 'fulfilled' ? financialSnapshotResult.value : null,
       dataErrors: mergedDataErrors,

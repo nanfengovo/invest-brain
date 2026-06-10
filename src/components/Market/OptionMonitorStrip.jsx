@@ -76,11 +76,6 @@ export default function OptionMonitorStrip({ items, loading = false, underlyingQ
                   {item.optionType}
                 </span>
               </div>
-              <div className="market-option-card__meta">
-                <span>EXP {formatExpiration(item.expiration)}</span>
-                <span>{dte.label}</span>
-                <span>行权 {formatMoney(item.strike, 0)}</span>
-              </div>
             </div>
 
             <div className="market-option-card__quote">
@@ -90,11 +85,14 @@ export default function OptionMonitorStrip({ items, loading = false, underlyingQ
               </div>
             </div>
 
-            <div className="market-option-card__risk">
-              <span className={`market-option-card__moneyness market-option-card__moneyness--${money.tone}`}>
+            <div className="market-option-card__details">
+              <span className="market-option-card__field">EXP {formatExpiration(item.expiration)}</span>
+              <span className="market-option-card__field">{dte.label}</span>
+              <span className="market-option-card__field">行权 {formatMoney(item.strike, 0)}</span>
+              <span className={`market-option-card__field market-option-card__field--wide market-option-card__moneyness market-option-card__moneyness--${money.tone}`}>
                 {money.label}
               </span>
-              <span className="market-option-card__underlying">
+              <span className="market-option-card__field market-option-card__underlying">
                 {item.underlying} 股价 {formatNumber(underlyingPrice)}
               </span>
             </div>

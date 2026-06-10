@@ -8,7 +8,7 @@ export const config = {
 const SNAPSHOT_TIMEOUT_MS = 5_000;
 const CACHE_TTL_MS = 10 * 60 * 1000;
 const STALE_CACHE_TTL_MS = 60 * 60 * 1000;
-const STOCK_SNAPSHOT_SCHEMA_VERSION = 'longbridge-profile-v5';
+const STOCK_SNAPSHOT_SCHEMA_VERSION = 'longbridge-profile-v6';
 const snapshotCache = globalThis.__INVEST_BRAIN_STOCK_SNAPSHOT_CACHE__ || new Map();
 globalThis.__INVEST_BRAIN_STOCK_SNAPSHOT_CACHE__ = snapshotCache;
 const pendingSnapshotRequests = globalThis.__INVEST_BRAIN_STOCK_SNAPSHOT_PENDING__ || new Map();
@@ -344,6 +344,7 @@ function buildCompanyProfile(symbol, summary = {}, dailyMeta = {}, intradayMeta 
     investRelations: lbCompany.investRelations || null,
     buyback: lbCompany.buyback || null,
     valuationComparison: lbCompany.valuationComparison || null,
+    valuationRanking: lbCompany.valuationRanking || null,
     classificationSource: profile.sector || profile.industry
       ? 'Yahoo Profile'
       : (lbCompany.industryName ? 'Longbridge 行业评级' : (localClass.sector ? '本地分类兜底' : null)),

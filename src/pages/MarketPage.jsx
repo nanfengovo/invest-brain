@@ -29,7 +29,20 @@ const MARKET_REGIONS = {
     stocks: [
       { symbol: 'NVDA', name: '英伟达', quoteLabel: '美股 · NVDA' },
       { symbol: 'AAPL', name: '苹果', quoteLabel: '美股 · AAPL' },
+      { symbol: 'MSFT', name: '微软', quoteLabel: '美股 · MSFT' },
+      { symbol: 'GOOGL', name: 'Alphabet', quoteLabel: '美股 · GOOGL' },
+      { symbol: 'AMZN', name: '亚马逊', quoteLabel: '美股 · AMZN' },
+      { symbol: 'META', name: 'Meta', quoteLabel: '美股 · META' },
       { symbol: 'TSLA', name: '特斯拉', quoteLabel: '美股 · TSLA' },
+      { symbol: 'AMD', name: 'AMD', quoteLabel: '美股 · AMD' },
+      { symbol: 'AVGO', name: '博通', quoteLabel: '美股 · AVGO' },
+      { symbol: 'SMCI', name: '超微电脑', quoteLabel: '美股 · SMCI' },
+      { symbol: 'PLTR', name: 'Palantir', quoteLabel: '美股 · PLTR' },
+      { symbol: 'COIN', name: 'Coinbase', quoteLabel: '美股 · COIN' },
+      { symbol: 'MSTR', name: '微策略', quoteLabel: '美股 · MSTR' },
+      { symbol: 'NFLX', name: '奈飞', quoteLabel: '美股 · NFLX' },
+      { symbol: 'ORCL', name: '甲骨文', quoteLabel: '美股 · ORCL' },
+      { symbol: 'TSM', name: '台积电ADR', quoteLabel: '美股 · TSM' },
     ],
     sectors: [
       { symbol: 'gb_xbi', name: '创新药', icon: '💊' },
@@ -64,6 +77,15 @@ const MARKET_REGIONS = {
       { symbol: '600519.SS', name: '贵州茅台', quoteLabel: 'A股 · 600519.SH' },
       { symbol: '300750.SZ', name: '宁德时代', quoteLabel: 'A股 · 300750.SZ' },
       { symbol: '000001.SZ', name: '平安银行', quoteLabel: 'A股 · 000001.SZ' },
+      { symbol: '601318.SS', name: '中国平安', quoteLabel: 'A股 · 601318.SH' },
+      { symbol: '002594.SZ', name: '比亚迪', quoteLabel: 'A股 · 002594.SZ' },
+      { symbol: '600036.SS', name: '招商银行', quoteLabel: 'A股 · 600036.SH' },
+      { symbol: '601012.SS', name: '隆基绿能', quoteLabel: 'A股 · 601012.SH' },
+      { symbol: '600900.SS', name: '长江电力', quoteLabel: 'A股 · 600900.SH' },
+      { symbol: '600276.SS', name: '恒瑞医药', quoteLabel: 'A股 · 600276.SH' },
+      { symbol: '000333.SZ', name: '美的集团', quoteLabel: 'A股 · 000333.SZ' },
+      { symbol: '002415.SZ', name: '海康威视', quoteLabel: 'A股 · 002415.SZ' },
+      { symbol: '601888.SS', name: '中国中免', quoteLabel: 'A股 · 601888.SH' },
     ],
     sectors: [
       { symbol: '510300.SS', name: '沪深300', icon: '🇨🇳' },
@@ -90,6 +112,15 @@ const MARKET_REGIONS = {
       { symbol: '0700.HK', name: '腾讯控股', quoteLabel: '港股 · 0700.HK' },
       { symbol: '9988.HK', name: '阿里巴巴-W', quoteLabel: '港股 · 9988.HK' },
       { symbol: '3690.HK', name: '美团-W', quoteLabel: '港股 · 3690.HK' },
+      { symbol: '1810.HK', name: '小米集团-W', quoteLabel: '港股 · 1810.HK' },
+      { symbol: '9618.HK', name: '京东集团-SW', quoteLabel: '港股 · 9618.HK' },
+      { symbol: '1299.HK', name: '友邦保险', quoteLabel: '港股 · 1299.HK' },
+      { symbol: '0005.HK', name: '汇丰控股', quoteLabel: '港股 · 0005.HK' },
+      { symbol: '0388.HK', name: '香港交易所', quoteLabel: '港股 · 0388.HK' },
+      { symbol: '0981.HK', name: '中芯国际', quoteLabel: '港股 · 0981.HK' },
+      { symbol: '1024.HK', name: '快手-W', quoteLabel: '港股 · 1024.HK' },
+      { symbol: '9999.HK', name: '网易-S', quoteLabel: '港股 · 9999.HK' },
+      { symbol: '2318.HK', name: '中国平安', quoteLabel: '港股 · 2318.HK' },
     ],
     sectors: [
       { symbol: '2800.HK', name: '盈富基金', icon: '🇭🇰' },
@@ -565,11 +596,21 @@ export default function MarketPage() {
       
       <div className="market-page__content">
         <section aria-label={hasRegionWatchlist ? `${regionConfig.label}关注行情` : regionConfig.spotlightLabel}>
+          <div className="market-section-row market-section-row--compact">
+            <div className="market-section-title market-section-title--cyan">
+              <span className="market-section-title__bar" />
+              <h2>{hasRegionWatchlist ? `${regionConfig.label}关注` : regionConfig.spotlightLabel}</h2>
+              <span className="market-section-title__count">{primaryItems.length}</span>
+            </div>
+            <span className="market-section-title__meta">
+              {hasRegionWatchlist ? '我的关注' : '完整榜单'}
+            </span>
+          </div>
           <IndexCardScroller
             items={primaryItems}
             colorConvention={colorConvention}
             loading={loading}
-            variant={hasRegionWatchlist ? 'watchlist' : 'spotlight'}
+            variant="spotlight"
           />
         </section>
 

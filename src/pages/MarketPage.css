@@ -100,6 +100,7 @@
   font-weight: 850;
   line-height: 1.14;
   letter-spacing: 0;
+  white-space: nowrap;
 }
 
 .market-header__copy p {
@@ -107,6 +108,9 @@
   color: rgba(212, 221, 235, 0.7);
   font-size: 12px;
   line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .market-status-pill {
@@ -429,6 +433,10 @@
   margin-bottom: 0;
 }
 
+.market-section-row--compact {
+  margin-bottom: 10px;
+}
+
 .market-section-title__bar {
   width: 5px;
   height: 18px;
@@ -490,6 +498,21 @@
   font-variant-numeric: tabular-nums;
 }
 
+.market-section-title__meta {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  flex: 0 0 auto;
+  padding: 0 9px;
+  border: 1px solid rgba(141, 183, 255, 0.13);
+  border-radius: 999px;
+  background: rgba(141, 183, 255, 0.07);
+  color: rgba(190, 204, 229, 0.72);
+  font-size: 11px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
 .market-index-strip {
   display: flex;
   gap: 12px;
@@ -548,11 +571,12 @@
     "top price"
     "change price";
   flex-basis: auto;
-  min-height: 68px;
+  min-height: 72px;
   align-items: center;
   gap: 4px 12px;
-  padding: 9px 12px;
+  padding: 10px 12px;
   overflow: hidden;
+  border-radius: 16px;
 }
 
 .market-index-strip--spotlight .market-index-card::before {
@@ -576,7 +600,7 @@
 }
 
 .market-index-card--secondary {
-  min-height: 68px;
+  min-height: 72px;
 }
 
 .market-index-strip--futures .market-index-card,
@@ -631,10 +655,12 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .market-index-strip--spotlight .market-index-card__name {
   overflow: hidden;
+  min-width: 0;
   font-size: 15px;
   line-height: 1.15;
   text-overflow: ellipsis;
@@ -647,15 +673,18 @@
 
 .market-index-strip--spotlight .market-index-card__label {
   display: inline-flex;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
   width: fit-content;
-  max-width: 100%;
+  max-width: 46%;
   padding: 2px 6px;
+  overflow: hidden;
   border: 1px solid rgba(141, 183, 255, 0.16);
   border-radius: 999px;
   background: rgba(141, 183, 255, 0.09);
   color: rgba(180, 205, 255, 0.86);
   font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .market-index-card--secondary .market-index-card__label {
@@ -700,10 +729,13 @@
   grid-area: price;
   align-self: center;
   width: auto;
+  max-width: 124px;
+  overflow: hidden;
   text-align: right;
   font-size: clamp(21px, 5.8vw, 28px);
   line-height: 1;
   letter-spacing: -0.04em;
+  text-overflow: ellipsis;
 }
 
 .market-index-card--primary .market-index-card__price {
@@ -732,12 +764,14 @@
 .market-option-card {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) 82px;
   grid-template-areas:
     "main quote"
-    "risk risk"
+    "details details"
     "dte dte";
-  gap: 10px 12px;
+  align-items: start;
+  min-height: 132px;
+  gap: 11px 12px;
   padding: 13px 14px 12px;
   overflow: hidden;
   border: 1px solid rgba(251, 146, 60, 0.18);
@@ -804,33 +838,28 @@
   color: #d8b4fe;
 }
 
-.market-option-card__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  margin-top: 7px;
-}
-
-.market-option-card__meta span,
-.market-option-card__underlying,
-.market-option-card__moneyness {
+.market-option-card__field {
   display: inline-flex;
   align-items: center;
-  min-height: 21px;
-  padding: 2px 7px;
+  min-width: 0;
+  min-height: 24px;
+  padding: 3px 8px;
+  overflow: hidden;
   border: 1px solid rgba(141, 183, 255, 0.12);
-  border-radius: 999px;
+  border-radius: 10px;
   background: rgba(141, 183, 255, 0.07);
   color: rgba(190, 204, 229, 0.8);
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 850;
+  line-height: 1;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .market-option-card__quote {
   grid-area: quote;
   align-self: start;
-  min-width: 74px;
+  min-width: 0;
   text-align: right;
 }
 
@@ -847,6 +876,10 @@
   color: rgba(160, 178, 210, 0.72);
   font-size: 11px;
   font-weight: 850;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .market-option-card__quote-change--green {
@@ -857,12 +890,16 @@
   color: #fb7185;
 }
 
-.market-option-card__risk {
-  grid-area: risk;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+.market-option-card__details {
+  grid-area: details;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
+  min-width: 0;
+}
+
+.market-option-card__field--wide {
+  grid-column: span 2;
 }
 
 .market-option-card__moneyness--itm {
@@ -1893,9 +1930,7 @@
   color: #18212f;
 }
 
-[data-theme='light'] .market-option-card__meta span,
-[data-theme='light'] .market-option-card__underlying,
-[data-theme='light'] .market-option-card__moneyness {
+[data-theme='light'] .market-option-card__field {
   border-color: rgba(53, 93, 159, 0.11);
   background: rgba(53, 93, 159, 0.06);
   color: rgba(64, 78, 99, 0.76);
@@ -1948,6 +1983,48 @@
 
 [data-theme='light'] .app-shell--market .tabbar .adm-tab-bar-item-active {
   color: #e54862;
+}
+
+@media (max-width: 430px) {
+  .market-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "intro search"
+      "regions regions";
+    align-items: center;
+    gap: 12px 10px;
+    margin-bottom: 28px;
+  }
+
+  .market-header__left {
+    grid-area: intro;
+    align-items: center;
+    min-width: 0;
+  }
+
+  .market-header__copy {
+    min-width: 0;
+  }
+
+  .market-header__actions {
+    display: contents;
+  }
+
+  .market-region-switch {
+    grid-area: regions;
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .market-region-switch__item {
+    flex: 1 1 0;
+  }
+
+  .market-search-button {
+    grid-area: search;
+    justify-self: end;
+  }
 }
 
 @media (max-width: 380px) {

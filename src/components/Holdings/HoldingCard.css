@@ -521,10 +521,18 @@
 }
 
 .holding-card__quote-attempts {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
   margin-top: 8px;
+}
+
+.holding-card__quote-attempts-summary {
+  grid-column: 1 / -1;
+  color: var(--color-text-secondary);
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1.2;
 }
 
 .holding-card__quote-attempts span {
@@ -542,9 +550,19 @@
   white-space: normal;
 }
 
+.holding-card__quote-attempts em {
+  grid-column: 1 / -1;
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
 .holding-card__quote-attempts strong {
-  display: inline-flex;
-  margin-right: 5px;
+  display: block;
+  margin-right: 0;
+  margin-bottom: 2px;
   color: #fbbf24;
   font-weight: 850;
 }
@@ -901,6 +919,11 @@
 [data-theme='light'] .holding-card__quote-strip .holding-card__quote-chip--muted,
 [data-theme='light'] .holding-card__quote-note {
   color: #94a3b8;
+}
+
+[data-theme='light'] .holding-card__quote-attempts-summary,
+[data-theme='light'] .holding-card__quote-attempts em {
+  color: #64748b;
 }
 
 [data-theme='light'] .holding-card__quote-attempts span {

@@ -86,6 +86,27 @@ function getOptionQuoteAttempts(optionQuote) {
   return Array.isArray(attempts) ? attempts.filter((item) => item?.provider || item?.message) : [];
 }
 
+function compactQuoteMessage(message, maxLength = 78) {
+  const text = String(message || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  if (/OPRA|US Options Quotes|美股期权 OPRA|期权实时价需要/i.test(text)) {
+    return '需要美股期权 OPRA OpenAPI 权限；App/PC 权限可能不同。';
+  }
+  if (/Longbridge|长桥|Python SDK/i.test(text)) {
+    if (/未配置|补充服务|bridge|桥|线上函数|凭证/i.test(text)) {
+      return '请配置长桥 Python SDK 桥，或在本机使用长桥 SDK 凭证。';
+    }
+    return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+  }
+  if (/Yahoo Finance|HTTP 401|公共接口|query2\.finance/i.test(text)) {
+    return 'Yahoo 公共期权接口被限制，已继续尝试其他源。';
+  }
+  if (/MarketData\.app/i.test(text) && /Token|权限|额度|OPRA/i.test(text)) {
+    return 'MarketData.app 需要可用 Token/套餐和 OPRA 授权。';
+  }
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+}
+
 function getOptionQuoteNote(optionQuote, optionDailyMissingReason) {
   const error = String(optionQuote?.error || '').trim();
   const dailyReason = String(optionDailyMissingReason || '').trim();
@@ -164,7 +185,9 @@ export default function HoldingCard({
   const quoteProvider = optionMetrics.quoteProvider || marketQuote?.provider || marketQuote?.exchangeName || '';
   const optionQuoteStatusLabel = getOptionQuoteStatusLabel(optionQuote, quoteUnavailable);
   const optionQuoteAttempts = getOptionQuoteAttempts(optionQuote);
-  const optionQuoteNote = isOption ? getOptionQuoteNote(optionQuote, optionDailyMissingReason) : '';
+  const visibleOptionQuoteAttempts = quoteUnavailable ? optionQuoteAttempts.slice(0, 3) : optionQuoteAttempts.slice(0, 2);
+  const hiddenOptionQuoteAttempts = Math.max(0, optionQuoteAttempts.length - visibleOptionQuoteAttempts.length);
+  const optionQuoteNote = isOption ? compactQuoteMessage(getOptionQuoteNote(optionQuote, optionDailyMissingReason), 92) : '';
   const title = isOption && optionDisplay?.title ? optionDisplay.title : holding.symbol;
   const typeLabel = TYPE_LABELS[assetType] || assetType;
   const assetName = getReadableAssetName({
@@ -354,12 +377,18 @@ export default function HoldingCard({
           )}
           {optionQuoteAttempts.length > 0 && (
             <div className="holding-card__quote-attempts">
-              {optionQuoteAttempts.map((attempt) => (
+              <div className="holding-card__quote-attempts-summary">
+                已尝试 {optionQuoteAttempts.length} 个数据源
+              </div>
+              {visibleOptionQuoteAttempts.map((attempt) => (
                 <span key={`${attempt.provider || '数据源'}-${attempt.message || ''}`}>
                   <strong>{attempt.provider || '数据源'}</strong>
-                  {attempt.message || '未返回可用报价'}
+                  {compactQuoteMessage(attempt.message || '未返回可用报价', 56)}
                 </span>
               ))}
+              {hiddenOptionQuoteAttempts > 0 && (
+                <em>另有 {hiddenOptionQuoteAttempts} 个数据源未返回可用报价</em>
+              )}
             </div>
           )}
         </div>

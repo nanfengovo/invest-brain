@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -149,3 +150,20 @@ def build_option_quote_payload(symbols, token=""):
 
 def dumps_payload(payload):
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+
+
+def main(argv=None):
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Fetch Longbridge option quotes as JSON.")
+    parser.add_argument("--symbols", "--symbol", dest="symbols", required=True, help="Comma separated option symbols.")
+    parser.add_argument("--token", default="", help="Optional bridge token.")
+    args = parser.parse_args(argv)
+
+    payload = build_option_quote_payload(args.symbols, token=args.token)
+    print(dumps_payload(payload))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

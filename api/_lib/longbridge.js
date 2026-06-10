@@ -1,11 +1,13 @@
 import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
+import path from 'node:path';
 import { toLongbridgeMarketSymbol } from './marketSymbols.js';
 
 const LONGBRIDGE_HTTP_URL = process.env.LONGBRIDGE_HTTP_URL || 'https://openapi.longbridge.com';
 const LONGBRIDGE_HTTP_TIMEOUT_MS = 6_000;
 const LONGBRIDGE_CLI_TIMEOUT_MS = 2_800;
 const LONGBRIDGE_BRIDGE_TIMEOUT_MS = 6_000;
+const LONGBRIDGE_LOCAL_PYTHON_TIMEOUT_MS = 6_500;
 
 function pickCredential(headers = {}, key, fallback = '') {
   const normalizedKey = key.toLowerCase();
@@ -258,6 +260,68 @@ async function requestLongbridgeCliOptionPrice(contractSymbol) {
   }
   if (errors.length) throw new Error(errors.join('；'));
   return null;
+}
+
+async function requestLongbridgeLocalPythonOptionPrice(contractSymbol, credentials = {}, bridgeConfig = {}) {
+  if (process.env.VERCEL || process.env.LONGBRIDGE_LOCAL_PYTHON_OPTION_FALLBACK === '0') return null;
+  if (!hasLongbridgeCredentials(credentials)) return null;
+
+  const symbol = toLongbridgeOptionSymbol(contractSymbol);
+  if (!symbol) return null;
+
+  const scriptPath = path.resolve(process.cwd(), 'last30days-api-deployment/longbridge_option_bridge.py');
+  const pythonBin = process.env.LONGBRIDGE_PYTHON_BIN || process.env.PYTHON_BIN || 'python3';
+  const bridgeToken = String(
+    bridgeConfig.bridgeToken
+    || process.env.LONGBRIDGE_OPTION_BRIDGE_TOKEN
+    || process.env.IB_OPTION_BRIDGE_TOKEN
+    || ''
+  ).trim();
+  const args = [scriptPath, '--symbols', symbol];
+  if (bridgeToken) args.push('--token', bridgeToken);
+  const stdout = await new Promise((resolve, reject) => {
+    execFile(
+      pythonBin,
+      args,
+      {
+        timeout: LONGBRIDGE_LOCAL_PYTHON_TIMEOUT_MS,
+        maxBuffer: 1024 * 1024,
+        env: {
+          ...process.env,
+          LONGPORT_APP_KEY: credentials.appKey,
+          LONGPORT_APP_SECRET: credentials.appSecret,
+          LONGPORT_ACCESS_TOKEN: credentials.accessToken,
+          LONGBRIDGE_APP_KEY: credentials.appKey,
+          LONGBRIDGE_APP_SECRET: credentials.appSecret,
+          LONGBRIDGE_ACCESS_TOKEN: credentials.accessToken,
+        },
+      },
+      (error, output, stderr) => {
+        if (error) {
+          reject(new Error(stderr?.trim() || error.message || `长桥本地 Python SDK 期权报价失败：${symbol}`));
+          return;
+        }
+        resolve(output);
+      }
+    );
+  });
+
+  const payload = JSON.parse(String(stdout || '{}'));
+  if (payload?.success === false) {
+    throw new Error(payload.error || `长桥本地 Python SDK 未返回 ${symbol} 的可用期权报价。`);
+  }
+  const rows = pickLongbridgeCliRows(payload);
+  const row = rows.find((item) => String(item?.symbol || '').replace(/\.US$/i, '') === symbol.replace(/\.US$/i, ''))
+    || rows[0]
+    || (payload && typeof payload === 'object' ? payload : null);
+  const option = normalizeLongbridgeCliOptionRow(row, symbol);
+  if (option) {
+    return {
+      ...option,
+      provider: 'Longbridge Python SDK',
+    };
+  }
+  throw new Error(`长桥本地 Python SDK 未返回 ${symbol} 的可用 Mark/Last/Bid/Ask。`);
 }
 
 function buildLongbridgeBridgeUrl(bridgeUrl, symbol, token = '') {
@@ -1552,14 +1616,23 @@ export async function fetchLongbridgeOptionQuote(contractSymbol, credentials, br
     errors.push(error.message || normalizeSdkError(error, '长桥 Python SDK 补充服务'));
   }
 
+  if (hasLongbridgeCredentials(credentials)) {
+    try {
+      const pythonQuote = await requestLongbridgeLocalPythonOptionPrice(contractSymbol, credentials, bridgeConfig);
+      if (pythonQuote) return pythonQuote;
+    } catch (error) {
+      errors.push(normalizeSdkError(error, '长桥本地 Python SDK'));
+    }
+  }
+
   if (!hasLongbridgeCredentials(credentials)) {
     errors.push(hasLongbridgeBridgeConfig(bridgeConfig)
       ? '长桥 Python SDK 补充服务未返回可用报价，且本机未配置 Longbridge App Key、App Secret 或 Access Token。'
       : '未配置 Longbridge Python SDK 补充服务地址，也未配置 Longbridge App Key、App Secret 或 Access Token。');
   } else if (process.env.VERCEL) {
-    errors.push('长桥官方 Node SDK 需要 100MB+ 原生包，线上暂不启用；请配置 Longbridge Python SDK 补充服务地址，或使用 MarketData.app/Tradier/Polygon 实时 OPRA 主源。');
+    errors.push('已检测到 Longbridge 凭证，但线上函数不能直接运行长桥 SDK；请在设置中配置 Longbridge Python SDK 补充服务地址，并确认该账号已开通 OPRA US Options Quotes（OpenAPI）。');
   } else {
-    errors.push('当前运行环境未启用长桥官方 Node SDK，以避免 Vercel 函数包体超限；本地会继续尝试 Longbridge CLI。');
+    errors.push('长桥本地 Python SDK 未拿到可用报价；本地会继续尝试 Longbridge CLI。');
   }
 
   try {

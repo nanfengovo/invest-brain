@@ -123,12 +123,13 @@ const LOCAL_BACKGROUNDS = [
   },
 ];
 
-function showActionChoice({ title, extra, actions }) {
+function showActionChoice({ title, extra, actions, popupClassName = 'share-background-action-sheet' }) {
   return new Promise((resolve) => {
     let handler = null;
     handler = ActionSheet.show({
       extra,
       actions,
+      popupClassName,
       cancelText: '取消',
       closeOnAction: true,
       onAction: (action) => {
@@ -310,16 +311,37 @@ function showAiPromptDialog({ prompt, model, provider }) {
 
 async function chooseAiModel(config) {
   const action = await showActionChoice({
-    extra: '只生成背景层，二维码、标题、收益和数据仍由本地模板绘制',
-    actions: AI_BACKGROUND_MODELS.map((item) => ({
+    extra: '优先使用免配置模型；NVIDIA 预览端点经常变化，已放到高级备用',
+    actions: [
+      ...POLLINATIONS_MODELS.map((item) => ({
+        key: item.value,
+        text: item.label,
+        description: item.description,
+        provider: item.provider,
+        bold: item.value === (config.defaultModel || 'pollinations-flux'),
+      })),
+      {
+        key: 'nvidia-advanced',
+        text: 'NVIDIA 高级备用',
+        description: '仅在确认 NIM 图像端点可用时使用；404 会自动改用本地背景',
+        provider: 'nvidia-menu',
+        bold: NVIDIA_MODELS.some((item) => item.value === config.defaultModel),
+      },
+    ],
+  });
+  if (!action) return null;
+  if (action.key !== 'nvidia-advanced') return action;
+
+  return showActionChoice({
+    extra: 'NVIDIA 图像预览端点可能因地区、权限或模型下线返回 404，失败后会自动兜底',
+    actions: NVIDIA_MODELS.map((item) => ({
       key: item.value,
       text: item.label,
       description: item.description,
-      provider: item.provider,
+      provider: 'nvidia',
       bold: item.value === (config.defaultModel || 'pollinations-flux'),
     })),
   });
-  return action || null;
 }
 
 async function generateAiBackground(posterConfig = {}) {

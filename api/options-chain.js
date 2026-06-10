@@ -725,7 +725,8 @@ export function buildAutoOptionProviderPlan({
 } = {}) {
   const plan = [];
   if (marketDataToken) plan.push('marketdata');
-  if ((hasLongbridgeBridge || hasLongbridge || process.env.LONGBRIDGE_CLI_OPTION_FALLBACK !== '0') && contract) plan.push('longbridge');
+  const canUseLocalLongbridge = !process.env.VERCEL && process.env.LONGBRIDGE_CLI_OPTION_FALLBACK !== '0';
+  if ((hasLongbridgeBridge || hasLongbridge || canUseLocalLongbridge) && contract) plan.push('longbridge');
   if (tradierToken) plan.push('tradier');
   if (polygonToken) plan.push('polygon');
   plan.push('yahoo');
@@ -740,13 +741,40 @@ function shouldUseOptionPayload(payload, contract) {
 
 function formatAttemptError(providerKey, errorOrMessage) {
   const label = OPTION_PROVIDER_LABELS[providerKey] || providerKey || '数据源';
-  const message = typeof errorOrMessage === 'string'
+  const rawMessage = typeof errorOrMessage === 'string'
     ? errorOrMessage
     : (errorOrMessage?.message || '未返回可用期权数据');
+  const message = normalizeAttemptMessage(providerKey, rawMessage);
   return {
     provider: label,
     message,
   };
+}
+
+function normalizeAttemptMessage(providerKey, message) {
+  const text = String(message || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '未返回可用期权数据';
+  if (/OPRA|US Options Quotes|期权.*权限|no quote access/i.test(text)) {
+    return '需要 OpenAPI 美股期权 OPRA 行情权限';
+  }
+  if (/401|403|unauthor|forbidden|permission|Token 不可用|权限不足/i.test(text)) {
+    return providerKey === 'yahoo'
+      ? '公共期权接口被限制或暂不可用'
+      : '权限不足或 Token 不可用';
+  }
+  if (/429|too many|rate limit|额度|频率/i.test(text)) {
+    return '请求过于频繁或额度已用尽';
+  }
+  if (/timeout|aborted|deadline|timed out/i.test(text)) {
+    return '请求超时';
+  }
+  if (providerKey === 'longbridge' && /Python SDK|Longbridge|长桥/i.test(text)) {
+    if (/未配置|缺失|bridge|补充服务|线上函数/i.test(text)) {
+      return '请配置长桥 Python SDK 桥或本地 SDK 凭证';
+    }
+    return text.length > 54 ? `${text.slice(0, 54)}...` : text;
+  }
+  return text.length > 54 ? `${text.slice(0, 54)}...` : text;
 }
 
 function formatAttemptSummary(attempt) {

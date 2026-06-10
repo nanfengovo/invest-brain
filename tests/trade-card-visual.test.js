@@ -10,7 +10,10 @@ test('trade option expiration fields render as complete wrapping chips', () => {
   assert.match(card, /trade-card__option-expiration-part/);
   assert.match(card, /aria-label=\{trade\.option_expiration_label\}/);
   assert.match(css, /\.trade-card__asset-name--option\s*\{[\s\S]*flex-wrap: wrap/);
-  assert.match(css, /\.trade-card__option-expiration-part\s*\{[\s\S]*white-space: nowrap/);
+  assert.match(css, /\.trade-card__option-expiration-part\s*\{[\s\S]*white-space: normal/);
+  assert.match(css, /\.trade-card__option-expiration-part\s*\{[\s\S]*overflow-wrap: anywhere/);
+  assert.match(css, /\.trade-card--compact \.trade-card__right\s*\{[\s\S]*width: clamp\(70px, 21vw, 86px\)/);
+  assert.match(css, /\[data-theme='light'\] \.trade-card/);
   assert.doesNotMatch(css, /\.trade-card--compact \.trade-card__asset-name\s*\{[\s\S]*text-overflow: ellipsis/);
   assert.doesNotMatch(css, /\.trade-card__asset-name\s*\{[\s\S]*text-overflow: ellipsis/);
 });

@@ -259,9 +259,8 @@
 .holdings-page__summary-strip-item span,
 .holdings-page__summary-strip-item strong {
   display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .holdings-page__summary-strip-item span {
@@ -294,9 +293,8 @@
 }
 
 .holdings-page__summary-item-value {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
   font-size: 19px;
   font-weight: 700;
   color: var(--color-text-primary);
@@ -373,7 +371,9 @@
   color: #ddd6fe;
   font-size: 11px;
   font-weight: 850;
-  white-space: nowrap;
+  text-align: right;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .holdings-page__allocation-body {
@@ -386,6 +386,9 @@
 .holdings-page__allocation-chart {
   width: 132px;
   aspect-ratio: 1;
+  appearance: none;
+  border: 0;
+  padding: 0;
   display: grid;
   place-items: center;
   border-radius: 50%;
@@ -395,6 +398,21 @@
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.1),
     0 16px 30px rgba(0, 0, 0, 0.24);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  transition:
+    box-shadow var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+.holdings-page__allocation-chart:active {
+  transform: scale(0.98);
+}
+
+.holdings-page__allocation-chart:focus-visible {
+  outline: 2px solid rgba(167, 139, 250, 0.7);
+  outline-offset: 4px;
 }
 
 .holdings-page__allocation-chart div {
@@ -411,13 +429,12 @@
 
 .holdings-page__allocation-chart strong {
   max-width: 72px;
-  overflow: hidden;
+  overflow-wrap: anywhere;
   color: var(--color-text-primary);
   font-size: 13px;
   font-weight: 900;
   line-height: 1.15;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .holdings-page__allocation-chart span {
@@ -432,14 +449,38 @@
   display: flex;
   flex-direction: column;
   gap: 7px;
+  max-height: 220px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 2px;
 }
 
 .holdings-page__allocation-row {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
   display: grid;
   grid-template-columns: 8px minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
   min-height: 34px;
+  padding: 5px 6px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--transition-fast),
+    background var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+.holdings-page__allocation-row:active {
+  transform: scale(0.98);
+}
+
+.holdings-page__allocation-row--active {
+  border-color: color-mix(in srgb, var(--row-color) 46%, transparent);
+  background: rgba(255, 255, 255, 0.055);
 }
 
 .holdings-page__allocation-row > span {
@@ -457,9 +498,8 @@
 .holdings-page__allocation-row strong,
 .holdings-page__allocation-row b {
   display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .holdings-page__allocation-row em {
@@ -486,6 +526,51 @@
   font-size: 12px;
   font-weight: 900;
   font-variant-numeric: tabular-nums;
+}
+
+.holdings-page__allocation-detail {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 12px;
+  background: rgba(2, 6, 23, 0.22);
+}
+
+.holdings-page__allocation-detail > span {
+  width: 9px;
+  min-height: 34px;
+  flex: 0 0 9px;
+  border-radius: var(--radius-full);
+  background: var(--row-color);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--row-color) 46%, transparent);
+}
+
+.holdings-page__allocation-detail div {
+  min-width: 0;
+}
+
+.holdings-page__allocation-detail strong,
+.holdings-page__allocation-detail em {
+  display: block;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.holdings-page__allocation-detail strong {
+  color: var(--color-text-primary);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.holdings-page__allocation-detail em {
+  margin-top: 4px;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  font-style: normal;
+  line-height: 1.45;
 }
 
 .holdings-page__insight-grid {
@@ -623,25 +708,23 @@
 .holdings-page__option-radar-item span,
 .holdings-page__option-radar-item em {
   display: block;
-  overflow: hidden;
   color: var(--color-text-muted);
   font-size: 10px;
   font-style: normal;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .holdings-page__option-radar-item strong {
   display: block;
-  overflow: hidden;
   margin-top: 5px;
   color: var(--color-text-primary);
   font-size: 18px;
   font-weight: 900;
   letter-spacing: -0.03em;
   line-height: 1.15;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .holdings-page__option-radar-item em {
@@ -869,6 +952,73 @@
 
 [data-theme='light'] .holdings-page__summary-item-value--loss {
   color: #e11d48;
+}
+
+[data-theme='light'] .holdings-page__allocation {
+  border-color: rgba(124, 58, 237, 0.16);
+  background:
+    radial-gradient(circle at 12% 8%, rgba(167, 139, 250, 0.16), transparent 34%),
+    radial-gradient(circle at 88% 18%, rgba(56, 189, 248, 0.13), transparent 32%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(245, 243, 255, 0.9));
+  box-shadow:
+    0 16px 38px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.96);
+}
+
+[data-theme='light'] .holdings-page__allocation-eyebrow {
+  color: #7c3aed;
+}
+
+[data-theme='light'] .holdings-page__allocation h3 {
+  color: #0f172a;
+}
+
+[data-theme='light'] .holdings-page__allocation-type {
+  border-color: rgba(124, 58, 237, 0.2);
+  background: rgba(245, 243, 255, 0.9);
+  color: #6d28d9;
+}
+
+[data-theme='light'] .holdings-page__allocation-chart {
+  background:
+    radial-gradient(circle, rgba(255, 255, 255, 0.96) 0 52%, transparent 53%),
+    conic-gradient(var(--allocation-chart));
+  box-shadow:
+    inset 0 0 0 1px rgba(15, 23, 42, 0.08),
+    0 16px 30px rgba(124, 58, 237, 0.12);
+}
+
+[data-theme='light'] .holdings-page__allocation-chart div {
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+[data-theme='light'] .holdings-page__allocation-chart strong,
+[data-theme='light'] .holdings-page__allocation-row strong,
+[data-theme='light'] .holdings-page__allocation-row b,
+[data-theme='light'] .holdings-page__allocation-detail strong,
+[data-theme='light'] .holdings-page__insight strong {
+  color: #1e293b;
+}
+
+[data-theme='light'] .holdings-page__allocation-chart span,
+[data-theme='light'] .holdings-page__allocation-row em,
+[data-theme='light'] .holdings-page__allocation-detail em,
+[data-theme='light'] .holdings-page__insight span,
+[data-theme='light'] .holdings-page__insight p {
+  color: #64748b;
+}
+
+[data-theme='light'] .holdings-page__allocation-row--active {
+  border-color: color-mix(in srgb, var(--row-color) 42%, rgba(15, 23, 42, 0.08));
+  background: rgba(255, 255, 255, 0.68);
+}
+
+[data-theme='light'] .holdings-page__allocation-detail,
+[data-theme='light'] .holdings-page__insight {
+  border-color: rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.68);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.88);
 }
 
 [data-theme='light'] .holdings-page__option-radar {

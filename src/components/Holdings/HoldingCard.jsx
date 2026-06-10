@@ -46,6 +46,13 @@ const formatPercent = (value) => {
   return `${prefix}${num.toFixed(2)}%`;
 };
 
+function getOptionExpirationParts(label) {
+  return String(label || '')
+    .split('·')
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
 const formatDate = (dateStr) => {
   if (!dateStr) return '—';
   const d = parseDateTime(dateStr);
@@ -93,6 +100,7 @@ export default function HoldingCard({
     expiry_date: holding.expiry_date,
     option_type: holding.option_type,
   }) : '';
+  const optionExpirationParts = isOption ? getOptionExpirationParts(optionExpirationLabel) : [];
   const optionExpirationRisk = isOption ? getOptionExpirationRisk(holding.expiry_date) : null;
   const dteMonitor = isOption ? getDteMonitor(holding.expiry_date) : null;
   const moneynessMonitor = isOption ? getMoneynessMonitor({
@@ -151,8 +159,16 @@ export default function HoldingCard({
 
           <div className={`holding-card__meta-row ${hasMeta ? '' : 'holding-card__meta-row--empty'}`}>
             {isOption ? (
-              <span className={`holding-card__expiration holding-card__expiration--${optionExpirationRisk?.tone || 'unknown'}`}>
-                {optionExpirationLabel}
+              <span
+                className={`holding-card__expiration holding-card__expiration--${optionExpirationRisk?.tone || 'unknown'}`}
+                aria-label={optionExpirationLabel}
+                title={optionExpirationLabel}
+              >
+                {optionExpirationParts.map((part) => (
+                  <span key={part} className="holding-card__expiration-part">
+                    {part}
+                  </span>
+                ))}
               </span>
             ) : (
               <span className="holding-card__name">

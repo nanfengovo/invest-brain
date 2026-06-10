@@ -155,9 +155,10 @@ function buildPortfolioRealtimeSummary(liveHoldings = []) {
 
 function buildAllocationModel(liveHoldings = []) {
   const positiveHoldings = liveHoldings
-    .map((holding) => ({
+    .map((holding, index) => ({
       holding,
       value: Math.max(Number(holding.liveMetrics?.positionValue) || 0, 0),
+      index,
     }))
     .filter((item) => item.value > 0)
     .sort((a, b) => b.value - a.value);
@@ -171,39 +172,26 @@ function buildAllocationModel(liveHoldings = []) {
   }
 
   let cursor = 0;
-  const topRows = positiveHoldings.slice(0, 5).map((item, index) => {
+  const rows = positiveHoldings.map((item, index) => {
     const percent = item.value / total;
     const start = cursor;
     const end = cursor + percent * 360;
     cursor = end;
+    const assetType = getHoldingAssetType(item.holding);
     return {
+      id: `${item.holding.asset_id}-${item.holding.broker || ''}-${item.holding.author || '未标记'}`,
       symbol: item.holding.symbol,
       name: item.holding.name || item.holding.symbol,
-      type: getHoldingAssetType(item.holding),
+      type: assetType,
+      typeLabel: assetType === 'OPTION' ? '期权' : assetType === 'ETF' ? 'ETF' : assetType === 'STOCK' ? '股票' : assetType,
       value: item.value,
       percent,
       color: getAllocationColor(index),
       start,
       end,
+      holding: item.holding,
     };
   });
-  const topValue = topRows.reduce((sum, item) => sum + item.value, 0);
-  const othersValue = total - topValue;
-  const rows = othersValue > 0.01
-    ? [
-        ...topRows,
-        {
-          symbol: '其他',
-          name: `${positiveHoldings.length - topRows.length} 个持仓`,
-          type: 'OTHER',
-          value: othersValue,
-          percent: othersValue / total,
-          color: getAllocationColor(topRows.length),
-          start: cursor,
-          end: 360,
-        },
-      ]
-    : topRows;
   const conic = rows
     .map((row) => `${row.color} ${row.start.toFixed(1)}deg ${row.end.toFixed(1)}deg`)
     .join(', ');
@@ -397,6 +385,7 @@ export default function HoldingsPage() {
   const [marketQuotes, setMarketQuotes] = useState({});
   const [optionQuotes, setOptionQuotes] = useState({});
   const [optionAlertSheet, setOptionAlertSheet] = useState(null);
+  const [selectedAllocationId, setSelectedAllocationId] = useState('');
   const optionHoldingSignature = useMemo(() => getOptionHoldingSignature(holdings), [holdings]);
   const holdingMarketSignature = useMemo(() => getHoldingMarketSignature(holdings), [holdings]);
 
@@ -770,6 +759,31 @@ export default function HoldingsPage() {
 
   const realtimeSummary = useMemo(() => buildPortfolioRealtimeSummary(liveHoldings), [liveHoldings]);
   const allocation = useMemo(() => buildAllocationModel(liveHoldings), [liveHoldings]);
+  const selectedAllocation = useMemo(() => {
+    if (!allocation.rows.length) return null;
+    return allocation.rows.find((row) => row.id === selectedAllocationId) || allocation.rows[0];
+  }, [allocation.rows, selectedAllocationId]);
+  const handleAllocationChartClick = useCallback((event) => {
+    const rows = allocation.rows || [];
+    if (!rows.length) return;
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = event.clientX - rect.left - rect.width / 2;
+    const y = event.clientY - rect.top - rect.height / 2;
+    const radius = Math.sqrt((x * x) + (y * y));
+    const activeId = selectedAllocationId || rows[0]?.id;
+
+    let nextRow = null;
+    if (radius < rect.width * 0.31) {
+      const currentIndex = Math.max(rows.findIndex((row) => row.id === activeId), 0);
+      nextRow = rows[(currentIndex + 1) % rows.length];
+    } else {
+      const angle = ((Math.atan2(y, x) * 180) / Math.PI + 90 + 360) % 360;
+      nextRow = rows.find((row) => angle >= row.start && angle <= row.end) || rows[0];
+    }
+
+    if (nextRow) setSelectedAllocationId(nextRow.id);
+  }, [allocation.rows, selectedAllocationId]);
   const portfolioInsights = useMemo(
     () => buildPortfolioInsights(liveHoldings, realtimeSummary, allocation),
     [liveHoldings, realtimeSummary, allocation]
@@ -897,29 +911,54 @@ export default function HoldingsPage() {
             </div>
 
             <div className="holdings-page__allocation-body">
-              <div
+              <button
+                type="button"
                 className="holdings-page__allocation-chart"
                 style={{ '--allocation-chart': allocation.conic }}
-                aria-label="持仓占比饼图"
+                aria-label={`持仓占比饼图，当前选中 ${selectedAllocation?.symbol || '全部持仓'}`}
+                onClick={handleAllocationChartClick}
               >
                 <div>
-                  <strong className="text-mono">${formatCurrency(allocation.total)}</strong>
-                  <span>实时市值</span>
+                  <strong>{selectedAllocation?.symbol || '全部持仓'}</strong>
+                  <span className="text-mono">
+                    {selectedAllocation
+                      ? `${(selectedAllocation.percent * 100).toFixed(1)}%`
+                      : `$${formatCurrency(allocation.total)}`}
+                  </span>
                 </div>
-              </div>
+              </button>
               <div className="holdings-page__allocation-list">
                 {allocation.rows.map((row) => (
-                  <div key={`${row.symbol}-${row.type}`} className="holdings-page__allocation-row">
-                    <span style={{ '--row-color': row.color }} />
+                  <button
+                    key={row.id}
+                    type="button"
+                    className={`holdings-page__allocation-row ${selectedAllocation?.id === row.id ? 'holdings-page__allocation-row--active' : ''}`}
+                    style={{ '--row-color': row.color }}
+                    onClick={() => setSelectedAllocationId(row.id)}
+                    aria-pressed={selectedAllocation?.id === row.id}
+                  >
+                    <span />
                     <div>
                       <strong>{row.symbol}</strong>
-                      <em>{row.name}</em>
+                      <em>{row.typeLabel} · {row.name}</em>
                     </div>
                     <b className="text-mono">{(row.percent * 100).toFixed(1)}%</b>
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
+
+            {selectedAllocation && (
+              <div className="holdings-page__allocation-detail">
+                <span style={{ '--row-color': selectedAllocation.color }} />
+                <div>
+                  <strong>{selectedAllocation.symbol} · {selectedAllocation.name}</strong>
+                  <em>
+                    市值 ${formatCurrency(selectedAllocation.value)} · 占组合 {(selectedAllocation.percent * 100).toFixed(1)}% · {selectedAllocation.typeLabel}
+                  </em>
+                </div>
+              </div>
+            )}
 
             <div className="holdings-page__insight-grid">
               {portfolioInsights.insights.map((item) => (

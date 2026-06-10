@@ -43,6 +43,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  min-width: 0;
   min-height: 92px;
   padding: 14px 16px;
   cursor: pointer;
@@ -72,10 +73,12 @@
 .holding-card__title-row {
   gap: 7px;
   min-height: 22px;
+  flex-wrap: wrap;
 }
 
 .holding-card__meta-row {
   min-height: 22px;
+  align-items: flex-start;
 }
 
 .holding-card__meta-row--empty::before {
@@ -94,9 +97,8 @@
 .holding-card__symbol {
   min-width: 0;
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
   color: var(--color-text-primary);
   font-size: 17px;
   font-weight: 800;
@@ -155,19 +157,27 @@
 .holding-card__expiration {
   min-width: 0;
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
   font-size: 12px;
   color: var(--color-text-secondary);
 }
 
 .holding-card__expiration {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px 6px;
   color: var(--holding-option-exp-color, #93c5fd);
   background: var(--holding-option-exp-bg, rgba(96, 165, 250, 0.08));
   border: 1px solid var(--holding-option-exp-border, rgba(96, 165, 250, 0.16));
-  border-radius: var(--radius-full);
+  border-radius: 8px;
   padding: 3px 8px;
+  line-height: 1.35;
+}
+
+.holding-card__expiration-part {
+  white-space: nowrap;
 }
 
 .holding-card__expiration--calm {
@@ -306,7 +316,7 @@
 }
 
 .holding-card__right {
-  width: 96px;
+  width: clamp(82px, 24vw, 96px);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -321,7 +331,9 @@
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
   line-height: 1.25;
-  white-space: nowrap;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .holding-card__quantity {
@@ -345,7 +357,9 @@
   font-size: 11px;
   font-weight: 850;
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .holding-card__live-pnl--profit {
@@ -411,6 +425,7 @@
   font-weight: 850;
   letter-spacing: 0.03em;
   text-transform: uppercase;
+  flex-wrap: wrap;
 }
 
 .holding-card__quote-head strong {
@@ -439,10 +454,9 @@
   font-size: 10px;
   font-weight: 750;
   font-variant-numeric: tabular-nums;
-  overflow: hidden;
+  overflow-wrap: anywhere;
   text-align: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .holding-card__quote-strip .holding-card__quote-chip--profit {
@@ -650,7 +664,7 @@
 }
 
 .holding-card--compact .holding-card__symbol {
-  max-width: 136px;
+  max-width: 100%;
   font-size: 15px;
 }
 
@@ -676,12 +690,12 @@
 
 .holding-card--compact .holding-card__name,
 .holding-card--compact .holding-card__expiration {
-  max-width: 172px;
+  max-width: 100%;
   font-size: 11px;
 }
 
 .holding-card--compact .holding-card__right {
-  width: 92px;
+  width: clamp(78px, 23vw, 92px);
 }
 
 .holding-card--compact .holding-card__position-value {

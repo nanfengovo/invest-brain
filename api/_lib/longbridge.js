@@ -4,6 +4,7 @@ import { toLongbridgeMarketSymbol } from './marketSymbols.js';
 
 const LONGBRIDGE_HTTP_URL = process.env.LONGBRIDGE_HTTP_URL || 'https://openapi.longbridge.com';
 const LONGBRIDGE_HTTP_TIMEOUT_MS = 6_000;
+const LONGBRIDGE_SDK_TIMEOUT_MS = 6_000;
 const LONGBRIDGE_CLI_TIMEOUT_MS = 2_800;
 
 function pickCredential(headers = {}, key, fallback = '') {
@@ -84,16 +85,24 @@ function parseJsonMaybe(value, fallback = null) {
 
 function normalizeSdkError(error, scope = '长桥数据') {
   const message = String(error?.message || error || '请求失败');
+  if (/OPRA|option|us options/i.test(message) && /quote|permission|access|auth|not.?authorized|forbidden/i.test(message)) {
+    return `${scope}需要开通 OPRA US Options Quotes（OpenAPI）权限；长桥 App/Web 行情权限和 OpenAPI 权限是分开的。`;
+  }
   if (/permission|not.?authorized|unauthor|forbidden|no access|auth/i.test(message)) {
     return `${scope}权限不足或当前账号未开通对应行情/基本面权限。`;
   }
   if (/timeout|aborted|deadline/i.test(message)) {
     return `${scope}请求超时，请稍后重试。`;
   }
-  if (/OPRA|option/i.test(message) && /quote|permission|access|auth/i.test(message)) {
-    return `${scope}需要开通 OPRA US Options Quotes（OpenAPI）权限。`;
-  }
   return message.replace(/^Error:\s*/i, '');
+}
+
+function withTimeout(promise, timeoutMs, message) {
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeoutId));
 }
 
 function percentToRatio(value) {
@@ -164,6 +173,74 @@ function normalizeLongbridgeCliOptionRow(row, fallbackSymbol) {
   };
 }
 
+function normalizeLongbridgeSdkOptionRow(row, fallbackSymbol) {
+  if (!row || typeof row !== 'object') return null;
+  const json = toPlainJson(row);
+  const record = json && typeof json === 'object' ? json : row;
+  const contractSymbol = pickText(
+    record.symbol,
+    row.symbol,
+    fallbackSymbol
+  )?.replace(/\.US$/i, '');
+  const parsed = parseOptionSymbolForQuote(contractSymbol);
+  const last = pickNumber(record.lastDone, record.last_done, row.lastDone);
+  const previousClose = pickNumber(record.prevClose, record.prev_close, row.prevClose);
+  const open = pickNumber(record.open, row.open);
+  const high = pickNumber(record.high, row.high);
+  const low = pickNumber(record.low, row.low);
+  const bid = pickNumber(record.bid, record.bidPrice, record.bid_price);
+  const ask = pickNumber(record.ask, record.askPrice, record.ask_price);
+  const mark = bid !== null && ask !== null && ask >= bid
+    ? Number(((bid + ask) / 2).toFixed(4))
+    : last;
+
+  if (!contractSymbol || mark === null) return null;
+
+  const timestampValue = record.timestamp || row.timestamp;
+  const timestamp = timestampValue instanceof Date
+    ? timestampValue.toISOString()
+    : (timestampValue ? new Date(timestampValue).toISOString() : null);
+  const expirationRaw = pickText(record.expiryDate, record.expiry_date, row.expiryDate);
+  const direction = String(pickText(record.direction, row.direction, parsed.type === 'PUT' ? 'P' : 'C') || '').toUpperCase();
+
+  return {
+    contractSymbol,
+    underlying: pickText(record.underlyingSymbol, record.underlying_symbol, row.underlyingSymbol) || parsed.underlying || null,
+    type: direction === 'P' || direction === 'PUT' ? 'PUT' : 'CALL',
+    expiration: expirationRaw && /^\d{6}$/.test(expirationRaw)
+      ? `20${expirationRaw.slice(0, 2)}-${expirationRaw.slice(2, 4)}-${expirationRaw.slice(4, 6)}`
+      : (expirationRaw || parsed.expiration || null),
+    strike: pickNumber(record.strikePrice, record.strike_price, row.strikePrice) ?? parsed.strike ?? null,
+    last,
+    bid,
+    ask,
+    mark,
+    previousClose,
+    previousCloseDate: timestamp ? timestamp.slice(0, 10) : null,
+    previousCloseSource: previousClose !== null ? 'longbridge_prev_close' : null,
+    change: last !== null && previousClose !== null ? Number((last - previousClose).toFixed(4)) : null,
+    percentChange: last !== null && previousClose ? Number((((last - previousClose) / previousClose) * 100).toFixed(4)) : null,
+    open,
+    high,
+    low,
+    volume: pickNumber(record.volume, row.volume),
+    turnover: pickNumber(record.turnover, row.turnover),
+    openInterest: pickNumber(record.openInterest, record.open_interest, row.openInterest),
+    impliedVolatility: normalizePercent(record.impliedVolatility ?? record.implied_volatility ?? row.impliedVolatility),
+    historicalVolatility: normalizePercent(record.historicalVolatility ?? record.historical_volatility ?? row.historicalVolatility),
+    multiplier: pickNumber(record.contractMultiplier, record.contract_multiplier, row.contractMultiplier),
+    contractSize: pickNumber(record.contractSize, record.contract_size, row.contractSize),
+    tradeStatus: record.tradeStatus ?? record.trade_status ?? null,
+    timestamp,
+    quoteDate: timestamp ? timestamp.slice(0, 10) : null,
+    dayChangeSource: previousClose !== null ? 'longbridge_prev_close' : 'missing_previous_eod',
+    dayChangeNote: previousClose !== null
+      ? '日变动使用长桥 OptionQuote 的最新价与前收计算。'
+      : '长桥 OptionQuote 未返回前收，暂不能计算期权日收益。',
+    provider: 'Longbridge OpenAPI',
+  };
+}
+
 function pickLongbridgeCliRows(payload) {
   if (Array.isArray(payload)) return payload;
   return firstArray(
@@ -203,6 +280,32 @@ async function requestLongbridgeCliOptionPrice(contractSymbol) {
   const payload = JSON.parse(String(stdout || '{}'));
   const row = pickLongbridgeCliRows(payload)[0] || (payload && typeof payload === 'object' ? payload : null);
   return normalizeLongbridgeCliOptionRow(row, cliSymbol);
+}
+
+async function requestLongbridgeSdkOptionPrice(contractSymbol, credentials) {
+  if (!hasLongbridgeCredentials(credentials)) return null;
+  const lbSymbol = toLongbridgeOptionSymbol(contractSymbol);
+  if (!lbSymbol) return null;
+
+  try {
+    const { Config, QuoteContext } = await import('longbridge');
+    const config = Config.fromApikey(
+      credentials.appKey,
+      credentials.appSecret,
+      credentials.accessToken,
+      { language: 'zh-CN' }
+    );
+    const quoteContext = QuoteContext.new(config);
+    const rows = await withTimeout(
+      quoteContext.optionQuote([lbSymbol]),
+      LONGBRIDGE_SDK_TIMEOUT_MS,
+      '长桥 OpenAPI 期权报价请求超时'
+    );
+    const row = Array.isArray(rows) ? rows[0] : rows;
+    return normalizeLongbridgeSdkOptionRow(row, lbSymbol);
+  } catch (error) {
+    throw new Error(normalizeSdkError(error, '长桥 OpenAPI 期权报价'));
+  }
 }
 
 function normalizePercent(value) {
@@ -1403,10 +1506,28 @@ export async function fetchLongbridgeStockSnapshot(symbol, credentials) {
 export async function fetchLongbridgeOptionQuote(contractSymbol, credentials) {
   const lbSymbol = toLongbridgeOptionSymbol(contractSymbol);
   if (!lbSymbol) return null;
-  try {
-    return await requestLongbridgeCliOptionPrice(contractSymbol);
-  } catch (error) {
-    if (!hasLongbridgeCredentials(credentials)) return null;
-    throw new Error(normalizeSdkError(error, '长桥期权报价'));
+  const errors = [];
+
+  if (hasLongbridgeCredentials(credentials)) {
+    try {
+      const sdkQuote = await requestLongbridgeSdkOptionPrice(contractSymbol, credentials);
+      if (sdkQuote) return sdkQuote;
+    } catch (error) {
+      errors.push(error.message || '长桥 OpenAPI 期权报价失败');
+    }
+  } else {
+    errors.push('未配置 Longbridge App Key、App Secret 或 Access Token。');
   }
+
+  try {
+    const cliQuote = await requestLongbridgeCliOptionPrice(contractSymbol);
+    if (cliQuote) return cliQuote;
+  } catch (error) {
+    errors.push(normalizeSdkError(error, '长桥 CLI 期权报价'));
+  }
+
+  if (errors.length) {
+    throw new Error(errors.join('；'));
+  }
+  return null;
 }

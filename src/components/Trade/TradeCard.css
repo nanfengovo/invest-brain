@@ -5,6 +5,7 @@
 /* ── Card Container ── */
 .trade-card {
   position: relative;
+  min-width: 0;
   background: var(--color-glass-card);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
@@ -37,7 +38,7 @@
 /* ── Main Layout ── */
 .trade-card__body {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   min-width: 0;
@@ -105,6 +106,8 @@
 .trade-card__meta-row {
   min-height: 20px;
   align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .trade-card__meta-row--empty::before {
@@ -143,22 +146,32 @@
 }
 
 .trade-card__asset-name--option {
-  display: inline-flex;
-  align-items: center;
+  display: flex;
+  align-items: flex-start;
   flex-wrap: wrap;
-  gap: 3px 6px;
+  gap: 4px 6px;
   color: var(--option-exp-color, #93c5fd);
-  background: var(--option-exp-bg, transparent);
-  border: 1px solid var(--option-exp-border, transparent);
-  border-radius: 8px;
-  padding: 3px 8px;
+  background: transparent;
+  border: 0;
+  padding: 0;
   max-width: 100%;
   line-height: 1.35;
 }
 
 .trade-card__option-expiration-part {
-  display: inline;
-  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  max-width: 100%;
+  padding: 3px 8px;
+  border: 1px solid var(--option-exp-border, transparent);
+  border-radius: 8px;
+  background: var(--option-exp-bg, transparent);
+  color: var(--option-exp-color, #93c5fd);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  text-align: left;
+  white-space: normal;
 }
 
 .trade-card__asset-name--option-calm {
@@ -195,6 +208,9 @@
   --option-exp-color: #fff7ed;
   --option-exp-bg: linear-gradient(135deg, rgba(239, 68, 68, 0.88), rgba(251, 146, 60, 0.68));
   --option-exp-border: rgba(254, 226, 226, 0.5);
+}
+
+.trade-card__asset-name--option-zero-dte .trade-card__option-expiration-part {
   box-shadow: 0 0 18px rgba(239, 68, 68, 0.24);
 }
 
@@ -238,7 +254,9 @@
   font-size: 10px;
   font-weight: 700;
   line-height: 1;
-  white-space: nowrap;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
   flex-shrink: 0;
 }
 
@@ -254,7 +272,9 @@
   font-size: 10px;
   font-weight: 800;
   line-height: 1;
-  white-space: nowrap;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .trade-card__lifecycle--open {
@@ -302,7 +322,9 @@
   font-size: 10px;
   font-weight: 700;
   line-height: 1;
-  white-space: nowrap;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
   color: #fbbf24;
   background: rgba(245, 158, 11, 0.12);
   border: 1px solid rgba(245, 158, 11, 0.26);
@@ -324,7 +346,9 @@
   font-size: 10px;
   font-weight: 700;
   line-height: 1;
-  white-space: nowrap;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .trade-card__sync-tag--footer {
@@ -359,7 +383,7 @@
 .trade-card__right {
   text-align: right;
   flex-shrink: 0;
-  width: clamp(78px, 24vw, 98px);
+  width: clamp(72px, 22vw, 94px);
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -535,7 +559,7 @@
 }
 
 .trade-card--compact .trade-card__body {
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
 }
 
@@ -575,6 +599,11 @@
 
 .trade-card--compact .trade-card__asset-name--option {
   max-width: 100%;
+  gap: 4px 5px;
+}
+
+.trade-card--compact .trade-card__option-expiration-part {
+  min-height: 19px;
   padding: 3px 7px;
 }
 
@@ -598,7 +627,7 @@
 
 .trade-card--compact .trade-card__right {
   text-align: right;
-  width: clamp(76px, 23vw, 90px);
+  width: clamp(70px, 21vw, 86px);
 }
 
 .trade-card--compact .trade-card__price-qty {
@@ -626,4 +655,167 @@
 
 .trade-card:not(.trade-card--compact) .trade-card__author-tag--footer {
   display: inline-flex;
+}
+
+[data-theme='light'] .trade-card {
+  border-color: rgba(15, 23, 42, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.94));
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+}
+
+[data-theme='light'] .trade-card--buy {
+  border-left-color: #14b8a6;
+}
+
+[data-theme='light'] .trade-card--sell {
+  border-left-color: #f43f5e;
+}
+
+[data-theme='light'] .trade-card:active {
+  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.1);
+}
+
+[data-theme='light'] .trade-card__symbol,
+[data-theme='light'] .trade-card__price-qty {
+  color: #111827;
+}
+
+[data-theme='light'] .trade-card__asset-name,
+[data-theme='light'] .trade-card__total,
+[data-theme='light'] .trade-card__time {
+  color: #64748b;
+}
+
+[data-theme='light'] .trade-card__direction-badge--buy {
+  color: #0f766e;
+  background: rgba(204, 251, 241, 0.9);
+  border-color: rgba(20, 184, 166, 0.26);
+}
+
+[data-theme='light'] .trade-card__direction-badge--sell {
+  color: #e11d48;
+  background: rgba(255, 241, 242, 0.92);
+  border-color: rgba(225, 29, 72, 0.24);
+}
+
+[data-theme='light'] .trade-card__asset-name--option-calm {
+  --option-exp-color: #2563eb;
+  --option-exp-bg: rgba(219, 234, 254, 0.9);
+  --option-exp-border: rgba(37, 99, 235, 0.2);
+}
+
+[data-theme='light'] .trade-card__asset-name--option-cool {
+  --option-exp-color: #0891b2;
+  --option-exp-bg: rgba(207, 250, 254, 0.9);
+  --option-exp-border: rgba(8, 145, 178, 0.2);
+}
+
+[data-theme='light'] .trade-card__asset-name--option-warm {
+  --option-exp-color: #b45309;
+  --option-exp-bg: rgba(254, 243, 199, 0.92);
+  --option-exp-border: rgba(217, 119, 6, 0.24);
+}
+
+[data-theme='light'] .trade-card__asset-name--option-hot {
+  --option-exp-color: #ea580c;
+  --option-exp-bg: rgba(255, 237, 213, 0.94);
+  --option-exp-border: rgba(234, 88, 12, 0.26);
+}
+
+[data-theme='light'] .trade-card__asset-name--option-endgame {
+  --option-exp-color: #e11d48;
+  --option-exp-bg: rgba(255, 241, 242, 0.95);
+  --option-exp-border: rgba(225, 29, 72, 0.28);
+}
+
+[data-theme='light'] .trade-card__asset-name--option-zero-dte {
+  --option-exp-color: #fff7ed;
+  --option-exp-bg: linear-gradient(135deg, rgba(225, 29, 72, 0.92), rgba(234, 88, 12, 0.78));
+  --option-exp-border: rgba(225, 29, 72, 0.28);
+}
+
+[data-theme='light'] .trade-card__asset-name--option-expired {
+  --option-exp-color: #64748b;
+  --option-exp-bg: rgba(241, 245, 249, 0.94);
+  --option-exp-border: rgba(100, 116, 139, 0.22);
+}
+
+[data-theme='light'] .trade-card__option-type--call {
+  color: #2563eb;
+  background: rgba(219, 234, 254, 0.9);
+  border-color: rgba(37, 99, 235, 0.24);
+}
+
+[data-theme='light'] .trade-card__option-type--put {
+  color: #7c3aed;
+  background: rgba(245, 243, 255, 0.92);
+  border-color: rgba(124, 58, 237, 0.22);
+}
+
+[data-theme='light'] .trade-card__lifecycle--open,
+[data-theme='light'] .trade-card__author-tag,
+[data-theme='light'] .trade-card__sync-tag.sync-status--local,
+[data-theme='light'] .trade-card__account-tag {
+  border-color: rgba(217, 119, 6, 0.22);
+  background: rgba(254, 243, 199, 0.86);
+  color: #b45309;
+}
+
+[data-theme='light'] .trade-card__lifecycle--partial,
+[data-theme='light'] .trade-card__sync-tag.sync-status--backup {
+  border-color: rgba(8, 145, 178, 0.22);
+  background: rgba(207, 250, 254, 0.88);
+  color: #0891b2;
+}
+
+[data-theme='light'] .trade-card__lifecycle--closed-profit,
+[data-theme='light'] .trade-card__sync-tag.sync-status--published {
+  border-color: rgba(5, 150, 105, 0.22);
+  background: rgba(236, 253, 245, 0.9);
+  color: #059669;
+}
+
+[data-theme='light'] .trade-card__lifecycle--closed-loss,
+[data-theme='light'] .trade-card__lifecycle--warning,
+[data-theme='light'] .trade-card__lifecycle--expired,
+[data-theme='light'] .trade-card__loop-tag {
+  border-color: rgba(225, 29, 72, 0.24);
+  background: rgba(255, 241, 242, 0.92);
+  color: #e11d48;
+}
+
+[data-theme='light'] .trade-card__sync-tag.sync-status--mirror {
+  border-color: rgba(124, 58, 237, 0.22);
+  background: rgba(245, 243, 255, 0.9);
+  color: #7c3aed;
+}
+
+[data-theme='light'] .trade-card__footer {
+  border-top-color: rgba(15, 23, 42, 0.08);
+}
+
+[data-theme='light'] .trade-card__decision-tag {
+  border-color: rgba(79, 70, 229, 0.2);
+  background: rgba(238, 242, 255, 0.9);
+  color: #4f46e5;
+}
+
+[data-theme='light'] .trade-card__broker-tag {
+  border-color: rgba(8, 145, 178, 0.2);
+  background: rgba(207, 250, 254, 0.9);
+  color: #0891b2;
+}
+
+[data-theme='light'] .trade-card--loop-closed {
+  border-color: rgba(225, 29, 72, 0.2);
+  background:
+    linear-gradient(135deg, rgba(255, 241, 242, 0.96), transparent 48%),
+    rgba(255, 255, 255, 0.98);
+}
+
+[data-theme='light'] .trade-card--loop-closed .trade-card__symbol,
+[data-theme='light'] .trade-card--loop-closed .trade-card__price-qty,
+[data-theme='light'] .trade-card--loop-closed .trade-card__total {
+  color: rgba(225, 29, 72, 0.86);
 }

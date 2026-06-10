@@ -224,10 +224,11 @@ test('market data settings support MarketData.app option provider', () => {
   assert.match(stockSnapshot, /industryRank/);
   assert.match(longbridge, /getLongbridgeCredentials/);
   assert.match(longbridge, /buildSignature/);
-  assert.doesNotMatch(longbridge, /import\('longbridge'\)/);
+  assert.match(longbridge, /import\('longbridge'\)/);
+  assert.match(longbridge, /QuoteContext/);
+  assert.match(longbridge, /optionQuote/);
+  assert.match(longbridge, /OPRA US Options Quotes/);
   assert.doesNotMatch(longbridge, /FundamentalContext/);
-  assert.doesNotMatch(longbridge, /QuoteContext/);
-  assert.doesNotMatch(longbridge, /optionQuote/);
   assert.match(longbridge, /Serverless Functions over the 250MB unzipped limit/);
   assert.match(longbridge, /\/v1\/quote\/comp-overview/);
   assert.match(longbridge, /\/v1\/quote\/industry-valuation-comparison/);

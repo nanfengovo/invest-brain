@@ -51,7 +51,12 @@ function getOptionExpirationParts(label) {
   return String(label || '')
     .split('·')
     .map((part) => part.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .map((text, index) => ({
+      key: `${index}-${text}`,
+      text,
+      type: index === 0 && /^EXP:/i.test(text) ? 'date' : 'risk',
+    }));
 }
 
 const formatDate = (dateStr) => {
@@ -64,6 +69,22 @@ const formatDate = (dateStr) => {
     day: '2-digit',
   });
 };
+
+function getOptionQuoteStatusLabel(optionQuote, quoteUnavailable) {
+  if (quoteUnavailable) return '报价不可用';
+  const status = optionQuote?.quoteSource?.realTimeStatus;
+  if (status === 'LIMITED_ENTITLEMENT') return '延迟/权限受限';
+  if (status === 'ENTITLEMENT_DEPENDENT') return '实时取决于权限';
+  if (optionQuote?.quoteSource?.autoFallback) return '自动路由';
+  if (optionQuote?.quoteDate) return `报价日 ${optionQuote.quoteDate}`;
+  if (optionQuote?.generatedAt) return '刚刚更新';
+  return '等待刷新';
+}
+
+function getOptionQuoteAttempts(optionQuote) {
+  const attempts = optionQuote?.quoteSource?.fallbackAttempts;
+  return Array.isArray(attempts) ? attempts.filter((item) => item?.provider || item?.message) : [];
+}
 
 export default function HoldingCard({
   holding,
@@ -131,6 +152,8 @@ export default function HoldingCard({
   const dayPnlPct = toFiniteNumberOrNull(optionMetrics.dayPnlPct ?? optionDayChangePct);
   const nonOptionPnlPct = toFiniteNumberOrNull(optionMetrics.unrealizedPnlPct);
   const quoteProvider = optionMetrics.quoteProvider || marketQuote?.provider || marketQuote?.exchangeName || '';
+  const optionQuoteStatusLabel = getOptionQuoteStatusLabel(optionQuote, quoteUnavailable);
+  const optionQuoteAttempts = getOptionQuoteAttempts(optionQuote);
   const title = isOption && optionDisplay?.title ? optionDisplay.title : holding.symbol;
   const typeLabel = TYPE_LABELS[assetType] || assetType;
   const assetName = getReadableAssetName({
@@ -171,8 +194,11 @@ export default function HoldingCard({
                 title={optionExpirationLabel}
               >
                 {optionExpirationParts.map((part) => (
-                  <span key={part} className="holding-card__expiration-part">
-                    {part}
+                  <span
+                    key={part.key}
+                    className={`holding-card__expiration-part holding-card__expiration-part--${part.type}`}
+                  >
+                    {part.text}
                   </span>
                 ))}
               </span>
@@ -290,13 +316,7 @@ export default function HoldingCard({
           <div className="holding-card__quote-head">
             <span>{optionQuote.provider || '期权报价'}</span>
             <strong>
-              {quoteUnavailable
-                ? '报价不可用'
-                : optionQuote.quoteDate
-                ? `报价日 ${optionQuote.quoteDate}`
-                : optionQuote.generatedAt
-                  ? '刚刚更新'
-                  : '等待刷新'}
+              {optionQuoteStatusLabel}
             </strong>
           </div>
           {!quoteUnavailable && (
@@ -319,6 +339,16 @@ export default function HoldingCard({
           {(quoteUnavailable || (!hasOptionDailyChange && optionDailyMissingReason)) && (
             <div className="holding-card__quote-note">
               {optionDailyMissingReason}
+            </div>
+          )}
+          {optionQuoteAttempts.length > 0 && (
+            <div className="holding-card__quote-attempts">
+              {optionQuoteAttempts.slice(0, 3).map((attempt) => (
+                <span key={`${attempt.provider || '数据源'}-${attempt.message || ''}`}>
+                  <strong>{attempt.provider || '数据源'}</strong>
+                  {attempt.message || '未返回可用报价'}
+                </span>
+              ))}
             </div>
           )}
         </div>

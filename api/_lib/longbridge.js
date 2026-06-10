@@ -181,17 +181,21 @@ function pickLongbridgeCliRows(payload) {
 
 async function requestLongbridgeCliOptionPrice(contractSymbol) {
   if (process.env.VERCEL || process.env.LONGBRIDGE_CLI_OPTION_FALLBACK === '0') return null;
-  const cliSymbol = String(contractSymbol || '').replace(/^OPTION_/i, '').replace(/\.US$/i, '').trim().toUpperCase();
-  if (!/^[A-Z.]+\d{6}[CP]\d{8}$/.test(cliSymbol)) return null;
+  const occSymbol = String(contractSymbol || '').replace(/^OPTION_/i, '').replace(/\.US$/i, '').trim().toUpperCase();
+  const cliSymbol = toLongbridgeCliOptionSymbol(contractSymbol);
+  const symbols = Array.from(new Set([occSymbol, cliSymbol].filter((symbol) => (
+    /^[A-Z.]+\d{6}[CP](?:\d{6}|\d{8})$/.test(symbol)
+  ))));
+  if (!symbols.length) return null;
 
-  const runCli = () => new Promise((resolve, reject) => {
+  const runCli = (symbol) => new Promise((resolve, reject) => {
     execFile(
       'longbridge',
-      ['option', 'quote', cliSymbol, '--format', 'json'],
+      ['option', 'quote', symbol, '--format', 'json'],
       { timeout: LONGBRIDGE_CLI_TIMEOUT_MS, maxBuffer: 1024 * 1024 },
       (error, stdout, stderr) => {
         if (error) {
-          reject(new Error(stderr?.trim() || error.message || '长桥 CLI 期权报价失败'));
+          reject(new Error(stderr?.trim() || error.message || `长桥 CLI 期权报价失败：${symbol}`));
           return;
         }
         resolve(stdout);
@@ -199,10 +203,21 @@ async function requestLongbridgeCliOptionPrice(contractSymbol) {
     );
   });
 
-  const stdout = await runCli();
-  const payload = JSON.parse(String(stdout || '{}'));
-  const row = pickLongbridgeCliRows(payload)[0] || (payload && typeof payload === 'object' ? payload : null);
-  return normalizeLongbridgeCliOptionRow(row, cliSymbol);
+  const errors = [];
+  for (const symbol of symbols) {
+    try {
+      const stdout = await runCli(symbol);
+      const payload = JSON.parse(String(stdout || '{}'));
+      const row = pickLongbridgeCliRows(payload)[0] || (payload && typeof payload === 'object' ? payload : null);
+      const option = normalizeLongbridgeCliOptionRow(row, symbol);
+      if (option) return option;
+      errors.push(`长桥 CLI 未返回 ${symbol} 的可用 Mark/Last/Bid/Ask。`);
+    } catch (error) {
+      errors.push(normalizeSdkError(error, `长桥 CLI 期权报价 ${symbol}`));
+    }
+  }
+  if (errors.length) throw new Error(errors.join('；'));
+  return null;
 }
 
 function normalizePercent(value) {
@@ -360,6 +375,18 @@ export function toLongbridgeOptionSymbol(contractSymbol) {
   if (!match) return '';
   const [, underlying, yymmdd, side, strikeRaw] = match;
   return `${underlying}${yymmdd}${side}${String(Number(strikeRaw)).padStart(6, '0')}.US`;
+}
+
+export function toLongbridgeCliOptionSymbol(contractSymbol) {
+  const text = String(contractSymbol || '')
+    .replace(/^OPTION_/i, '')
+    .replace(/\.US$/i, '')
+    .trim()
+    .toUpperCase();
+  const match = text.match(/^([A-Z.]+)(\d{6})([CP])(\d{6}|\d{8})$/);
+  if (!match) return '';
+  const [, underlying, yymmdd, side, strikeRaw] = match;
+  return `${underlying}${yymmdd}${side}${String(Number(strikeRaw)).padStart(6, '0')}`;
 }
 
 function latestValuationValue(metric) {

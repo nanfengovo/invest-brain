@@ -230,6 +230,8 @@ test('market data settings support MarketData.app option provider', () => {
   assert.match(longbridge, /OPRA US Options Quotes/);
   assert.doesNotMatch(longbridge, /FundamentalContext/);
   assert.match(longbridge, /Serverless Functions over the 250MB unzipped limit/);
+  assert.match(longbridge, /toLongbridgeCliOptionSymbol/);
+  assert.match(longbridge, /\\d\{6\}\|\\d\{8\}/);
   assert.match(longbridge, /\/v1\/quote\/comp-overview/);
   assert.match(longbridge, /\/v1\/quote\/industry-valuation-comparison/);
   assert.match(longbridge, /\/v1\/quote\/industry-valuation-distribution/);
@@ -243,6 +245,8 @@ test('market data settings support MarketData.app option provider', () => {
   assert.match(settings, /MarketData\.app/);
   assert.match(settings, /免费层约 100 次\/日 API Credits/);
   assert.match(settings, /期权数据延迟约 24h/);
+  assert.match(settings, /MarketData\.app，其次 Longbridge、Tradier、Polygon/);
+  assert.match(settings, /Longbridge 官方 SDK 支持 optionQuote/);
   assert.match(settings, /MarketData\.app Token（推荐）/);
   assert.match(settings, /Longbridge/);
   assert.match(settings, /Longbridge App Key/);
@@ -282,6 +286,7 @@ test('market data settings support MarketData.app option provider', () => {
   assert.match(holdings, /includePrevious: '1'/);
   assert.match(holdings, /quoteUnavailable: true/);
   assert.match(holdings, /normalizeOptionQuoteError/);
+  assert.match(holdings, /longbridgeAppSecret/);
   assert.match(holdings, /请求过于频繁或额度已用尽/);
   assert.match(holdings, /buildOptionRealtimeSummary/);
   assert.match(holdings, /Options Live Radar/);
@@ -296,6 +301,9 @@ test('market data settings support MarketData.app option provider', () => {
   assert.match(holdingCard, /今日收益待基准/);
   assert.match(holdingCard, /前收缺失/);
   assert.match(holdingCard, /报价不可用/);
+  assert.match(holdingCard, /quoteSource/);
+  assert.match(holdingCard, /fallbackAttempts/);
+  assert.match(holdingCard, /holding-card__quote-attempts/);
   assert.match(holdingCard, /Mark/);
   assert.match(glossary, /OPTION_FIELD_HELP/);
   assert.match(glossary, /EXP \/ DTE/);

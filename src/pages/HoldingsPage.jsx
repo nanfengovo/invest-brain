@@ -293,8 +293,8 @@ const getMarketDataConfigFingerprint = (marketDataConfig = {}) => [
   marketDataConfig.tradierToken ? `tradier:${hashCredential(marketDataConfig.tradierToken)}` : '',
   marketDataConfig.polygonToken ? `polygon:${hashCredential(marketDataConfig.polygonToken)}` : '',
   marketDataConfig.marketDataToken ? `marketdata:${hashCredential(marketDataConfig.marketDataToken)}` : '',
-  marketDataConfig.longbridgeAppKey && marketDataConfig.longbridgeAccessToken
-    ? `longbridge:${hashCredential(`${marketDataConfig.longbridgeAppKey}:${marketDataConfig.longbridgeAccessToken}`)}`
+  marketDataConfig.longbridgeAppKey && marketDataConfig.longbridgeAppSecret && marketDataConfig.longbridgeAccessToken
+    ? `longbridge:${hashCredential(`${marketDataConfig.longbridgeAppKey}:${marketDataConfig.longbridgeAppSecret}:${marketDataConfig.longbridgeAccessToken}`)}`
     : '',
 ].filter(Boolean).join(':') || 'public';
 
@@ -312,6 +312,9 @@ const normalizeOptionQuoteError = (message) => {
   }
   if (/responded with (401|403)/i.test(text)) {
     return '行情数据源权限不足或 Token 不可用，请检查设置中的数据源配置。';
+  }
+  if (/no quote access|OPRA|US Options Quotes|期权报价.*权限不足|未开通.*期权/i.test(text)) {
+    return '期权实时价需要对应数据源的美股期权 OPRA 行情权限；长桥 App/PC 行情权限和 OpenAPI 期权权限可能是分开的，请确认已开通 OPRA US Options Quotes。';
   }
   return text;
 };
@@ -554,12 +557,19 @@ export default function HoldingsPage() {
               timeoutMs: 10_000,
             });
             const quote = json?.options?.[0] || null;
-            return [candidate.quoteKey, quote ? { ...quote, provider: json.provider || quote.provider, generatedAt: json.generatedAt } : {
+            const quoteSource = json?.dataSource || null;
+            return [candidate.quoteKey, quote ? {
+              ...quote,
+              provider: json.provider || quote.provider,
+              generatedAt: json.generatedAt,
+              quoteSource,
+            } : {
               provider: json.provider || marketDataConfig.optionProvider || '期权报价',
               quoteUnavailable: true,
               error: normalizeOptionQuoteError(json.message || '期权报价未返回，请检查合约、数据源权限或 OPRA 授权。'),
               contractSymbol: candidate.contract,
               generatedAt: json.generatedAt || new Date().toISOString(),
+              quoteSource,
             }];
           } catch (error) {
             return [candidate.quoteKey, {

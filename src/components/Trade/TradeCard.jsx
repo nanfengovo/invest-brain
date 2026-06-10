@@ -64,7 +64,12 @@ function getOptionExpirationParts(label) {
   return String(label || '')
     .split('·')
     .map((part) => part.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .map((text, index) => ({
+      key: `${index}-${text}`,
+      text,
+      type: index === 0 && /^EXP:/i.test(text) ? 'date' : 'risk',
+    }));
 }
 
 function getLifecycleBadge(lifecycle, directionType) {
@@ -269,8 +274,11 @@ export default function TradeCard({ trade, index = 0, onEdit, compactMode = fals
                     title={trade.option_expiration_label}
                   >
                     {optionExpirationParts.map((part) => (
-                      <span key={part} className="trade-card__option-expiration-part">
-                        {part}
+                      <span
+                        key={part.key}
+                        className={`trade-card__option-expiration-part trade-card__option-expiration-part--${part.type}`}
+                      >
+                        {part.text}
                       </span>
                     ))}
                   </div>

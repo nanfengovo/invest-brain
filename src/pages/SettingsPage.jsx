@@ -1159,7 +1159,7 @@ function SettingsPage() {
             <div className="settings-card__content">
               <div className="settings-card__label">期权链数据源</div>
               <div className="settings-card__desc">
-                Auto 会优先使用 MarketData.app，其次 Tradier、Polygon、Longbridge；Yahoo 仅作为免费实验兜底，盘中实时期权价仍取决于 OPRA 权限。
+                Auto 会优先使用 MarketData.app，其次 Longbridge、Tradier、Polygon；Yahoo 仅作为免费实验兜底，盘中实时期权价仍取决于 OPRA 权限。
               </div>
             </div>
           </div>
@@ -1181,7 +1181,7 @@ function SettingsPage() {
             />
             <div className="settings-card__provider-note">
               <strong>MarketData.app 建议优先使用。</strong>
-              免费层约 100 次/日 API Credits，期权数据延迟约 24h，适合复盘和低频监控；试用或付费套餐可升级更低延迟/实时 OPRA。Longbridge 可增强公司基础资料和股票报价，期权报价需要 OPRA OpenAPI 权限。
+              免费层约 100 次/日 API Credits，期权数据延迟约 24h，适合复盘和低频监控；试用或付费套餐可升级更低延迟/实时 OPRA。Longbridge 官方 SDK 支持 optionQuote，期权报价需要 OPRA US Options Quotes 的 OpenAPI 权限；本地会优先尝试 Longbridge CLI，线上仍建议配置 MarketData.app/Tradier/Polygon 作为实时 OPRA 主源。
             </div>
             <div className="settings-card__input-wrapper">
               <Input

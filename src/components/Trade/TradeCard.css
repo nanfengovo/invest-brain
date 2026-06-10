@@ -150,6 +150,7 @@
   align-items: flex-start;
   flex-wrap: wrap;
   gap: 4px 6px;
+  width: 100%;
   color: var(--option-exp-color, #93c5fd);
   background: transparent;
   border: 0;
@@ -161,7 +162,9 @@
 .trade-card__option-expiration-part {
   display: inline-flex;
   align-items: center;
+  flex: 0 1 auto;
   min-height: 20px;
+  min-width: 0;
   max-width: 100%;
   padding: 3px 8px;
   border: 1px solid var(--option-exp-border, transparent);
@@ -169,9 +172,15 @@
   background: var(--option-exp-bg, transparent);
   color: var(--option-exp-color, #93c5fd);
   line-height: 1.25;
+  overflow: visible;
   overflow-wrap: anywhere;
   text-align: left;
+  text-overflow: clip;
   white-space: normal;
+}
+
+.trade-card__option-expiration-part--risk {
+  font-weight: 750;
 }
 
 .trade-card__asset-name--option-calm {
@@ -627,7 +636,7 @@
 
 .trade-card--compact .trade-card__right {
   text-align: right;
-  width: clamp(70px, 21vw, 86px);
+  width: clamp(64px, 20vw, 80px);
 }
 
 .trade-card--compact .trade-card__price-qty {

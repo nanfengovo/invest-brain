@@ -168,6 +168,7 @@
   align-items: flex-start;
   flex-wrap: wrap;
   gap: 4px 6px;
+  width: 100%;
   color: var(--holding-option-exp-color, #93c5fd);
   background: transparent;
   border: 0;
@@ -178,7 +179,9 @@
 .holding-card__expiration-part {
   display: inline-flex;
   align-items: center;
+  flex: 0 1 auto;
   min-height: 20px;
+  min-width: 0;
   max-width: 100%;
   padding: 3px 8px;
   border: 1px solid var(--holding-option-exp-border, transparent);
@@ -186,9 +189,15 @@
   background: var(--holding-option-exp-bg, transparent);
   color: var(--holding-option-exp-color, #93c5fd);
   line-height: 1.25;
+  overflow: visible;
   overflow-wrap: anywhere;
   text-align: left;
+  text-overflow: clip;
   white-space: normal;
+}
+
+.holding-card__expiration-part--risk {
+  font-weight: 750;
 }
 
 .holding-card__expiration--calm {
@@ -503,6 +512,37 @@
   font-size: 10px;
   font-weight: 650;
   line-height: 1.45;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.holding-card__quote-attempts {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.holding-card__quote-attempts span {
+  display: block;
+  min-width: 0;
+  padding: 6px 7px;
+  border: 1px dashed rgba(245, 158, 11, 0.22);
+  border-radius: 9px;
+  background: rgba(245, 158, 11, 0.07);
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.holding-card__quote-attempts strong {
+  display: inline-flex;
+  margin-right: 5px;
+  color: #fbbf24;
+  font-weight: 850;
 }
 
 .holding-card__dte-track {
@@ -856,6 +896,16 @@
 [data-theme='light'] .holding-card__quote-strip .holding-card__quote-chip--muted,
 [data-theme='light'] .holding-card__quote-note {
   color: #94a3b8;
+}
+
+[data-theme='light'] .holding-card__quote-attempts span {
+  color: #64748b;
+  border-color: rgba(217, 119, 6, 0.24);
+  background: rgba(254, 243, 199, 0.62);
+}
+
+[data-theme='light'] .holding-card__quote-attempts strong {
+  color: #b45309;
 }
 
 [data-theme='light'] .holding-card__expiration--calm {

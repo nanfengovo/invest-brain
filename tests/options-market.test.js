@@ -19,6 +19,7 @@ import {
   getPreviousUsTradingDate,
 } from '../api/options-chain.js';
 import {
+  toLongbridgeCliOptionSymbol,
   toLongbridgeOptionSymbol,
   toLongbridgeStockSymbol,
 } from '../api/_lib/longbridge.js';
@@ -72,6 +73,9 @@ test('normalizes symbols for Longbridge stock and option APIs', () => {
   assert.equal(toLongbridgeStockSymbol('00700'), '00700.HK');
   assert.equal(toLongbridgeOptionSymbol('OPTION_NVDA260618C00100000'), 'NVDA260618C100000.US');
   assert.equal(toLongbridgeOptionSymbol('TSLA260618P00350000'), 'TSLA260618P350000.US');
+  assert.equal(toLongbridgeCliOptionSymbol('OPTION_NVDA260618C00100000'), 'NVDA260618C100000');
+  assert.equal(toLongbridgeCliOptionSymbol('NVDA260618C100000.US'), 'NVDA260618C100000');
+  assert.equal(toLongbridgeCliOptionSymbol('AAPL240119C190000'), 'AAPL240119C190000');
 });
 
 test('normalizes loose option trade records', () => {

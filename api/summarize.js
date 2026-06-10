@@ -689,7 +689,9 @@ async function handleShareBackgroundMode({ req, res }) {
   const apiKey = req.headers['x-nvidia-api-key'] || process.env.NVIDIA_API_KEY;
   const {
     prompt,
+    provider,
     model: requestedModel,
+    seed: requestedSeed,
     width: requestedWidth = 1080,
     height: requestedHeight = 1440,
   } = req.body || {};
@@ -698,15 +700,18 @@ async function handleShareBackgroundMode({ req, res }) {
     const payload = await generateShareBackground({
       apiKey,
       prompt,
+      provider,
       requestedModel,
       requestedWidth,
       requestedHeight,
+      requestedSeed,
     });
     return res.status(200).json(payload);
   } catch (error) {
     const status = /请输入|未配置/.test(error.message || '') ? 400 : 500;
     return res.status(status).json({
       error: error.message || 'AI 背景生成失败',
+      provider,
       model: requestedModel,
     });
   }

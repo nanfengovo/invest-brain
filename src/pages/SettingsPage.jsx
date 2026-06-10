@@ -1101,18 +1101,19 @@ function SettingsPage() {
           <div className="settings-card__row" style={{ cursor: 'default' }}>
             <span className="settings-card__icon">🖼️</span>
             <div className="settings-card__content">
-              <div className="settings-card__label">背景来源与 NVIDIA 模型</div>
+              <div className="settings-card__label">背景来源与 AI 模型</div>
               <div className="settings-card__desc">
-                分享时可选择本地背景、上传图片或用 NVIDIA AI 生成背景；标题、收益和期权信息仍由本地 Canvas 绘制。
+                分享时可选择本地背景、上传图片或用 Pollinations / NVIDIA 生成背景；标题、收益、二维码和期权信息仍由本地 Canvas 绘制。
               </div>
             </div>
           </div>
           <div className="settings-card__input-row settings-card__input-row--stacked">
             <Selector
-              options={[
-                { label: '本地优先', value: 'local' },
-                { label: 'NVIDIA AI', value: 'nvidia' },
-              ]}
+	              options={[
+	                { label: '本地优先', value: 'local' },
+	                { label: 'Pollinations 免费尝试', value: 'pollinations' },
+	                { label: 'NVIDIA AI', value: 'nvidia' },
+	              ]}
               value={[shareBackgroundInput.provider || 'local']}
               onChange={(value) => {
                 if (!value.length) return;
@@ -1120,8 +1121,10 @@ function SettingsPage() {
               }}
             />
             <Selector
-              options={[
-                { label: 'Qwen Image', value: 'qwen-image' },
+	              options={[
+	                { label: 'Pollinations FLUX', value: 'pollinations-flux' },
+	                { label: 'Pollinations Turbo', value: 'pollinations-turbo' },
+	                { label: 'Qwen Image', value: 'qwen-image' },
                 { label: 'Qwen Image 2512', value: 'qwen-image-2512' },
                 { label: 'FLUX.2 Klein 4B', value: 'flux.2-klein-4b' },
                 { label: 'FLUX.1 Schnell', value: 'flux.1-schnell' },
@@ -1135,7 +1138,7 @@ function SettingsPage() {
             />
             <div className="settings-card__input-wrapper">
               <Input
-                placeholder="NVIDIA API Key（可选；留空则使用服务端环境变量）"
+	                placeholder="NVIDIA API Key（可选；留空则使用服务端环境变量）"
                 type="password"
                 value={shareBackgroundInput.nvidiaApiKey || ''}
                 onChange={(value) => setShareBackgroundInput((current) => ({ ...current, nvidiaApiKey: value }))}

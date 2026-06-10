@@ -86,6 +86,16 @@ function getOptionQuoteAttempts(optionQuote) {
   return Array.isArray(attempts) ? attempts.filter((item) => item?.provider || item?.message) : [];
 }
 
+function getOptionQuoteNote(optionQuote, optionDailyMissingReason) {
+  const error = String(optionQuote?.error || '').trim();
+  const dailyReason = String(optionDailyMissingReason || '').trim();
+  const sourceNote = String(optionQuote?.quoteSource?.note || optionQuote?.quoteSource?.fallbackNote || '').trim();
+  return [error, dailyReason, sourceNote]
+    .filter(Boolean)
+    .filter((item, index, list) => list.indexOf(item) === index)
+    .join('；');
+}
+
 export default function HoldingCard({
   holding,
   underlyingPrice = null,
@@ -154,6 +164,7 @@ export default function HoldingCard({
   const quoteProvider = optionMetrics.quoteProvider || marketQuote?.provider || marketQuote?.exchangeName || '';
   const optionQuoteStatusLabel = getOptionQuoteStatusLabel(optionQuote, quoteUnavailable);
   const optionQuoteAttempts = getOptionQuoteAttempts(optionQuote);
+  const optionQuoteNote = isOption ? getOptionQuoteNote(optionQuote, optionDailyMissingReason) : '';
   const title = isOption && optionDisplay?.title ? optionDisplay.title : holding.symbol;
   const typeLabel = TYPE_LABELS[assetType] || assetType;
   const assetName = getReadableAssetName({
@@ -176,7 +187,7 @@ export default function HoldingCard({
     >
       <div
         className="holding-card__main"
-        onClick={() => onToggle?.(holding.asset_id, holding.broker, holding.author)}
+        onClick={() => onToggle?.(holding.position_key || holding.asset_id, holding.broker, holding.author)}
       >
         <div className="holding-card__left">
           <div className="holding-card__title-row">
@@ -336,14 +347,14 @@ export default function HoldingCard({
               </span>
             </div>
           )}
-          {(quoteUnavailable || (!hasOptionDailyChange && optionDailyMissingReason)) && (
+          {(quoteUnavailable || optionQuoteNote) && (
             <div className="holding-card__quote-note">
-              {optionDailyMissingReason}
+              {optionQuoteNote || '该合约暂未返回可用 Mark/Last/Bid/Ask。'}
             </div>
           )}
           {optionQuoteAttempts.length > 0 && (
             <div className="holding-card__quote-attempts">
-              {optionQuoteAttempts.slice(0, 3).map((attempt) => (
+              {optionQuoteAttempts.map((attempt) => (
                 <span key={`${attempt.provider || '数据源'}-${attempt.message || ''}`}>
                   <strong>{attempt.provider || '数据源'}</strong>
                   {attempt.message || '未返回可用报价'}

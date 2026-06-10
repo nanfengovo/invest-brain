@@ -262,11 +262,11 @@ test('summarizes option holdings with live mark and daily pnl basis', () => {
     },
   ];
   const summary = buildOptionRealtimeSummary(holdings, {
-    'OPTION_NVDA260618C00100000-复星证券-test': {
+    'OPTION_NVDA260618C00100000::test': {
       mark: 2.25,
       change: 0.5,
     },
-    'OPTION_TSLA260618P00350000--未标记': {
+    'OPTION_TSLA260618P00350000::未标记': {
       last: 3.5,
       change: null,
     },
@@ -311,13 +311,13 @@ test('option realtime summary isolates unavailable quotes and ignores stock hold
       author: 'alice',
     },
   ], {
-    'OPTION_AAPL260618C00200000--未标记': {
+    'OPTION_AAPL260618C00200000::未标记': {
       quoteUnavailable: true,
       error: 'OPRA 权限不足',
       mark: 5,
       change: 1,
     },
-    'OPTION_TSLA260618P00350000-Longbridge-alice': {
+    'OPTION_TSLA260618P00350000::alice': {
       mark: 3.5,
       change: null,
     },

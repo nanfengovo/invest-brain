@@ -1,9 +1,11 @@
+import QRCode from 'qrcode';
 import { chooseSharePosterBackground } from './sharePosterBackgrounds.jsx';
 
 const POSTER_WIDTH = 1080;
 const POSTER_HEIGHT = 1440;
 const POSTER_PADDING = 72;
 const SHARE_BRAND = 'InvestBrain';
+const DEFAULT_SHARE_SITE_URL = 'https://invest-brain.vercel.app';
 const TEMPLATE_POOL = ['signal-card', 'badge-card', 'ledger-clean', 'pop-profit'];
 const EXPLICIT_TEMPLATE_POOL = ['stock-snapshot', ...TEMPLATE_POOL];
 
@@ -152,6 +154,65 @@ function roundRect(ctx, x, y, width, height, radius) {
   ctx.closePath();
 }
 
+function getShareSiteUrl(config = {}) {
+  const configuredUrl = String(
+    config.qrUrl
+      || config.shareUrl
+      || import.meta.env?.VITE_SHARE_SITE_URL
+      || import.meta.env?.VITE_PUBLIC_SITE_URL
+      || DEFAULT_SHARE_SITE_URL
+  ).trim();
+  if (!configuredUrl) return DEFAULT_SHARE_SITE_URL;
+  try {
+    return new URL(configuredUrl).toString();
+  } catch {
+    return DEFAULT_SHARE_SITE_URL;
+  }
+}
+
+function drawShareQr(ctx, config = {}, x, y, size = 112, theme = {}) {
+  const url = getShareSiteUrl(config);
+  const qr = QRCode.create(url, {
+    errorCorrectionLevel: 'M',
+    margin: 1,
+  });
+  const moduleCount = qr.modules.size;
+  const data = qr.modules.data;
+  const padding = Math.max(8, Math.round(size * 0.08));
+  const boxSize = size + padding * 2;
+  const moduleSize = size / moduleCount;
+
+  ctx.save();
+  roundRect(ctx, x - padding, y - padding, boxSize, boxSize, theme.radius || 18);
+  ctx.fillStyle = theme.background || '#f8fafc';
+  ctx.fill();
+  ctx.strokeStyle = theme.border || 'rgba(15, 23, 42, 0.12)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.fillStyle = theme.module || '#0f172a';
+  for (let row = 0; row < moduleCount; row += 1) {
+    for (let col = 0; col < moduleCount; col += 1) {
+      if (!data[(row * moduleCount) + col]) continue;
+      ctx.fillRect(
+        x + col * moduleSize,
+        y + row * moduleSize,
+        Math.ceil(moduleSize),
+        Math.ceil(moduleSize),
+      );
+    }
+  }
+
+  const label = theme.label === undefined ? '扫码进入网站' : theme.label;
+  if (label) {
+    ctx.fillStyle = theme.labelColor || 'rgba(226, 232, 240, 0.68)';
+    ctx.font = `${theme.labelWeight || 700} ${theme.labelSize || 20}px "PingFang SC", sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(label, x + size / 2, y + size + padding + (theme.labelOffset || 24));
+  }
+  ctx.restore();
+}
+
 function drawTextLines(ctx, lines, x, y, lineHeight, maxWidth, maxLines) {
   const rendered = clampText(ctx, lines.join(' '), maxWidth, maxLines);
   rendered.forEach((line, index) => {
@@ -233,8 +294,12 @@ function drawStockMiniChart(ctx, chartData, x, y, width, height, colors = {}) {
   const chartX = x + 34;
   const chartY = y + 96;
   const chartW = width - 68;
-  const priceH = height - 178;
-  const volumeY = y + height - 66;
+  const dateBaselineY = y + height - 28;
+  const dateBandTop = dateBaselineY - 30;
+  const volumeBaseY = dateBandTop - 16;
+  const volumeMaxHeight = 50;
+  const volumeTopY = volumeBaseY - volumeMaxHeight;
+  const priceH = Math.max(144, volumeTopY - chartY - 18);
   const maxVolume = Math.max(...rows.map((item) => item.volume || 0), 1);
   const minPrice = Math.min(...rows.map((item) => item.low));
   const maxPrice = Math.max(...rows.map((item) => item.high));
@@ -296,20 +361,23 @@ function drawStockMiniChart(ctx, chartData, x, y, width, height, colors = {}) {
 
   rows.forEach((item, index) => {
     if (index % sampleEvery !== 0 && index !== rows.length - 1) return;
-    const barH = Math.max(4, Math.min(52, ((item.volume || 0) / maxVolume) * 52));
+    const barH = Math.max(4, Math.min(volumeMaxHeight, ((item.volume || 0) / maxVolume) * volumeMaxHeight));
     const cx = chartX + index * xStep;
     ctx.fillStyle = item.close >= item.open ? 'rgba(16, 185, 129, 0.72)' : 'rgba(251, 113, 133, 0.72)';
-    roundRect(ctx, cx - candleWidth / 2, volumeY + 52 - barH, candleWidth, barH, 2);
+    roundRect(ctx, cx - candleWidth / 2, volumeBaseY - barH, candleWidth, barH, 2);
     ctx.fill();
   });
 
   const first = rows[0];
   const last = rows[rows.length - 1];
+  ctx.fillStyle = colors.dateBand || 'rgba(2, 6, 23, 0.32)';
+  roundRect(ctx, chartX - 6, dateBandTop, chartW + 12, y + height - dateBandTop - 14, 12);
+  ctx.fill();
   ctx.fillStyle = muted;
-  ctx.font = '600 20px "PingFang SC", sans-serif';
-  ctx.fillText(String(first.date || '').slice(0, 10), chartX, y + height - 18);
+  ctx.font = '600 18px "PingFang SC", sans-serif';
+  ctx.fillText(String(first.date || '').slice(0, 10), chartX + 2, dateBaselineY);
   ctx.textAlign = 'right';
-  ctx.fillText(String(last.date || '').slice(0, 10), chartX + chartW, y + height - 18);
+  ctx.fillText(String(last.date || '').slice(0, 10), chartX + chartW - 2, dateBaselineY);
   ctx.textAlign = 'left';
   ctx.restore();
 }
@@ -508,16 +576,28 @@ function drawStockSnapshotTemplate(ctx, config, accent = '#38bdf8', accent2 = '#
       .forEach((line, lineIndex) => ctx.fillText(line, panel.x + 28, panelY + 82 + lineIndex * 34));
   });
 
+  const qrSize = 92;
+  const qrX = POSTER_WIDTH - 216;
+  const qrY = 1258;
+  drawShareQr(ctx, config, qrX, qrY, qrSize, {
+    background: '#f8fafc',
+    module: '#0f172a',
+    border: 'rgba(255, 255, 255, 0.16)',
+    labelColor: 'rgba(203, 213, 225, 0.62)',
+    labelSize: 17,
+    labelOffset: 22,
+  });
+
+  const footerWidth = qrX - 146;
   ctx.fillStyle = 'rgba(203, 213, 225, 0.66)';
   ctx.font = '600 20px "PingFang SC", sans-serif';
-  clampText(ctx, sourceLabel, POSTER_WIDTH - 224, 1).forEach((line) => ctx.fillText(line, 112, 1336));
+  clampText(ctx, sourceLabel, footerWidth, 1).forEach((line) => ctx.fillText(line, 112, 1328));
   ctx.fillStyle = 'rgba(203, 213, 225, 0.48)';
   ctx.font = '600 19px "PingFang SC", sans-serif';
-  clampText(ctx, config.footer || '仅供复盘参考，不构成投资建议', 610, 1)
-    .forEach((line) => ctx.fillText(line, 112, 1372));
-  ctx.textAlign = 'right';
-  ctx.fillText(config.generatedAt || new Date().toLocaleString('zh-CN'), POSTER_WIDTH - 112, 1372);
-  ctx.textAlign = 'left';
+  clampText(ctx, config.footer || '仅供复盘参考，不构成投资建议', footerWidth, 1)
+    .forEach((line) => ctx.fillText(line, 112, 1362));
+  clampText(ctx, config.generatedAt || new Date().toLocaleString('zh-CN'), footerWidth, 1)
+    .forEach((line) => ctx.fillText(line, 112, 1392));
 }
 
 function drawPosterBackground(ctx, config, accent, accent2) {
@@ -594,13 +674,31 @@ function drawPosterBackground(ctx, config, accent, accent2) {
 function drawFooter(ctx, config, theme = {}) {
   const x = theme.x || POSTER_PADDING + 44;
   const y = theme.y || POSTER_HEIGHT - 138;
+  const qrSize = theme.qrSize || 92;
+  const qrX = theme.qrX || POSTER_WIDTH - POSTER_PADDING - 44 - qrSize;
+  const qrY = theme.qrY || y - 54;
+  const textMaxWidth = theme.maxWidth || Math.max(360, qrX - x - 34);
+
+  if (theme.showQr !== false) {
+    drawShareQr(ctx, config, qrX, qrY, qrSize, {
+      background: theme.qrBackground || '#f8fafc',
+      module: theme.qrModule || '#0f172a',
+      border: theme.qrBorder || 'rgba(255, 255, 255, 0.18)',
+      labelColor: theme.qrLabelColor || theme.color || 'rgba(226, 232, 240, 0.68)',
+      labelSize: theme.qrLabelSize || 18,
+      labelOffset: theme.qrLabelOffset || 22,
+    });
+  }
+
   ctx.fillStyle = theme.color || 'rgba(148, 163, 184, 0.62)';
   ctx.font = '500 24px "PingFang SC", sans-serif';
-  ctx.fillText(config.footer || '本地优先 · 交易记录与分析 Agent', x, y);
+  clampText(ctx, config.footer || '本地优先 · 交易记录与分析 Agent', textMaxWidth, 1)
+    .forEach((line) => ctx.fillText(line, x, y));
 
   ctx.fillStyle = theme.dateColor || 'rgba(148, 163, 184, 0.45)';
   ctx.font = '500 22px "PingFang SC", sans-serif';
-  ctx.fillText(config.generatedAt || new Date().toLocaleString('zh-CN'), x, y + 36);
+  clampText(ctx, config.generatedAt || new Date().toLocaleString('zh-CN'), textMaxWidth, 1)
+    .forEach((line) => ctx.fillText(line, x, y + 36));
 }
 
 function drawSignalCardTemplate(ctx, config, accent, accent2) {
@@ -866,8 +964,15 @@ function drawLedgerTemplate(ctx, config, accent, accent2) {
   ctx.fillText(SHARE_BRAND, 132, 1306);
   ctx.fillStyle = '#111827';
   ctx.font = '700 28px "PingFang SC", sans-serif';
-  ctx.fillText('交易记录与分析 Agent', POSTER_WIDTH - 380, 1288);
-  ctx.fillText('本地优先', POSTER_WIDTH - 380, 1330);
+  ctx.fillText('交易记录与分析 Agent', POSTER_WIDTH - 520, 1288);
+  ctx.fillText('本地优先', POSTER_WIDTH - 520, 1330);
+  drawShareQr(ctx, config, POSTER_WIDTH - 214, 1248, 92, {
+    background: '#ffffff',
+    module: '#111827',
+    border: 'rgba(17, 24, 39, 0.16)',
+    labelColor: '#374151',
+    labelSize: 18,
+  });
 }
 
 function drawPopProfitTemplate(ctx, config, accent, accent2) {
@@ -938,6 +1043,13 @@ function drawPopProfitTemplate(ctx, config, accent, accent2) {
   ctx.fillStyle = 'rgba(255, 255, 255, 0.72)';
   ctx.font = '500 24px "PingFang SC", sans-serif';
   ctx.fillText(config.generatedAt || new Date().toLocaleString('zh-CN'), 78, 1370);
+  drawShareQr(ctx, config, POSTER_WIDTH - 198, 1248, 86, {
+    background: '#ffffff',
+    module: '#be123c',
+    border: 'rgba(255, 255, 255, 0.42)',
+    labelColor: 'rgba(255, 255, 255, 0.82)',
+    labelSize: 17,
+  });
 }
 
 function createPosterCanvas(config = {}) {
@@ -1040,6 +1152,21 @@ export async function sharePoster(config = {}) {
 }
 
 export const FREE_IMAGE_MODEL_RECOMMENDATIONS = [
+  {
+    name: 'Pollinations FLUX / Turbo',
+    fit: '官方文档提供 image.pollinations.ai 文生图接口，可作为无配置尝试源',
+    caveat: '当前可能触发队列或 402 限流，失败时会明确提示，不再静默复用同一张本地背景',
+  },
+  {
+    name: 'Puter.js txt2img',
+    fit: '支持 GPT Image、DALL-E、FLUX 等多 provider，适合后续做浏览器端用户自授权生图',
+    caveat: '更适合前端接入用户付费/登录模型，当前不作为服务端默认源',
+  },
+  {
+    name: 'Hugging Face Inference Providers',
+    fit: '可接入 FLUX.1-dev、Stable Diffusion 等高质量模型',
+    caveat: '通常需要 HF Token 和 Inference Providers 权限',
+  },
   {
     name: 'Qwen-Image',
     fit: '当前默认分享背景模型，中文语义和海报构图更稳',

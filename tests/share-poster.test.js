@@ -363,12 +363,13 @@ test('stock detail chart does not get stuck on an English loading placeholder', 
   assert.doesNotMatch(chart, /参考价/);
 });
 
-test('share poster background picker supports local upload and NVIDIA generation', () => {
+test('share poster background picker supports local upload and AI generation', () => {
   const picker = readFileSync(new URL('../src/utils/sharePosterBackgrounds.jsx', import.meta.url), 'utf8');
   const api = readFileSync(new URL('../api/_lib/shareBackground.js', import.meta.url), 'utf8');
   const summarize = readFileSync(new URL('../api/summarize.js', import.meta.url), 'utf8');
   const settings = readFileSync(new URL('../src/pages/SettingsPage.jsx', import.meta.url), 'utf8');
   const appStore = readFileSync(new URL('../src/stores/useAppStore.js', import.meta.url), 'utf8');
+  const poster = readFileSync(new URL('../src/utils/sharePoster.js', import.meta.url), 'utf8');
   const viteConfig = readFileSync(new URL('../vite.config.js', import.meta.url), 'utf8');
   const vercelConfig = readFileSync(new URL('../vercel.json', import.meta.url), 'utf8');
   const apiFunctions = readdirSync(new URL('../api', import.meta.url))
@@ -378,8 +379,13 @@ test('share poster background picker supports local upload and NVIDIA generation
   assert.match(picker, /使用我的图片/);
   assert.match(picker, /收益勋章/);
   assert.match(picker, /红色战报/);
-  assert.match(picker, /NVIDIA AI 生成/);
+  assert.match(picker, /AI 生成背景/);
   assert.match(picker, /mode: 'share-background'/);
+  assert.match(picker, /Pollinations FLUX/);
+  assert.match(picker, /Pollinations Turbo/);
+  assert.match(picker, /pollinations-flux/);
+  assert.match(picker, /pollinations-turbo/);
+  assert.match(picker, /provider: 'pollinations'/);
   assert.match(picker, /qwen-image/);
   assert.match(picker, /qwen-image-2512/);
   assert.match(picker, /flux\.2-klein-4b/);
@@ -390,13 +396,25 @@ test('share poster background picker supports local upload and NVIDIA generation
   assert.match(api, /ai\.api\.nvidia\.com\/v1\/genai\/qwen\/qwen-image/);
   assert.match(api, /black-forest-labs\/flux\.1-schnell/);
   assert.match(api, /stabilityai\/stable-diffusion-3\.5-large/);
+  assert.match(api, /image\.pollinations\.ai/);
+  assert.match(api, /provider: 'pollinations'/);
+  assert.match(api, /seed/);
   assert.match(api, /FALLBACK_MODELS/);
   assert.match(api, /NVIDIA_IMAGE_BASE_URL/);
   assert.match(summarize, /mode === 'share-background'/);
+  assert.match(summarize, /provider/);
+  assert.match(summarize, /seed/);
   assert.match(summarize, /NVIDIA_API_KEY/);
   assert.match(summarize, /x-nvidia-api-key/);
   assert.match(settings, /分享图背景生成/);
+  assert.match(settings, /Pollinations 免费尝试/);
+  assert.match(settings, /Pollinations FLUX/);
+  assert.match(settings, /Pollinations Turbo/);
   assert.match(settings, /NVIDIA API Key/);
+  assert.match(poster, /QRCode/);
+  assert.match(poster, /drawShareQr/);
+  assert.match(poster, /DEFAULT_SHARE_SITE_URL/);
+  assert.match(poster, /qrcode/);
   assert.match(appStore, /defaultModel: 'qwen-image'/);
   assert.match(appStore, /share_background_config/);
   assert.match(viteConfig, /\/api\/share-background/);

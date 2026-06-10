@@ -76,6 +76,8 @@ const TRADE_AUTHOR_SQL = `COALESCE(NULLIF(TRIM(t.author), ''), '未标记')`;
 const TRADE_WORKSPACE_SQL = `COALESCE(NULLIF(TRIM(t.workspace_scope), ''), 'personal')`;
 const TRADE_AUTHOR_NO_ALIAS_SQL = `COALESCE(NULLIF(TRIM(author), ''), '未标记')`;
 const TRADE_WORKSPACE_NO_ALIAS_SQL = `COALESCE(NULLIF(TRIM(workspace_scope), ''), 'personal')`;
+const TRADE_BUY_DIRECTION_VALUES_SQL = `('BUY', 'OPEN', 'BTO', 'BUY_TO_OPEN', 'BUY_OPEN', 'OPEN_BUY', 'BOT', '买入', '买', '开仓', '买入开仓', '开仓买入', '买入_开仓', '开仓_买入')`;
+const TRADE_SELL_DIRECTION_VALUES_SQL = `('SELL', 'CLOSE', 'STC', 'SELL_TO_CLOSE', 'SELL_CLOSE', 'CLOSE_SELL', 'SOLD', 'SLD', '卖出', '卖', '平仓', '已卖出', '卖出平仓', '平仓卖出', '卖出_平仓', '平仓_卖出')`;
 const INFO_AUTHOR_SQL = `COALESCE(NULLIF(TRIM(i.author), ''), COALESCE(NULLIF(TRIM(i.source_author), ''), '未标记'))`;
 const INFO_WORKSPACE_SQL = `COALESCE(NULLIF(TRIM(i.workspace_scope), ''), 'personal')`;
 const INFO_AUTHOR_NO_ALIAS_SQL = `COALESCE(NULLIF(TRIM(author), ''), COALESCE(NULLIF(TRIM(source_author), ''), '未标记'))`;
@@ -110,6 +112,90 @@ const TEAM_SYNC_TABLES = [
   'viewpoints',
   'trades',
 ];
+
+function tradeDirectionValueSql(column = 't.direction') {
+  return `UPPER(REPLACE(REPLACE(REPLACE(TRIM(COALESCE(${column}, '')), ' ', '_'), '-', '_'), '/', '_'))`;
+}
+
+function tradeBuyDirectionSql(column = 't.direction') {
+  return `${tradeDirectionValueSql(column)} IN ${TRADE_BUY_DIRECTION_VALUES_SQL}`;
+}
+
+function tradeSellDirectionSql(column = 't.direction') {
+  return `${tradeDirectionValueSql(column)} IN ${TRADE_SELL_DIRECTION_VALUES_SQL}`;
+}
+
+function tradeAssetTypeSql() {
+  return `CASE
+    WHEN UPPER(TRIM(COALESCE(a.type, ''))) = 'OPTION'
+      OR t.option_type IS NOT NULL
+      OR t.strike_price IS NOT NULL
+      OR t.expiry_date IS NOT NULL
+      OR t.contract_symbol IS NOT NULL
+      THEN 'OPTION'
+    ELSE UPPER(TRIM(COALESCE(NULLIF(a.type, ''), 'STOCK')))
+  END`;
+}
+
+function tradeUnderlyingSql() {
+  return `UPPER(TRIM(COALESCE(NULLIF(t.underlying_symbol, ''), NULLIF(a.underlying_symbol, ''), NULLIF(a.symbol, ''), NULLIF(t.asset_id, ''), '')))`;
+}
+
+function tradeSymbolSql() {
+  return `CASE
+    WHEN ${tradeAssetTypeSql()} = 'OPTION' THEN ${tradeUnderlyingSql()}
+    ELSE UPPER(TRIM(COALESCE(NULLIF(a.symbol, ''), NULLIF(t.asset_id, ''), '')))
+  END`;
+}
+
+function tradeRawExpirySql() {
+  return `TRIM(COALESCE(NULLIF(t.expiry_date, ''), NULLIF(a.expiry_date, ''), ''))`;
+}
+
+function tradeExpirySql() {
+  const rawExpiry = tradeRawExpirySql();
+  return `CASE
+    WHEN ${rawExpiry} GLOB '[0-9][0-9][0-9][0-9][0-9][0-9]' THEN '20' || substr(${rawExpiry}, 1, 2) || '-' || substr(${rawExpiry}, 3, 2) || '-' || substr(${rawExpiry}, 5, 2)
+    WHEN ${rawExpiry} GLOB '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]' THEN substr(${rawExpiry}, 1, 4) || '-' || substr(${rawExpiry}, 5, 2) || '-' || substr(${rawExpiry}, 7, 2)
+    ELSE ${rawExpiry}
+  END`;
+}
+
+function tradeStrikeSql() {
+  return `CASE
+    WHEN COALESCE(t.strike_price, a.strike_price) IS NULL THEN ''
+    ELSE printf('%.8g', COALESCE(t.strike_price, a.strike_price))
+  END`;
+}
+
+function tradeOptionTypeSql() {
+  const rawType = `UPPER(TRIM(COALESCE(NULLIF(t.option_type, ''), NULLIF(a.option_type, ''), '')))`;
+  return `CASE
+    WHEN ${rawType} IN ('C', 'CALL') OR ${rawType} LIKE '%CALL%' OR ${rawType} LIKE '%认购%' THEN 'CALL'
+    WHEN ${rawType} IN ('P', 'PUT') OR ${rawType} LIKE '%PUT%' OR ${rawType} LIKE '%认沽%' THEN 'PUT'
+    ELSE ${rawType}
+  END`;
+}
+
+function tradeContractSql() {
+  return `UPPER(TRIM(COALESCE(NULLIF(t.contract_symbol, ''), NULLIF(a.id, ''), NULLIF(t.asset_id, ''), '')))`;
+}
+
+function tradePositionKeySql() {
+  return `CASE
+    WHEN ${tradeAssetTypeSql()} = 'OPTION' THEN
+      CASE
+        WHEN ${tradeExpirySql()} <> '' OR ${tradeStrikeSql()} <> '' OR ${tradeOptionTypeSql()} <> ''
+          THEN 'OPTION|' || ${tradeUnderlyingSql()} || '|' || ${tradeExpirySql()} || '|' || ${tradeStrikeSql()} || '|' || ${tradeOptionTypeSql()}
+        ELSE 'OPTION|' || ${tradeContractSql()}
+      END
+    ELSE ${tradeAssetTypeSql()} || '|' || ${tradeSymbolSql()}
+  END`;
+}
+
+function tradeExpiredOptionSql() {
+  return `(${tradeAssetTypeSql()} = 'OPTION' AND ${tradeExpirySql()} <> '' AND date(${tradeExpirySql()}) < date('now'))`;
+}
 
 function appendAuthorFilter(sql, params, author, authorSql = TRADE_AUTHOR_SQL) {
   const normalizedAuthor = String(author || '').trim();
@@ -454,6 +540,37 @@ export const db = {
   },
 
   async markExpiredOptionTrades(scope = 'personal') {
+    const candidateWorkspaceSql = `COALESCE(NULLIF(TRIM(candidate.workspace_scope), ''), 'personal')`;
+    const candidateAuthorSql = `COALESCE(NULLIF(TRIM(candidate.author), ''), '未标记')`;
+    const outerAuthorSql = `COALESCE(NULLIF(TRIM(trades.author), ''), '未标记')`;
+    const candidateContractSql = `UPPER(TRIM(COALESCE(NULLIF(candidate.contract_symbol, ''), '')))`;
+    const outerContractSql = `UPPER(TRIM(COALESCE(NULLIF(trades.contract_symbol, ''), '')))`;
+    const candidateUnderlyingSql = `UPPER(TRIM(COALESCE(NULLIF(candidate.underlying_symbol, ''), NULLIF(candidate.asset_id, ''), '')))`;
+    const outerUnderlyingSql = `UPPER(TRIM(COALESCE(NULLIF(trades.underlying_symbol, ''), NULLIF(trades.asset_id, ''), '')))`;
+    const candidateStrikeSql = `CASE WHEN candidate.strike_price IS NULL THEN '' ELSE printf('%.8g', candidate.strike_price) END`;
+    const outerStrikeSql = `CASE WHEN trades.strike_price IS NULL THEN '' ELSE printf('%.8g', trades.strike_price) END`;
+    const candidateOptionTypeSql = `UPPER(TRIM(COALESCE(NULLIF(candidate.option_type, ''), '')))`;
+    const outerOptionTypeSql = `UPPER(TRIM(COALESCE(NULLIF(trades.option_type, ''), '')))`;
+    const sameOptionPositionSql = `(
+      candidate.asset_id = trades.asset_id
+      OR (${candidateContractSql} <> '' AND ${candidateContractSql} = ${outerContractSql})
+      OR (
+        ${candidateUnderlyingSql} = ${outerUnderlyingSql}
+        AND COALESCE(NULLIF(candidate.expiry_date, ''), '') = COALESCE(NULLIF(trades.expiry_date, ''), '')
+        AND ${candidateStrikeSql} = ${outerStrikeSql}
+        AND ${candidateOptionTypeSql} = ${outerOptionTypeSql}
+      )
+    )`;
+    const openQuantitySql = `(SELECT COALESCE(SUM(CASE
+      WHEN ${tradeBuyDirectionSql('candidate.direction')} THEN candidate.quantity
+      WHEN ${tradeSellDirectionSql('candidate.direction')} THEN -candidate.quantity
+      ELSE 0
+    END), 0)
+      FROM trades candidate
+      WHERE ${candidateWorkspaceSql} = COALESCE(NULLIF(TRIM(trades.workspace_scope), ''), 'personal')
+        AND ${candidateAuthorSql} = ${outerAuthorSql}
+        AND COALESCE(candidate.lifecycle_status, 'ACTIVE') NOT IN ('EXPIRED_WORTHLESS', 'EXERCISED', 'ASSIGNED', 'CLOSED_TRADED')
+        AND ${sameOptionPositionSql})`;
     const params = [normalizeWorkspaceScope(scope)];
     return this.exec(
       `UPDATE trades
@@ -465,22 +582,26 @@ export const db = {
           AND expiry_date IS NOT NULL
           AND date(expiry_date) < date('now')
           AND (option_type IS NOT NULL OR strike_price IS NOT NULL OR contract_symbol IS NOT NULL)
-          AND direction IN ('BUY', 'OPEN')
-          AND COALESCE(lifecycle_status, 'ACTIVE') NOT IN ('EXPIRED_WORTHLESS', 'EXERCISED', 'ASSIGNED', 'CLOSED_TRADED')`,
+          AND ${tradeBuyDirectionSql('direction')}
+          AND COALESCE(lifecycle_status, 'ACTIVE') NOT IN ('EXPIRED_WORTHLESS', 'EXERCISED', 'ASSIGNED', 'CLOSED_TRADED')
+          AND ${openQuantitySql} > 0.0001`,
       params
     );
   },
 
   async getTradesByAssetAndBroker(assetId, broker = null, author = null, scope = 'personal') {
+    const lookupKey = String(assetId || '').trim();
+    const usePositionKey = lookupKey.includes('|');
     let sql = `SELECT t.*, d.title as decision_title
                FROM trades t
+               LEFT JOIN assets a ON t.asset_id = a.id
                LEFT JOIN decisions d ON t.decision_id = d.id
-               WHERE t.asset_id = ?`;
-    const params = [assetId];
-    if (broker) {
+               WHERE ${usePositionKey ? tradePositionKeySql() : 't.asset_id'} = ?`;
+    const params = [lookupKey];
+    if (broker && !usePositionKey) {
       sql += ` AND t.broker = ?`;
       params.push(broker);
-    } else {
+    } else if (!usePositionKey) {
       sql += ` AND (t.broker IS NULL OR t.broker = '')`;
     }
     sql = appendWorkspaceFilter(sql, params, scope);
@@ -821,48 +942,56 @@ export const db = {
   },
 
   async getHoldings(author = null, scope = 'personal') {
+    const assetTypeSql = tradeAssetTypeSql();
+    const positionKeySql = tradePositionKeySql();
+    const symbolSql = tradeSymbolSql();
+    const underlyingSql = tradeUnderlyingSql();
+    const expirySql = tradeExpirySql();
+    const strikeSql = tradeStrikeSql();
+    const optionTypeSql = tradeOptionTypeSql();
     let sql = `SELECT
         ${TRADE_AUTHOR_SQL} as author,
-        a.id as asset_id,
-        a.symbol,
-        a.name,
-        a.type,
-        a.sector,
-        COALESCE(a.underlying_symbol, a.symbol) as underlying_symbol,
-        a.strike_price,
-        a.expiry_date,
-        a.option_type,
-        COALESCE(a.multiplier, CASE WHEN a.type = 'OPTION' THEN 100 ELSE 1 END) as multiplier,
-        t.broker,
-        SUM(CASE
-          WHEN t.direction IN ('BUY', 'OPEN') THEN t.quantity
-          WHEN t.direction IN ('SELL', 'CLOSE') THEN -t.quantity
-          ELSE 0
-        END) as total_quantity,
-        SUM(CASE
-          WHEN t.direction IN ('BUY', 'OPEN') THEN t.quantity * t.price
-          WHEN t.direction IN ('SELL', 'CLOSE') THEN -t.quantity * t.price
-          ELSE 0
-        END) / NULLIF(SUM(CASE
-          WHEN t.direction IN ('BUY', 'OPEN') THEN t.quantity
-          WHEN t.direction IN ('SELL', 'CLOSE') THEN -t.quantity
-          ELSE 0
-        END), 0) as avg_cost,
+        ${positionKeySql} as position_key,
+        COALESCE(MIN(CASE WHEN ${tradeBuyDirectionSql()} THEN a.id END), MIN(a.id), MIN(t.asset_id)) as asset_id,
+        ${symbolSql} as symbol,
+        COALESCE(MAX(NULLIF(a.name, '')), ${symbolSql}) as name,
+        ${assetTypeSql} as type,
+        MAX(a.sector) as sector,
+        ${underlyingSql} as underlying_symbol,
+        NULLIF(${strikeSql}, '') as strike_price,
+        NULLIF(${expirySql}, '') as expiry_date,
+        NULLIF(${optionTypeSql}, '') as option_type,
+        COALESCE(MAX(NULLIF(t.contract_symbol, '')), MAX(NULLIF(a.id, '')), MAX(NULLIF(t.asset_id, ''))) as contract_symbol,
+        COALESCE(MAX(COALESCE(t.multiplier, a.multiplier)), CASE WHEN ${assetTypeSql} = 'OPTION' THEN 100 ELSE 1 END) as multiplier,
+	        GROUP_CONCAT(DISTINCT NULLIF(TRIM(t.broker), '')) as broker,
+	        SUM(CASE
+	          WHEN ${tradeBuyDirectionSql()} THEN t.quantity
+	          WHEN ${tradeSellDirectionSql()} THEN -t.quantity
+	          ELSE 0
+	        END) as total_quantity,
+	        SUM(CASE
+	          WHEN ${tradeBuyDirectionSql()} THEN t.quantity * t.price
+	          ELSE 0
+	        END) / NULLIF(SUM(CASE
+	          WHEN ${tradeBuyDirectionSql()} THEN t.quantity
+	          ELSE 0
+	        END), 0) as avg_cost,
         SUM(t.fee) as total_fees,
         COUNT(t.id) as trade_count,
         MIN(${TRADE_TIME_SECONDS_SQL}) as first_trade,
         MAX(${TRADE_TIME_SECONDS_SQL}) as last_trade
-       FROM trades t
-       JOIN assets a ON t.asset_id = a.id
-       WHERE 1 = 1
-         AND COALESCE(t.lifecycle_status, 'ACTIVE') != 'EXPIRED_WORTHLESS'`;
+	       FROM trades t
+	       JOIN assets a ON t.asset_id = a.id
+	       WHERE 1 = 1
+	         AND COALESCE(t.lifecycle_status, 'ACTIVE') NOT IN ('EXPIRED_WORTHLESS', 'EXERCISED', 'ASSIGNED', 'CLOSED_TRADED')
+	         AND NOT (${tradeExpiredOptionSql()} AND ${tradeBuyDirectionSql()})`;
     const params = [];
     sql = appendWorkspaceFilter(sql, params, scope);
     sql = appendAuthorFilter(sql, params, author);
     sql += `
-       GROUP BY a.id, t.broker, ${TRADE_AUTHOR_SQL}
+       GROUP BY ${positionKeySql}, ${assetTypeSql}, ${symbolSql}, ${underlyingSql}, ${expirySql}, ${strikeSql}, ${optionTypeSql}, ${TRADE_AUTHOR_SQL}
        HAVING total_quantity > 0.0001
-       ORDER BY a.symbol, author`;
+       ORDER BY symbol, author`;
 
     return this.query(
       sql,
@@ -1026,13 +1155,13 @@ export const db = {
       `SELECT
         a.symbol,
         a.name,
-        SUM(CASE WHEN t.direction IN ('SELL', 'CLOSE') THEN t.quantity * t.price ELSE 0 END) -
-        SUM(CASE WHEN t.direction IN ('BUY', 'OPEN') THEN t.quantity * t.price ELSE 0 END) as realized_pnl,
+	        SUM(CASE WHEN ${tradeSellDirectionSql()} THEN t.quantity * t.price ELSE 0 END) -
+	        SUM(CASE WHEN ${tradeBuyDirectionSql()} THEN t.quantity * t.price ELSE 0 END) as realized_pnl,
         SUM(t.fee) as total_fees
        FROM trades t
        JOIN assets a ON t.asset_id = a.id
        GROUP BY a.id
-       HAVING SUM(CASE WHEN t.direction IN ('SELL', 'CLOSE') THEN t.quantity ELSE 0 END) > 0
+	       HAVING SUM(CASE WHEN ${tradeSellDirectionSql()} THEN t.quantity ELSE 0 END) > 0
        ORDER BY realized_pnl DESC`
     );
   },

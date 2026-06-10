@@ -183,8 +183,10 @@ async function requestLongbridgeCliOptionPrice(contractSymbol) {
   if (process.env.VERCEL || process.env.LONGBRIDGE_CLI_OPTION_FALLBACK === '0') return null;
   const occSymbol = String(contractSymbol || '').replace(/^OPTION_/i, '').replace(/\.US$/i, '').trim().toUpperCase();
   const cliSymbol = toLongbridgeCliOptionSymbol(contractSymbol);
-  const symbols = Array.from(new Set([occSymbol, cliSymbol].filter((symbol) => (
+  const apiSymbol = toLongbridgeOptionSymbol(contractSymbol);
+  const symbols = Array.from(new Set([apiSymbol, cliSymbol, occSymbol].filter((symbol) => (
     /^[A-Z.]+\d{6}[CP](?:\d{6}|\d{8})$/.test(symbol)
+    || /^[A-Z.]+\d{6}[CP]\d{6}\.US$/.test(symbol)
   ))));
   if (!symbols.length) return null;
 
@@ -370,8 +372,12 @@ export function toLongbridgeStockSymbol(symbol) {
 }
 
 export function toLongbridgeOptionSymbol(contractSymbol) {
-  const text = String(contractSymbol || '').replace(/^OPTION_/i, '').trim().toUpperCase();
-  const match = text.match(/^([A-Z.]+)(\d{6})([CP])(\d{8})$/);
+  const text = String(contractSymbol || '')
+    .replace(/^OPTION_/i, '')
+    .replace(/\.US$/i, '')
+    .trim()
+    .toUpperCase();
+  const match = text.match(/^([A-Z.]+)(\d{6})([CP])(\d{6}|\d{8})$/);
   if (!match) return '';
   const [, underlying, yymmdd, side, strikeRaw] = match;
   return `${underlying}${yymmdd}${side}${String(Number(strikeRaw)).padStart(6, '0')}.US`;

@@ -522,11 +522,13 @@ async function fetchMarketDataApp(symbol, expiration, token, filters = {}) {
   };
 }
 
-async function fetchTradier(symbol, expiration, token) {
+async function fetchTradier(symbol, expiration, token, filters = {}) {
   const headers = {
     Authorization: `Bearer ${token}`,
     Accept: 'application/json',
   };
+  const contractSymbol = normalizeOptionContractKey(filters.contract);
+  const contractDetails = parseOCCSymbol(contractSymbol);
 
   const expirationsUrl = `https://api.tradier.com/v1/markets/options/expirations?symbol=${encodeURIComponent(symbol)}&includeAllRoots=true&strikes=false`;
   const expirationsResponse = await fetchWithTimeout(expirationsUrl, { headers }, 5_000);
@@ -537,7 +539,7 @@ async function fetchTradier(symbol, expiration, token) {
   const expirations = []
     .concat(expirationsJson.expirations?.date || [])
     .filter(Boolean);
-  const selectedExpiration = expiration || expirations[0];
+  const selectedExpiration = contractDetails.expiration || expiration || expirations[0];
 
   if (!selectedExpiration) {
     return { expirations, selectedExpiration: null, options: [] };
@@ -557,10 +559,20 @@ async function fetchTradier(symbol, expiration, token) {
     expirations,
     selectedExpiration,
     options: rawOptions.map((item) => normalizeTradierOption(item, selectedExpiration)),
+    dataSource: {
+      provider: 'Tradier',
+      endpoint: 'option_chain',
+      requestedContract: contractSymbol || null,
+      note: contractSymbol
+        ? 'Tradier 已按合约到期日查询期权链，再筛选单合约。'
+        : 'Tradier 期权链数据，是否实时取决于账户与 OPRA 权限。',
+    },
   };
 }
 
-async function fetchYahooOptions(symbol, expiration) {
+async function fetchYahooOptions(symbol, expiration, filters = {}) {
+  const contractSymbol = normalizeOptionContractKey(filters.contract);
+  const contractDetails = parseOCCSymbol(contractSymbol);
   const baseUrl = `https://query2.finance.yahoo.com/v7/finance/options/${encodeURIComponent(symbol)}`;
   const firstResponse = await fetchWithTimeout(baseUrl, { headers: YAHOO_HEADERS }, 5_000);
   if (!firstResponse.ok) {
@@ -575,7 +587,7 @@ async function fetchYahooOptions(symbol, expiration) {
   const expirations = (firstResult.expirationDates || [])
     .map(toDateStringFromUnix)
     .filter(Boolean);
-  const selectedExpiration = expiration || expirations[0];
+  const selectedExpiration = contractDetails.expiration || expiration || expirations[0];
   const selectedUnix = toUnixExpiration(selectedExpiration);
   let result = firstResult;
 
@@ -597,10 +609,41 @@ async function fetchYahooOptions(symbol, expiration) {
     expirations,
     selectedExpiration,
     options: [...calls, ...puts],
+    dataSource: {
+      provider: 'Yahoo Finance',
+      endpoint: 'public_option_chain',
+      requestedContract: contractSymbol || null,
+      realTimeStatus: 'PUBLIC_DELAYED_OR_LIMITED',
+      note: 'Yahoo Finance 是公共兜底源，可能延迟、缺失远期或低流动性合约，不保证实时。',
+    },
   };
 }
 
-async function fetchPolygon(symbol, expiration, token) {
+async function fetchPolygon(symbol, expiration, token, filters = {}) {
+  const contractSymbol = normalizeOptionContractKey(filters.contract);
+  const contractDetails = parseOCCSymbol(contractSymbol);
+  if (contractSymbol) {
+    const snapshotUrl = new URL(`https://api.polygon.io/v3/snapshot/options/${encodeURIComponent(symbol)}/${encodeURIComponent(`O:${contractSymbol}`)}`);
+    snapshotUrl.searchParams.set('apiKey', token);
+    const snapshotResponse = await fetchWithTimeout(snapshotUrl.toString(), {}, 7_000);
+    if (!snapshotResponse.ok) {
+      throw new Error(`Polygon 单合约期权快照请求失败（HTTP ${snapshotResponse.status}），请检查 API Key、Options 权限和 OPRA 套餐。`);
+    }
+    const snapshotJson = await snapshotResponse.json();
+    const result = snapshotJson.results || snapshotJson.result || null;
+    return {
+      expirations: contractDetails.expiration ? [contractDetails.expiration] : [],
+      selectedExpiration: contractDetails.expiration || expiration || null,
+      options: result ? [normalizePolygonOption(result)] : [],
+      dataSource: {
+        provider: 'Polygon',
+        endpoint: 'single_option_snapshot',
+        requestedContract: contractSymbol,
+        note: 'Polygon 单合约快照，是否实时取决于 Options 套餐与 OPRA 权限。',
+      },
+    };
+  }
+
   const contractsUrl = new URL('https://api.polygon.io/v3/reference/options/contracts');
   contractsUrl.searchParams.set('underlying_ticker', symbol);
   contractsUrl.searchParams.set('expired', 'false');
@@ -634,6 +677,11 @@ async function fetchPolygon(symbol, expiration, token) {
     expirations,
     selectedExpiration,
     options: (snapshotJson.results || []).map(normalizePolygonOption),
+    dataSource: {
+      provider: 'Polygon',
+      endpoint: 'option_chain_snapshot',
+      note: 'Polygon 期权链快照，是否实时取决于 Options 套餐与 OPRA 权限。',
+    },
   };
 }
 
@@ -785,11 +833,11 @@ export default async function handler(req, res) {
       } else if (providerKey === 'longbridge') {
         result = await fetchLongbridge(symbol, expiration, longbridgeCredentials, { contract });
       } else if (providerKey === 'tradier') {
-        result = await fetchTradier(symbol, expiration, tradierToken);
+        result = await fetchTradier(symbol, expiration, tradierToken, { contract });
       } else if (providerKey === 'polygon') {
-        result = await fetchPolygon(symbol, expiration, polygonToken);
+        result = await fetchPolygon(symbol, expiration, polygonToken, { contract });
       } else if (providerKey === 'yahoo') {
-        result = await fetchYahooOptions(symbol, expiration);
+        result = await fetchYahooOptions(symbol, expiration, { contract });
       } else {
         result = {
           expirations: [],

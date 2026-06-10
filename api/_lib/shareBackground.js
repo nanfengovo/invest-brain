@@ -1,4 +1,6 @@
 const ALLOWED_MODELS = [
+  'pollinations-flux',
+  'pollinations-turbo',
   'qwen-image',
   'qwen-image-2512',
   'flux.2-klein-4b',
@@ -50,6 +52,7 @@ const MODEL_ENDPOINTS = {
 };
 
 const DEFAULT_MODEL = 'qwen-image';
+const DEFAULT_POLLINATIONS_MODEL = 'pollinations-flux';
 const FALLBACK_MODELS = [
   'qwen-image',
   'qwen-image-2512',
@@ -61,6 +64,7 @@ const NIM_SIZE_STEPS = [768, 832, 896, 960, 1024, 1088, 1152, 1216, 1280, 1344];
 const QWEN_SIZE_STEPS = Array.from({ length: 73 }, (_, index) => 512 + index * 16);
 const FLUX2_SIZE_STEPS = Array.from({ length: 67 }, (_, index) => 512 + index * 16);
 const DEFAULT_OPENAI_IMAGE_BASE_URL = 'https://integrate.api.nvidia.com/v1';
+const POLLINATIONS_IMAGE_BASE_URL = 'https://image.pollinations.ai/prompt';
 
 function nearestSize(value, fallback, steps = NIM_SIZE_STEPS) {
   const numeric = Number(value) || fallback;
@@ -73,6 +77,33 @@ function normalizeModel(model) {
   const value = String(model || '').trim();
   if (MODEL_ENDPOINTS[value]) return MODEL_ENDPOINTS[value].model;
   return ALLOWED_MODELS.includes(value) ? value : DEFAULT_MODEL;
+}
+
+function normalizePollinationsModel(model) {
+  const value = String(model || '').trim().toLowerCase();
+  if (['pollinations-turbo', 'turbo'].includes(value)) return 'pollinations-turbo';
+  return DEFAULT_POLLINATIONS_MODEL;
+}
+
+function modelToPollinationsParam(model) {
+  return normalizePollinationsModel(model).replace(/^pollinations-/, '');
+}
+
+function normalizeProvider(provider, requestedModel) {
+  const value = String(provider || '').trim().toLowerCase();
+  if (value === 'pollinations') return 'pollinations';
+  if (String(requestedModel || '').toLowerCase().startsWith('pollinations-')) return 'pollinations';
+  return 'nvidia';
+}
+
+function buildSeed(...parts) {
+  const input = parts.map((part) => String(part || '')).join('|');
+  let hash = 2166136261;
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) % 2147483647;
 }
 
 function getAttemptModels(requestedModel) {
@@ -157,7 +188,7 @@ async function callOpenAiCompatibleImageApi({ apiKey, model, prompt, width, heig
   return payload;
 }
 
-async function callDirectModelEndpoint({ apiKey, model, prompt, width, height }) {
+async function callDirectModelEndpoint({ apiKey, model, prompt, width, height, seed }) {
   const endpointConfig = MODEL_ENDPOINTS[model];
   if (!endpointConfig) {
     throw new Error(`NVIDIA 模型未配置直接端点：${model}`);
@@ -168,6 +199,7 @@ async function callDirectModelEndpoint({ apiKey, model, prompt, width, height })
     prompt,
     width,
     height,
+    seed,
   });
 
   const response = await fetch(endpointConfig.endpoint, {
@@ -189,14 +221,15 @@ async function callDirectModelEndpoint({ apiKey, model, prompt, width, height })
   return payload;
 }
 
-function buildDirectModelBody({ family, prompt, width, height }) {
+function buildDirectModelBody({ family, prompt, width, height, seed }) {
+  const safeSeed = Number.isFinite(Number(seed)) ? Number(seed) : buildSeed(prompt, family, width, height, Date.now());
   if (family === 'qwen') {
     return {
       prompt,
       width: nearestSize(width, 1088, QWEN_SIZE_STEPS),
       height: nearestSize(height, 1440, QWEN_SIZE_STEPS),
       samples: 1,
-      seed: 0,
+      seed: safeSeed,
       steps: 30,
       cfg_scale: 4,
       negative_prompt: 'text, numbers, logo, watermark, blurry, low quality',
@@ -210,7 +243,7 @@ function buildDirectModelBody({ family, prompt, width, height }) {
       width: nearestSize(width, 1088, FLUX2_SIZE_STEPS),
       height: nearestSize(height, 1440, FLUX2_SIZE_STEPS),
       samples: 1,
-      seed: 0,
+      seed: safeSeed,
       steps: 4,
       cfg_scale: 1,
     };
@@ -223,7 +256,7 @@ function buildDirectModelBody({ family, prompt, width, height }) {
       width: nearestSize(width, 1088),
       height: nearestSize(height, 1344),
       samples: 1,
-      seed: 0,
+      seed: safeSeed,
       steps: 40,
       cfg_scale: 3.5,
     };
@@ -235,10 +268,52 @@ function buildDirectModelBody({ family, prompt, width, height }) {
     width: nearestSize(width, 1024),
     height: nearestSize(height, 1344),
     samples: 1,
-    seed: 0,
+    seed: safeSeed,
     steps: 4,
     cfg_scale: 0,
   };
+}
+
+async function callPollinationsImageApi({ prompt, model, width, height, seed }) {
+  const url = new URL(`${POLLINATIONS_IMAGE_BASE_URL}/${encodeURIComponent(prompt)}`);
+  url.searchParams.set('model', modelToPollinationsParam(model));
+  url.searchParams.set('width', String(Math.min(1280, Math.max(512, Math.round(width)))));
+  url.searchParams.set('height', String(Math.min(1280, Math.max(512, Math.round(height)))));
+  url.searchParams.set('seed', String(seed));
+  url.searchParams.set('enhance', 'true');
+
+  const response = await fetch(url.toString(), {
+    headers: {
+      Accept: 'image/png,image/jpeg,image/webp,application/json',
+    },
+  });
+  const contentType = response.headers.get('content-type') || 'image/jpeg';
+  const bytes = Buffer.from(await response.arrayBuffer());
+
+  if (!response.ok) {
+    let message = `Pollinations 图像接口请求失败（HTTP ${response.status}）`;
+    if (/json/i.test(contentType)) {
+      try {
+        const payload = JSON.parse(bytes.toString('utf8'));
+        message = payload?.error || payload?.message || message;
+      } catch {
+        // Keep the HTTP status fallback.
+      }
+    }
+    const error = new Error(message);
+    error.status = response.status;
+    error.model = normalizePollinationsModel(model);
+    throw error;
+  }
+
+  if (/json/i.test(contentType)) {
+    const payload = JSON.parse(bytes.toString('utf8') || '{}');
+    const image = await normalizeImageValue(payload.image || payload.url || payload.data?.[0]?.url);
+    if (!image) throw Object.assign(new Error('Pollinations 返回中未找到图片数据'), { status: 502, model });
+    return image;
+  }
+
+  return `data:${contentType};base64,${bytes.toString('base64')}`;
 }
 
 function shouldTryNextModel(error) {
@@ -247,11 +322,15 @@ function shouldTryNextModel(error) {
   return [400, 404, 422, 429, 500, 502, 503, 504].includes(status);
 }
 
-export async function generateShareBackground({ apiKey, prompt, requestedModel, requestedWidth = 1080, requestedHeight = 1440 }) {
-  if (!apiKey) {
-    throw new Error('NVIDIA API Key 未配置，请先在设置页或环境变量中添加。');
-  }
-
+export async function generateShareBackground({
+  apiKey,
+  prompt,
+  provider,
+  requestedModel,
+  requestedWidth = 1080,
+  requestedHeight = 1440,
+  requestedSeed,
+}) {
   const safePrompt = String(prompt || '').trim();
   if (!safePrompt) {
     throw new Error('请先输入背景提示词');
@@ -259,15 +338,42 @@ export async function generateShareBackground({ apiKey, prompt, requestedModel, 
 
   const width = Math.min(1536, Math.max(512, Number(requestedWidth) || 1080));
   const height = Math.min(1536, Math.max(512, Number(requestedHeight) || 1440));
+  const selectedProvider = normalizeProvider(provider, requestedModel);
+  const seed = Number.isFinite(Number(requestedSeed))
+    ? Number(requestedSeed)
+    : buildSeed(safePrompt, requestedModel, width, height, Date.now());
+  if (selectedProvider === 'pollinations') {
+    const model = normalizePollinationsModel(requestedModel);
+    const image = await callPollinationsImageApi({
+      prompt: safePrompt,
+      model,
+      width,
+      height,
+      seed,
+    });
+    return {
+      image,
+      model,
+      provider: 'pollinations',
+      seed,
+      fallbackModelsTried: [],
+      note: 'Pollinations 当前可能有队列/限流；若失败，请稍后重试或切换其他模型源。',
+    };
+  }
+
+  if (!apiKey) {
+    throw new Error('NVIDIA API Key 未配置，请先在设置页或环境变量中添加。');
+  }
+
   const errors = [];
 
   for (const model of getAttemptModels(requestedModel)) {
     const calls = model === 'qwen-image' || model === 'qwen-image-2512' || model === 'flux.2-klein-4b'
       ? [
           () => callOpenAiCompatibleImageApi({ apiKey, model, prompt: safePrompt, width, height }),
-          ...(MODEL_ENDPOINTS[model] ? [() => callDirectModelEndpoint({ apiKey, model, prompt: safePrompt, width, height })] : []),
+          ...(MODEL_ENDPOINTS[model] ? [() => callDirectModelEndpoint({ apiKey, model, prompt: safePrompt, width, height, seed })] : []),
         ]
-      : [() => callDirectModelEndpoint({ apiKey, model, prompt: safePrompt, width, height })];
+      : [() => callDirectModelEndpoint({ apiKey, model, prompt: safePrompt, width, height, seed })];
 
     for (const call of calls) {
       try {
@@ -282,6 +388,7 @@ export async function generateShareBackground({ apiKey, prompt, requestedModel, 
           image,
           model,
           provider: 'nvidia',
+          seed,
           fallbackModelsTried: errors.map((item) => item.model).filter(Boolean),
         };
       } catch (error) {

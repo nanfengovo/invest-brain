@@ -39,7 +39,8 @@
 }
 
 .holding-card__main {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(82px, auto);
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -339,7 +340,7 @@
 }
 
 .holding-card__right {
-  width: clamp(82px, 24vw, 96px);
+  width: min(100%, clamp(82px, 24vw, 108px));
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -364,7 +365,8 @@
   color: var(--color-text-secondary);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .holding-card__avg-cost {
@@ -372,7 +374,8 @@
   color: var(--color-text-muted);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .holding-card__live-pnl {
@@ -403,7 +406,8 @@
   font-size: 10px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .holding-card__footer {
@@ -714,6 +718,7 @@
 .holding-card--compact .holding-card__main {
   min-height: 95px;
   padding: 10px 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(78px, auto);
   gap: 10px;
 }
 
@@ -749,7 +754,7 @@
 }
 
 .holding-card--compact .holding-card__right {
-  width: clamp(78px, 23vw, 92px);
+  width: min(100%, clamp(78px, 23vw, 98px));
 }
 
 .holding-card--compact .holding-card__position-value {

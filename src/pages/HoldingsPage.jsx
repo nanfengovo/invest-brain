@@ -62,6 +62,11 @@ const getHoldingDisplayName = (holding = {}) => getReadableAssetName({
   fallback: holding.symbol,
 });
 
+const getHoldingRowKey = (holding = {}) => [
+  holding.position_key || holding.asset_id,
+  holding.author || '未标记',
+].map((item) => String(item || '').trim()).join('::');
+
 const getQuotePrice = (quote = {}) => toFiniteNumberOrNull(quote?.displayPrice ?? quote?.price ?? quote?.regularMarketPrice);
 
 const getQuoteChange = (quote = {}) => toFiniteNumberOrNull(quote?.displayAbsChange ?? quote?.absChange);
@@ -474,6 +479,8 @@ const getHoldingOptionContract = (holding) => {
 const getOptionHoldingSignature = (holdings = []) => holdings
   .filter((holding) => String(holding.type || '').toUpperCase() === 'OPTION')
   .map((holding) => [
+    getHoldingRowKey(holding),
+    holding.position_key,
     holding.asset_id,
     holding.symbol,
     holding.underlying_symbol,
@@ -489,11 +496,11 @@ const getOptionHoldingSignature = (holdings = []) => holdings
 
 const getHoldingMarketSignature = (holdings = []) => holdings
   .map((holding) => [
+    getHoldingRowKey(holding),
     getHoldingAssetType(holding),
     getHoldingSymbol(holding),
+    holding.position_key,
     holding.asset_id,
-    holding.broker,
-    holding.author,
   ].map((item) => String(item || '').trim()).join(':'))
   .sort()
   .join('|');
@@ -637,7 +644,7 @@ export default function HoldingsPage() {
           const contract = getHoldingOptionContract(holding);
           if (!underlying || !contract) return null;
           return {
-            key: `${holding.asset_id}-${holding.broker || ''}-${holding.author || '未标记'}`,
+            key: getHoldingRowKey(holding),
             underlying,
             contract,
           };
@@ -758,9 +765,9 @@ export default function HoldingsPage() {
   }, [holdings.length, workspaceScope]);
 
   const handleToggle = useCallback(
-    async (assetId, broker, groupAuthor) => {
+    async (holdingLookupKey, broker, groupAuthor) => {
       const queryAuthor = activeAuthor || groupAuthor || null;
-      const key = `${assetId}-${broker || ''}-${queryAuthor || 'ALL'}`;
+      const key = [holdingLookupKey, queryAuthor || '未标记'].join('::');
       if (expandedId === key) {
         setExpandedId(null);
         setExpandedTrades([]);
@@ -769,7 +776,7 @@ export default function HoldingsPage() {
       setExpandedId(key);
       setTradesLoading(true);
       try {
-        const trades = await db.getTradesByAssetAndBroker(assetId, broker, queryAuthor, workspaceScope);
+        const trades = await db.getTradesByAssetAndBroker(holdingLookupKey, broker, queryAuthor, workspaceScope);
         setExpandedTrades(trades);
       } catch (err) {
         console.error('Failed to load trades for asset:', err);
@@ -821,7 +828,7 @@ export default function HoldingsPage() {
       defaultValue: formatOptionAlertDefault(defaultTarget),
       metaItems: [
         { label: '均价', value: Number.isFinite(defaultTarget) ? `$${formatCurrency(defaultTarget)}` : '--' },
-        { label: '数量', value: holding.quantity ? `${holding.quantity} 张` : '--' },
+        { label: '数量', value: (holding.total_quantity ?? holding.quantity) ? `${holding.total_quantity ?? holding.quantity} 张` : '--' },
         { label: '市值', value: holding.market_value ? `$${formatCurrency(holding.market_value)}` : '--' },
         { label: 'Broker', value: holding.broker || '--' },
       ],
@@ -841,7 +848,7 @@ export default function HoldingsPage() {
 
     const underlyingSymbol = String(holding.underlying_symbol || holding.symbol || '').trim().toUpperCase();
     const contractSymbol = optionDisplay?.contractSymbol || String(holding.asset_id || '').replace(/^OPTION_/i, '');
-    const holdingKey = `${holding.asset_id}-${holding.broker || ''}-${holding.author || '未标记'}`;
+    const holdingKey = getHoldingRowKey(holding);
     const quote = optionQuotes[holdingKey];
     const defaultTarget = toFiniteNumberOrNull(quote?.mark ?? quote?.last ?? holding.avg_cost);
     await db.addPriceAlert({
@@ -895,7 +902,7 @@ export default function HoldingsPage() {
   const netFlowLabel = netFlow >= 0 ? '净投入' : '净回收';
 
   const liveHoldings = useMemo(() => holdings.map((holding) => {
-    const holdingKey = `${holding.asset_id}-${holding.broker || ''}-${holding.author || '未标记'}`;
+    const holdingKey = getHoldingRowKey(holding);
     const symbol = getHoldingSymbol(holding);
     return {
       ...holding,
@@ -1076,6 +1083,27 @@ export default function HoldingsPage() {
                   </span>
                 </div>
               </button>
+              {selectedAllocation && (
+                <div className="holdings-page__allocation-detail">
+                  <span style={{ '--row-color': selectedAllocation.color }} />
+                  <div>
+                    <strong>{selectedAllocation.symbol} · {selectedAllocation.name}</strong>
+                    <em>
+                      市值 ${formatCurrency(selectedAllocation.value)} · 占组合 {(selectedAllocation.percent * 100).toFixed(1)}% · {selectedAllocation.typeLabel}
+                    </em>
+                    <div className="holdings-page__allocation-breakdown">
+                      {selectedAllocation.typeBreakdown.map((typeItem) => (
+                        <span key={typeItem.type}>
+                          <i style={{ '--row-color': typeItem.color }} />
+                          {typeItem.label} ${formatCurrency(typeItem.value)}
+                          {' · '}
+                          {(typeItem.groupPercent * 100).toFixed(0)}%
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="holdings-page__allocation-list">
                 {allocation.rows.map((row) => (
                   <button
@@ -1100,28 +1128,6 @@ export default function HoldingsPage() {
                 ))}
               </div>
             </div>
-
-            {selectedAllocation && (
-              <div className="holdings-page__allocation-detail">
-                <span style={{ '--row-color': selectedAllocation.color }} />
-                <div>
-                  <strong>{selectedAllocation.symbol} · {selectedAllocation.name}</strong>
-                  <em>
-                    市值 ${formatCurrency(selectedAllocation.value)} · 占组合 {(selectedAllocation.percent * 100).toFixed(1)}% · {selectedAllocation.typeLabel}
-                  </em>
-                  <div className="holdings-page__allocation-breakdown">
-                    {selectedAllocation.typeBreakdown.map((typeItem) => (
-                      <span key={typeItem.type}>
-                        <i style={{ '--row-color': typeItem.color }} />
-                        {typeItem.label} ${formatCurrency(typeItem.value)}
-                        {' · '}
-                        {(typeItem.groupPercent * 100).toFixed(0)}%
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
 
             <div className="holdings-page__insight-grid">
               {portfolioInsights.insights.map((item) => (
@@ -1295,7 +1301,7 @@ export default function HoldingsPage() {
                 </div>
                 <div className="holdings-page__holding-group-list">
                   {group.holdings.map((holding, holdingIndex) => {
-                    const holdingKey = `${holding.asset_id}-${holding.broker || ''}-${holding.author || '未标记'}`;
+                    const holdingKey = getHoldingRowKey(holding);
                     const isExpanded = expandedId === holdingKey;
                     const symbol = getHoldingSymbol(holding);
                     const underlyingPrice = getQuotePrice(marketQuotes[symbol]);

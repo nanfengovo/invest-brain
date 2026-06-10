@@ -4,10 +4,17 @@ export function toFiniteNumberOrNull(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+function getHoldingQuoteKey(holding = {}) {
+  return [
+    holding.position_key || holding.asset_id,
+    holding.author || '未标记',
+  ].map((item) => String(item || '').trim()).join('::');
+}
+
 export function buildOptionRealtimeSummary(holdings = [], optionQuotes = {}) {
   const optionHoldings = holdings.filter((holding) => String(holding.type || '').toUpperCase() === 'OPTION');
   return optionHoldings.reduce((summary, holding) => {
-    const holdingKey = `${holding.asset_id}-${holding.broker || ''}-${holding.author || '未标记'}`;
+    const holdingKey = getHoldingQuoteKey(holding);
     const quote = optionQuotes[holdingKey];
     const quantity = Number(holding.total_quantity) || 0;
     const avgCost = Number(holding.avg_cost) || 0;

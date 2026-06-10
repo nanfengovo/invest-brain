@@ -30,6 +30,29 @@ const NVIDIA_MODELS = [
   },
 ];
 
+const POLLINATIONS_MODELS = [
+  {
+    label: 'Pollinations FLUX',
+    value: 'pollinations-flux',
+    provider: 'pollinations',
+    description: '免配置尝试源，画面质量较好；当前可能有队列或限流',
+  },
+  {
+    label: 'Pollinations Turbo',
+    value: 'pollinations-turbo',
+    provider: 'pollinations',
+    description: '免配置尝试源，速度优先；失败时会显示具体原因',
+  },
+];
+
+const AI_BACKGROUND_MODELS = [
+  ...POLLINATIONS_MODELS,
+  ...NVIDIA_MODELS.map((item) => ({
+    ...item,
+    provider: 'nvidia',
+  })),
+];
+
 const LOCAL_BACKGROUNDS = [
   {
     label: '深海雷达',
@@ -199,7 +222,7 @@ function buildDefaultPrompt(posterConfig = {}) {
   ].join(' ');
 }
 
-function showAiPromptDialog({ prompt, model }) {
+function showAiPromptDialog({ prompt, model, provider }) {
   return new Promise((resolve) => {
     let nextPrompt = prompt;
     let nextModel = model;
@@ -219,6 +242,9 @@ function showAiPromptDialog({ prompt, model }) {
               }}
             />
           </div>
+          <p className="share-background-dialog__hint">
+            当前来源：{provider === 'pollinations' ? 'Pollinations 免配置尝试' : 'NVIDIA NIM'}
+          </p>
           <div className="share-background-dialog__field">
             <label>提示词</label>
             <textarea
@@ -260,25 +286,29 @@ function showAiPromptDialog({ prompt, model }) {
 
 async function chooseAiModel(config) {
   const action = await showActionChoice({
-    extra: 'NVIDIA Build / NIM 图像模型，只用于生成背景层',
-    actions: NVIDIA_MODELS.map((item) => ({
+    extra: '只生成背景层，二维码、标题、收益和数据仍由本地模板绘制',
+    actions: AI_BACKGROUND_MODELS.map((item) => ({
       key: item.value,
       text: item.label,
       description: item.description,
+      provider: item.provider,
       bold: item.value === (config.defaultModel || 'qwen-image'),
     })),
   });
-  return action?.key || null;
+  return action || null;
 }
 
 async function generateAiBackground(posterConfig = {}) {
   const config = await getShareBackgroundConfig();
-  const selectedModel = await chooseAiModel(config);
-  if (!selectedModel) return null;
+  const selected = await chooseAiModel(config);
+  if (!selected) return null;
+  const selectedModel = selected.key;
+  const selectedProvider = selected.provider || (selectedModel.startsWith('pollinations-') ? 'pollinations' : 'nvidia');
 
   const promptResult = await showAiPromptDialog({
     prompt: buildDefaultPrompt(posterConfig),
     model: selectedModel,
+    provider: selectedProvider,
   });
   if (!promptResult) return null;
 
@@ -293,11 +323,11 @@ async function generateAiBackground(posterConfig = {}) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(config.nvidiaApiKey ? { 'x-nvidia-api-key': config.nvidiaApiKey } : {}),
+        ...(selectedProvider === 'nvidia' && config.nvidiaApiKey ? { 'x-nvidia-api-key': config.nvidiaApiKey } : {}),
       },
       body: JSON.stringify({
         mode: 'share-background',
-        provider: 'nvidia',
+        provider: selectedProvider,
         model: promptResult.model || selectedModel,
         prompt: promptResult.prompt,
         width: 1080,
@@ -312,10 +342,11 @@ async function generateAiBackground(posterConfig = {}) {
 
     const image = await loadImage(json.image);
     Toast.clear();
-    Toast.show({ icon: 'success', content: `背景已生成：${json.model || promptResult.model}` });
+    const providerLabel = json.provider === 'pollinations' ? 'Pollinations' : 'NVIDIA';
+    Toast.show({ icon: 'success', content: `背景已生成：${providerLabel} · ${json.model || promptResult.model}` });
     return {
       image,
-      source: 'nvidia',
+      source: json.provider || selectedProvider,
       model: json.model || promptResult.model,
       prompt: promptResult.prompt,
     };
@@ -325,7 +356,7 @@ async function generateAiBackground(posterConfig = {}) {
     const readableMessage = /Body is unusable|Failed to fetch|NetworkError/i.test(message)
       ? 'AI 背景接口响应异常或网络不可用'
       : (message || 'AI 背景生成失败');
-    Toast.show({ content: `${readableMessage}，已使用本地背景` });
+    Toast.show({ content: `${readableMessage}，请换模型或稍后重试` });
     return null;
   }
 }
@@ -350,9 +381,9 @@ export async function chooseSharePosterBackground(posterConfig = {}) {
       },
       {
         key: 'ai',
-        text: 'NVIDIA AI 生成',
-        description: '使用 Qwen/FLUX 等模型生成背景',
-        bold: config.provider === 'nvidia',
+        text: 'AI 生成背景',
+        description: '使用 Pollinations / NVIDIA 的图像模型生成背景',
+        bold: ['pollinations', 'nvidia'].includes(config.provider),
       },
       {
         key: 'default',
@@ -369,4 +400,4 @@ export async function chooseSharePosterBackground(posterConfig = {}) {
   return null;
 }
 
-export const SHARE_BACKGROUND_MODELS = NVIDIA_MODELS;
+export const SHARE_BACKGROUND_MODELS = AI_BACKGROUND_MODELS;

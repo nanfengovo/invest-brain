@@ -7,9 +7,17 @@ test('share poster utility creates local PNG posters and recommends free-ish mod
 
   assert.match(source, /POSTER_WIDTH = 1080/);
   assert.match(source, /POSTER_HEIGHT = 1440/);
+  assert.match(source, /LONG_POSTER_WIDTH = 900/);
+  assert.match(source, /LONG_POSTER_MAX_HEIGHT = 11200/);
   assert.match(source, /canvas\.toDataURL\('image\/png'/);
   assert.match(source, /dataUrlToBlob/);
   assert.match(source, /navigator\.canShare/);
+  assert.match(source, /normalizeLongPosterBlocks/);
+  assert.match(source, /drawLongPosterTemplate/);
+  assert.match(source, /createLongSharePoster/);
+  assert.match(source, /shareLongPoster/);
+  assert.match(source, /type === 'allocation'/);
+  assert.match(source, /扫码进入网站/);
   assert.match(source, /FREE_IMAGE_MODEL_RECOMMENDATIONS/);
   assert.match(source, /Qwen-Image/);
   assert.match(source, /qwen-image-2512/);
@@ -32,6 +40,7 @@ test('market trade decision and information modules expose share poster actions'
   const trade = readFileSync(new URL('../src/components/Trade/TradeCard.jsx', import.meta.url), 'utf8');
   const decision = readFileSync(new URL('../src/components/Decision/DecisionCard.jsx', import.meta.url), 'utf8');
   const information = readFileSync(new URL('../src/pages/InformationDetail.jsx', import.meta.url), 'utf8');
+  const holdings = readFileSync(new URL('../src/pages/HoldingsPage.jsx', import.meta.url), 'utf8');
 
   assert.match(market, /sharePoster/);
   assert.match(market, /市场行情快照/);
@@ -44,6 +53,13 @@ test('market trade decision and information modules expose share poster actions'
   assert.match(information, /buildPosterSummaryText/);
   assert.match(information, /title: posterTitle/);
   assert.match(information, /summary: posterSummary/);
+  assert.match(information, /handleShareInformationLongPoster/);
+  assert.match(information, /shareLongPoster/);
+  assert.match(information, /正在生成长图/);
+  assert.match(holdings, /handleShareHoldingsLongPoster/);
+  assert.match(holdings, /持仓长图/);
+  assert.match(holdings, /type: 'allocation'/);
+  assert.match(holdings, /holdings-page__long-poster-btn/);
 });
 
 test('stock detail share poster uses the dedicated snapshot template and shared background picker', () => {

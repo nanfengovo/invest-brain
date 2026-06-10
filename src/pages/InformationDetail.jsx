@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { NavBar, Button, Toast, Tag, TextArea, Divider, List, ActionSheet, SwipeAction, Modal, Popup, Selector, Input } from 'antd-mobile';
-import { LinkOutline, MoreOutline, EditSOutline, AddOutline, PlayOutline, EyeOutline, DeleteOutline } from 'antd-mobile-icons';
+import { LinkOutline, MoreOutline, EditSOutline, AddOutline, PlayOutline, EyeOutline, DeleteOutline, PicturesOutline } from 'antd-mobile-icons';
 import { db } from '../db/database';
 import { useTradeStore } from '../stores/useTradeStore';
 import { useAppStore } from '../stores/useAppStore';
@@ -10,7 +10,7 @@ import { findMediaUrls } from '../utils/mediaResolver';
 import { resolveInformationReaderKind } from '../utils/informationReaderKind';
 import { detectVideoPlatform } from '../utils/videoPlatforms';
 import { getSyncStatusMeta, isTeamMirrorRecord } from '../utils/syncStatus';
-import { sharePoster } from '../utils/sharePoster';
+import { sharePoster, shareLongPoster } from '../utils/sharePoster';
 import { compactAiUsageLabel, getAiUsageLabel, getModelDisplayName } from '../utils/aiProviders';
 import {
   getCachedInformationTranslation,
@@ -82,6 +82,7 @@ const VP_STATUS_CONFIG = {
 const AUTO_TITLE_TRANSLATION_TIMEOUT_MS = 18000;
 const AUTO_READER_TRANSLATION_CHUNK_TIMEOUT_MS = 45000;
 const AUTO_READER_TRANSLATION_WATCHDOG_MS = 55000;
+const SHARE_BASE_URL = 'https://invest-brain.vercel.app';
 
 /**
  * Convert a Unix timestamp (seconds) to locale date string.
@@ -1316,6 +1317,83 @@ export default function InformationDetail() {
     }
   };
 
+  const handleShareInformationLongPoster = async () => {
+    const posterSource = validUrl ? extractDomain(validUrl) : '本地情报库';
+    const posterTitle = displayTitle || info?.title || '情报材料';
+    const bodyContent = String(activeReaderContent || translationSourceContent || cleanContent || twitterFallbackText || '').trim();
+    const posterSummary = buildPosterSummaryText(bodyContent || posterTitle);
+    const shareUrl = new URL(`/information/${encodeURIComponent(info?.id || id)}`, SHARE_BASE_URL).toString();
+    const translationLabel = translationModel || autoTranslationModelLabel;
+
+    if (!bodyContent && !posterSummary && viewpoints.length === 0 && linkedDecisions.length === 0) {
+      Toast.show({ content: '当前材料没有可生成长图的正文' });
+      return;
+    }
+
+    const bodyBlocks = [
+      bodyContent ? { type: 'heading', text: isTranslatedMode ? '中文正文' : '正文' } : null,
+      bodyContent || null,
+      viewpoints.length ? { type: 'heading', text: '观点沉淀' } : null,
+      viewpoints.length ? {
+        type: 'list',
+        items: viewpoints.slice(0, 10).map((vp) => [
+          getStatusLabel(vp.status),
+          vp.content,
+          vp.quote ? `引用：${vp.quote}` : '',
+        ].filter(Boolean).join(' · ')),
+      } : null,
+      linkedDecisions.length ? { type: 'heading', text: '关联决策' } : null,
+      linkedDecisions.length ? {
+        type: 'list',
+        items: linkedDecisions.slice(0, 8).map((decision) => [
+          decision.title || decision.summary || decision.action || '决策记录',
+          decision.status ? `状态：${getStatusLabel(decision.status)}` : '',
+          decision.asset_symbol || decision.asset_id ? `标的：${decision.asset_symbol || decision.asset_id}` : '',
+        ].filter(Boolean).join(' · ')),
+      } : null,
+    ].filter(Boolean);
+
+    const loadingToast = Toast.show({ icon: 'loading', content: '正在生成长图...', duration: 0 });
+    try {
+      const result = await shareLongPoster({
+        typeLabel: `${TYPE_LABELS[info?.type] || '情报'}长图`,
+        title: posterTitle,
+        subtitle: [
+          posterSource,
+          getReaderLabel(readerKind),
+          translationLabel ? `模型 ${translationLabel}` : '',
+        ].filter(Boolean).join(' · '),
+        summaryTitle: '核心摘要',
+        summary: posterSummary || '暂无正文摘要',
+        content: bodyBlocks,
+        metrics: [
+          { label: '类型', value: TYPE_LABELS[info?.type] || info?.type || '情报' },
+          { label: '观点', value: `${viewpoints.length}`, hint: '已沉淀观点' },
+          { label: '决策', value: `${linkedDecisions.length}`, hint: '关联决策' },
+          { label: '来源', value: validUrl ? '外部' : '本地', hint: posterSource },
+        ],
+        sourceLabel: `来源：${posterSource}${validUrl ? ` · ${validUrl}` : ''}`,
+        footerTitle: '下载 InvestBrain',
+        footer: '本地优先 · 交易记录与分析 Agent',
+        disclaimer: '内容仅供复盘参考，不构成投资建议。请结合个人风险承受能力独立判断。',
+        shareUrl,
+        qrUrl: shareUrl,
+        accent: '#3b82f6',
+        accent2: '#22d3ee',
+        fileName: `investbrain-info-long-${info?.id || Date.now()}.png`,
+      });
+      Toast.show({
+        icon: 'success',
+        content: `${result.mode === 'native' ? '长图已发送' : '长图已下载'}${result.truncated ? '，正文较长已截断' : ''}`,
+      });
+    } catch (error) {
+      if (error?.name === 'AbortError') return;
+      Toast.show({ icon: 'fail', content: error.message || '长图生成失败' });
+    } finally {
+      loadingToast.close();
+    }
+  };
+
   const handleToggleInfoTeamVisible = async () => {
     if (readOnly) {
       Toast.show({ content: '团队镜像不能直接发布或撤回，请回到个人工作区操作' });
@@ -1704,6 +1782,10 @@ export default function InformationDetail() {
                 )
               )}
               <Button size="mini" fill="outline" className="info-detail__reader-action info-detail__reader-action--utility" onClick={handleShareInformationPoster}>分享图</Button>
+              <Button size="mini" fill="outline" className="info-detail__reader-action info-detail__reader-action--utility" onClick={handleShareInformationLongPoster}>
+                <PicturesOutline />
+                长图
+              </Button>
               <Button size="mini" fill="outline" className="info-detail__reader-action info-detail__reader-action--utility" onClick={markCurrentMaterial}>标注材料</Button>
               {validUrl && (
                 <Button size="mini" color="primary" className="info-detail__reader-action info-detail__reader-action--source" onClick={() => window.open(validUrl, '_blank', 'noopener,noreferrer')}>

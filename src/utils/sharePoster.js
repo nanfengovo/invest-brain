@@ -4,6 +4,13 @@ import { chooseSharePosterBackground } from './sharePosterBackgrounds.jsx';
 const POSTER_WIDTH = 1080;
 const POSTER_HEIGHT = 1440;
 const POSTER_PADDING = 72;
+export const LONG_POSTER_WIDTH = 900;
+export const LONG_POSTER_MAX_HEIGHT = 11200;
+const LONG_POSTER_MIN_HEIGHT = 1440;
+const LONG_POSTER_PADDING = 54;
+const LONG_POSTER_EXPORT_SCALE = 1.25;
+const LONG_POSTER_FOOTER_HEIGHT = 230;
+const LONG_POSTER_BOTTOM_BAR_HEIGHT = 72;
 const SHARE_BRAND = 'InvestBrain';
 const DEFAULT_SHARE_SITE_URL = 'https://invest-brain.vercel.app';
 const TEMPLATE_POOL = ['signal-card', 'badge-card', 'ledger-clean', 'pop-profit'];
@@ -1059,6 +1066,768 @@ function drawPopProfitTemplate(ctx, config, accent, accent2) {
   });
 }
 
+function decodePosterHtmlEntities(value = '') {
+  return String(value || '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'");
+}
+
+function htmlToLongPosterText(value = '') {
+  return decodePosterHtmlEntities(String(value || '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '\n')
+    .replace(/<style[\s\S]*?<\/style>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|section|article|main|header|footer|blockquote|li|h[1-6]|tr)>/gi, '\n')
+    .replace(/<(h[1-3])[^>]*>/gi, '\n## ')
+    .replace(/<li[^>]*>/gi, '\n- ')
+    .replace(/<[^>]+>/g, ' '))
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function cleanLongPosterLine(value = '') {
+  return decodePosterHtmlEntities(String(value || '')
+    .replace(/!\[[^\]]*]\([^)]+\)/g, '')
+    .replace(/\[([^\]]+)]\([^)]+\)/g, '$1')
+    .replace(/[*_`~]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim());
+}
+
+export function normalizeLongPosterBlocks(content = '', options = {}) {
+  if (Array.isArray(content)) {
+    return content.flatMap((item) => {
+      if (!item) return [];
+      if (typeof item === 'string') return normalizeLongPosterBlocks(item, options);
+      const type = item.type || (item.items ? 'list' : item.title ? 'heading' : 'paragraph');
+      if (type === 'allocation') {
+        const rows = (item.rows || [])
+          .map((row, index) => ({
+            symbol: cleanLongPosterLine(row?.symbol || row?.label || ''),
+            name: cleanLongPosterLine(row?.name || ''),
+            value: cleanLongPosterLine(row?.value ?? ''),
+            percent: cleanLongPosterLine(row?.percent ?? ''),
+            typeLabel: cleanLongPosterLine(row?.typeLabel || row?.type || ''),
+            color: row?.color || ['#38bdf8', '#2dd4bf', '#a78bfa', '#f59e0b', '#fb7185', '#22c55e'][index % 6],
+          }))
+          .filter((row) => row.symbol || row.name || row.value || row.percent);
+        return rows.length ? [{
+          type: 'allocation',
+          title: cleanLongPosterLine(item.title || '持仓占比'),
+          summary: cleanLongPosterLine(item.summary || ''),
+          rows,
+        }] : [];
+      }
+      const blocks = [];
+      if (item.title && type !== 'heading') {
+        blocks.push({ type: 'heading', text: cleanLongPosterLine(item.title) });
+      }
+      if (type === 'list') {
+        blocks.push({
+          type: 'list',
+          items: (item.items || [])
+            .map((entry) => cleanLongPosterLine(typeof entry === 'string' ? entry : [entry?.label, entry?.value, entry?.detail].filter(Boolean).join('：')))
+            .filter(Boolean),
+        });
+      } else {
+        const text = cleanLongPosterLine(item.text || item.content || item.title);
+        if (text) blocks.push({ type, text });
+      }
+      return blocks;
+    }).filter((block) => block.text || block.items?.length);
+  }
+
+  const source = String(content || '');
+  const text = /<\/?[a-z][\s\S]*>/i.test(source)
+    ? htmlToLongPosterText(source)
+    : decodePosterHtmlEntities(source);
+  const lines = text
+    .replace(/```[\s\S]*?```/g, (match) => match.replace(/```[a-z]*|```/gi, '\n'))
+    .split('\n');
+
+  const blocks = [];
+  let paragraph = [];
+  let listItems = [];
+
+  const pushParagraph = () => {
+    const textValue = cleanLongPosterLine(paragraph.join(' '));
+    if (textValue) blocks.push({ type: 'paragraph', text: textValue });
+    paragraph = [];
+  };
+  const pushList = () => {
+    const items = listItems.map(cleanLongPosterLine).filter(Boolean);
+    if (items.length) blocks.push({ type: 'list', items });
+    listItems = [];
+  };
+
+  lines.forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      pushParagraph();
+      pushList();
+      return;
+    }
+
+    const heading = trimmed.match(/^(#{1,4})\s+(.+)$/);
+    if (heading) {
+      pushParagraph();
+      pushList();
+      blocks.push({
+        type: heading[1].length <= 2 ? 'heading' : 'subheading',
+        text: cleanLongPosterLine(heading[2]),
+      });
+      return;
+    }
+
+    const quote = trimmed.match(/^>\s*(.+)$/);
+    if (quote) {
+      pushParagraph();
+      pushList();
+      blocks.push({ type: 'quote', text: cleanLongPosterLine(quote[1]) });
+      return;
+    }
+
+    const list = trimmed.match(/^([-*+]|\d+[.)])\s+(.+)$/);
+    if (list) {
+      pushParagraph();
+      listItems.push(list[2]);
+      return;
+    }
+
+    pushList();
+    paragraph.push(trimmed);
+  });
+
+  pushParagraph();
+  pushList();
+  return blocks
+    .filter((block) => block.text || block.items?.length)
+    .slice(0, options.maxBlocks || 180);
+}
+
+function wrapLongPosterText(ctx, text, maxWidth, maxLines = Infinity) {
+  const input = cleanLongPosterLine(text);
+  if (!input) return [];
+
+  const lines = [];
+  let current = '';
+  [...input].forEach((char) => {
+    const next = current + char;
+    if (!current || ctx.measureText(next).width <= maxWidth) {
+      current = next;
+      return;
+    }
+    lines.push(current.trimEnd());
+    current = char.trimStart();
+  });
+  if (current) lines.push(current.trimEnd());
+
+  if (!Number.isFinite(maxLines) || lines.length <= maxLines) return lines;
+  const sliced = lines.slice(0, maxLines);
+  let last = sliced[sliced.length - 1] || '';
+  while (last && ctx.measureText(`${last}...`).width > maxWidth) {
+    last = last.slice(0, -1);
+  }
+  sliced[sliced.length - 1] = `${last}...`;
+  return sliced;
+}
+
+function getLongPosterFont(blockType) {
+  const map = {
+    brand: '900 28px "DIN Alternate", "PingFang SC", sans-serif',
+    brandSub: '600 17px "PingFang SC", sans-serif',
+    chip: '800 18px "PingFang SC", sans-serif',
+    title: '900 44px "PingFang SC", "Noto Sans CJK SC", sans-serif',
+    subtitle: '600 20px "PingFang SC", sans-serif',
+    metricLabel: '700 17px "PingFang SC", sans-serif',
+    metricValue: '900 25px "DIN Alternate", "PingFang SC", sans-serif',
+    summaryTitle: '900 23px "PingFang SC", sans-serif',
+    summary: '650 25px "PingFang SC", "Noto Sans CJK SC", sans-serif',
+    heading: '900 28px "PingFang SC", sans-serif',
+    subheading: '850 24px "PingFang SC", sans-serif',
+    body: '550 25px "PingFang SC", "Noto Sans CJK SC", sans-serif',
+    list: '550 24px "PingFang SC", "Noto Sans CJK SC", sans-serif',
+    footer: '600 18px "PingFang SC", sans-serif',
+  };
+  return map[blockType] || map.body;
+}
+
+function normalizeLongPosterMetrics(metrics = []) {
+  return (Array.isArray(metrics) ? metrics : [])
+    .map((metric) => ({
+      label: cleanLongPosterLine(metric?.label || ''),
+      value: cleanLongPosterLine(metric?.value ?? ''),
+      hint: cleanLongPosterLine(metric?.hint || ''),
+      tone: metric?.tone || 'neutral',
+    }))
+    .filter((metric) => metric.label || metric.value)
+    .slice(0, 4);
+}
+
+function measureLongPosterBlock(ctx, block, maxWidth, options = {}) {
+  if (!block) return null;
+  if (block.type === 'heading' || block.type === 'subheading') {
+    const isHeading = block.type === 'heading';
+    ctx.font = getLongPosterFont(isHeading ? 'heading' : 'subheading');
+    const lines = wrapLongPosterText(ctx, block.text, maxWidth - (isHeading ? 34 : 0), isHeading ? 3 : 3);
+    return {
+      ...block,
+      lines,
+      height: (isHeading ? 32 : 18) + lines.length * (isHeading ? 38 : 34) + 12,
+    };
+  }
+
+  if (block.type === 'quote') {
+    ctx.font = getLongPosterFont('summary');
+    const lines = wrapLongPosterText(ctx, block.text, maxWidth - 52, options.maxLines || Infinity);
+    return {
+      ...block,
+      lines,
+      height: 18 + lines.length * 38 + 44,
+    };
+  }
+
+  if (block.type === 'list') {
+    ctx.font = getLongPosterFont('list');
+    const itemLines = [];
+    let height = 10;
+    const items = block.items || [];
+    const maxItems = options.maxItems || items.length;
+    items.slice(0, maxItems).forEach((item) => {
+      const lines = wrapLongPosterText(ctx, item, maxWidth - 38, options.maxLinesPerItem || Infinity);
+      itemLines.push(lines);
+      height += Math.max(1, lines.length) * 34 + 8;
+    });
+    if (maxItems < items.length) {
+      itemLines.push(['...']);
+      height += 34;
+    }
+    return {
+      ...block,
+      itemLines,
+      height: height + 8,
+    };
+  }
+
+  if (block.type === 'allocation') {
+    const rows = (block.rows || []).slice(0, options.maxRows || 10);
+    return {
+      ...block,
+      rows,
+      height: 134 + rows.length * 62 + (block.summary ? 28 : 0),
+    };
+  }
+
+  ctx.font = getLongPosterFont('body');
+  const lines = wrapLongPosterText(ctx, block.text, maxWidth, options.maxLines || Infinity);
+  return {
+    ...block,
+    type: 'paragraph',
+    lines,
+    height: lines.length * 40 + 18,
+  };
+}
+
+function measureLongPosterLayout(ctx, config = {}) {
+  const width = config.width || LONG_POSTER_WIDTH;
+  const padding = LONG_POSTER_PADDING;
+  const maxWidth = width - padding * 2;
+  const accent = config.accent || '#3b82f6';
+  const accent2 = config.accent2 || '#22d3ee';
+  const metrics = normalizeLongPosterMetrics(config.metrics);
+  const title = cleanLongPosterLine(config.title || 'InvestBrain 长图');
+  const subtitle = cleanLongPosterLine(config.subtitle || config.sourceLabel || new Date().toLocaleString('zh-CN'));
+  const summary = stripPosterText(config.summary || config.description || '');
+
+  let y = 52;
+  const header = { y, height: 78 };
+  y += header.height + 26;
+
+  ctx.font = getLongPosterFont('title');
+  const titleLines = wrapLongPosterText(ctx, title, maxWidth, 5);
+  const titleY = y;
+  y += titleLines.length * 56 + 14;
+
+  ctx.font = getLongPosterFont('subtitle');
+  const subtitleLines = subtitle ? wrapLongPosterText(ctx, subtitle, maxWidth, 2) : [];
+  const subtitleY = y;
+  y += subtitleLines.length * 30 + 18;
+
+  const metricCards = [];
+  if (metrics.length) {
+    const gap = 14;
+    const cardWidth = metrics.length === 1 ? maxWidth : (maxWidth - gap) / 2;
+    const cardHeight = 86;
+    const metricY = y + 8;
+    metrics.forEach((metric, index) => {
+      const col = metrics.length === 1 ? 0 : index % 2;
+      const row = metrics.length === 1 ? 0 : Math.floor(index / 2);
+      metricCards.push({
+        metric,
+        x: padding + col * (cardWidth + gap),
+        y: metricY + row * (cardHeight + gap),
+        width: cardWidth,
+        height: cardHeight,
+      });
+    });
+    y = metricY + Math.ceil(metrics.length / 2) * (cardHeight + gap) + 18;
+  }
+
+  let summaryBlock = null;
+  if (summary) {
+    ctx.font = getLongPosterFont('summary');
+    const summaryLines = wrapLongPosterText(ctx, summary, maxWidth - 52, 7);
+    summaryBlock = {
+      x: padding,
+      y: y + 12,
+      width: maxWidth,
+      height: summaryLines.length * 38 + 76,
+      lines: summaryLines,
+    };
+    y = summaryBlock.y + summaryBlock.height + 16;
+  }
+
+  const bodyStartY = y + 4;
+  const contentBlocks = normalizeLongPosterBlocks(config.blocks || config.content || config.highlights || []);
+  const bodyBlocks = [];
+  const maxBodyBottom = LONG_POSTER_MAX_HEIGHT - LONG_POSTER_FOOTER_HEIGHT - LONG_POSTER_BOTTOM_BAR_HEIGHT - 44;
+  let truncated = false;
+  let cursor = bodyStartY;
+
+  for (const block of contentBlocks) {
+    const measured = measureLongPosterBlock(ctx, block, maxWidth);
+    if (!measured || (!measured.lines?.length && !measured.itemLines?.length && !measured.rows?.length)) continue;
+
+    if (cursor + measured.height > maxBodyBottom) {
+      const available = maxBodyBottom - cursor - 62;
+      if (available > 120 && measured.type === 'paragraph') {
+        const maxLines = Math.max(2, Math.floor((available - 18) / 40));
+        const partial = measureLongPosterBlock(ctx, block, maxWidth, { maxLines });
+        bodyBlocks.push({ ...partial, y: cursor, truncated: true });
+        cursor += partial.height;
+      } else if (available > 136 && measured.type === 'list') {
+        const maxItems = Math.max(2, Math.floor(available / 48));
+        const partial = measureLongPosterBlock(ctx, block, maxWidth, { maxItems, maxLinesPerItem: 2 });
+        bodyBlocks.push({ ...partial, y: cursor, truncated: true });
+        cursor += partial.height;
+      } else if (available > 220 && measured.type === 'allocation') {
+        const maxRows = Math.max(2, Math.floor((available - 134) / 62));
+        const partial = measureLongPosterBlock(ctx, block, maxWidth, { maxRows });
+        bodyBlocks.push({ ...partial, y: cursor, truncated: true });
+        cursor += partial.height;
+      }
+      truncated = true;
+      break;
+    }
+
+    bodyBlocks.push({ ...measured, y: cursor });
+    cursor += measured.height;
+  }
+
+  if (truncated && cursor + 52 < maxBodyBottom) {
+    bodyBlocks.push({
+      type: 'note',
+      lines: ['内容较长，长图已保留前半段重点，完整材料请进入系统查看。'],
+      y: cursor + 4,
+      height: 48,
+    });
+    cursor += 56;
+  }
+
+  const naturalHeight = cursor + LONG_POSTER_FOOTER_HEIGHT + LONG_POSTER_BOTTOM_BAR_HEIGHT + 34;
+  const height = Math.max(LONG_POSTER_MIN_HEIGHT, Math.min(LONG_POSTER_MAX_HEIGHT, Math.ceil(naturalHeight)));
+
+  return {
+    width,
+    height,
+    padding,
+    maxWidth,
+    accent,
+    accent2,
+    header,
+    titleLines,
+    titleY,
+    subtitleLines,
+    subtitleY,
+    metricCards,
+    summaryBlock,
+    bodyBlocks,
+    footerY: height - LONG_POSTER_FOOTER_HEIGHT - LONG_POSTER_BOTTOM_BAR_HEIGHT,
+    bottomBarY: height - LONG_POSTER_BOTTOM_BAR_HEIGHT,
+    truncated,
+  };
+}
+
+function drawLongPosterBackground(ctx, layout) {
+  const bg = ctx.createLinearGradient(0, 0, 0, layout.height);
+  bg.addColorStop(0, '#141923');
+  bg.addColorStop(0.42, '#111827');
+  bg.addColorStop(1, '#0b0f16');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, layout.width, layout.height);
+
+  ctx.save();
+  ctx.globalAlpha = 0.08;
+  ctx.strokeStyle = '#9ca3af';
+  ctx.lineWidth = 1;
+  for (let y = 120; y < layout.height; y += 112) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(layout.width, y - 84);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  const top = ctx.createLinearGradient(0, 0, layout.width, 280);
+  top.addColorStop(0, 'rgba(59, 130, 246, 0.22)');
+  top.addColorStop(0.55, 'rgba(34, 211, 238, 0.08)');
+  top.addColorStop(1, 'rgba(15, 23, 42, 0)');
+  ctx.fillStyle = top;
+  ctx.fillRect(0, 0, layout.width, 320);
+}
+
+function drawLongPosterMetricCard(ctx, card, layout, index) {
+  const { metric, x, y, width, height } = card;
+  ctx.save();
+  roundRect(ctx, x, y, width, height, 18);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.055)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.09)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.fillStyle = 'rgba(203, 213, 225, 0.66)';
+  ctx.font = getLongPosterFont('metricLabel');
+  ctx.fillText(metric.label || `指标 ${index + 1}`, x + 20, y + 30);
+
+  const toneColor = metric.tone === 'loss'
+    ? '#fb7185'
+    : metric.tone === 'profit'
+      ? '#2dd4bf'
+      : metric.tone === 'warning'
+        ? '#fbbf24'
+        : '#f8fafc';
+  ctx.fillStyle = toneColor;
+  ctx.font = getLongPosterFont('metricValue');
+  wrapLongPosterText(ctx, metric.value || '--', width - 40, 1)
+    .forEach((line) => ctx.fillText(line, x + 20, y + 62));
+
+  if (metric.hint) {
+    ctx.fillStyle = 'rgba(148, 163, 184, 0.62)';
+    ctx.font = '600 15px "PingFang SC", sans-serif';
+    wrapLongPosterText(ctx, metric.hint, width - 40, 1)
+      .forEach((line) => ctx.fillText(line, x + 20, y + height - 12));
+  }
+  ctx.restore();
+}
+
+function drawLongPosterBlock(ctx, block, layout) {
+  const x = layout.padding;
+  const maxWidth = layout.maxWidth;
+  const y = block.y;
+
+  if (block.type === 'heading' || block.type === 'subheading') {
+    const isHeading = block.type === 'heading';
+    const textY = y + (isHeading ? 30 : 22);
+    if (isHeading) {
+      roundRect(ctx, x, y + 5, 6, Math.max(28, block.lines.length * 34), 999);
+      ctx.fillStyle = layout.accent;
+      ctx.fill();
+    }
+    ctx.fillStyle = isHeading ? '#f8fafc' : '#dbeafe';
+    ctx.font = getLongPosterFont(isHeading ? 'heading' : 'subheading');
+    block.lines.forEach((line, index) => {
+      ctx.fillText(line, x + (isHeading ? 22 : 0), textY + index * (isHeading ? 38 : 34));
+    });
+    return;
+  }
+
+  if (block.type === 'quote') {
+    roundRect(ctx, x, y + 8, maxWidth, block.height - 22, 18);
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.48)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(59, 130, 246, 0.2)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    roundRect(ctx, x + 18, y + 28, 5, block.height - 60, 999);
+    ctx.fillStyle = layout.accent2;
+    ctx.fill();
+    ctx.fillStyle = '#e5e7eb';
+    ctx.font = getLongPosterFont('summary');
+    block.lines.forEach((line, index) => {
+      ctx.fillText(line, x + 44, y + 48 + index * 38);
+    });
+    return;
+  }
+
+  if (block.type === 'list') {
+    ctx.fillStyle = '#d9e2ef';
+    ctx.font = getLongPosterFont('list');
+    let cursor = y + 26;
+    block.itemLines.forEach((lines) => {
+      ctx.fillStyle = layout.accent2;
+      ctx.beginPath();
+      ctx.arc(x + 8, cursor - 8, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#d9e2ef';
+      lines.forEach((line, index) => {
+        ctx.fillText(line, x + 28, cursor + index * 34);
+      });
+      cursor += Math.max(1, lines.length) * 34 + 8;
+    });
+    return;
+  }
+
+  if (block.type === 'allocation') {
+    const rows = block.rows || [];
+    const panelY = y + 8;
+    const panelH = block.height - 18;
+    roundRect(ctx, x, panelY, maxWidth, panelH, 22);
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.52)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = '900 26px "PingFang SC", sans-serif';
+    ctx.fillText(block.title || '持仓占比', x + 22, panelY + 40);
+
+    let barY = panelY + 64;
+    if (block.summary) {
+      ctx.fillStyle = 'rgba(203, 213, 225, 0.66)';
+      ctx.font = '600 17px "PingFang SC", sans-serif';
+      wrapLongPosterText(ctx, block.summary, maxWidth - 44, 1)
+        .forEach((line) => ctx.fillText(line, x + 22, panelY + 66));
+      barY += 28;
+    }
+
+    const barX = x + 22;
+    const barW = maxWidth - 44;
+    const barH = 18;
+    roundRect(ctx, barX, barY, barW, barH, 999);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.fill();
+    let cursorX = barX;
+    rows.forEach((row, index) => {
+      const ratio = Math.max(0, Math.min(1, Number.parseFloat(String(row.percent || '').replace('%', '')) / 100 || 0));
+      const remaining = (barX + barW) - cursorX;
+      if (remaining <= 0) return;
+      const segmentW = index === rows.length - 1 ? remaining : Math.min(remaining, Math.max(6, barW * ratio));
+      ctx.fillStyle = row.color || layout.accent2;
+      roundRect(ctx, cursorX, barY, segmentW, barH, 999);
+      ctx.fill();
+      cursorX += segmentW;
+    });
+
+    const rowStartY = barY + 48;
+    rows.forEach((row, index) => {
+      const rowY = rowStartY + index * 62;
+      const ratio = Math.max(0, Math.min(1, Number.parseFloat(String(row.percent || '').replace('%', '')) / 100 || 0));
+      ctx.fillStyle = row.color || layout.accent2;
+      ctx.beginPath();
+      ctx.arc(x + 30, rowY + 12, 6, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = '900 21px "DIN Alternate", "PingFang SC", sans-serif';
+      wrapLongPosterText(ctx, [row.symbol, row.name].filter(Boolean).join(' · '), maxWidth - 210, 1)
+        .forEach((line) => ctx.fillText(line, x + 48, rowY + 18));
+
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#e2e8f0';
+      ctx.font = '900 20px "DIN Alternate", "PingFang SC", sans-serif';
+      ctx.fillText(row.percent || '--', x + maxWidth - 22, rowY + 18);
+      ctx.textAlign = 'left';
+
+      ctx.fillStyle = 'rgba(203, 213, 225, 0.62)';
+      ctx.font = '600 16px "PingFang SC", sans-serif';
+      wrapLongPosterText(ctx, [row.value, row.typeLabel].filter(Boolean).join(' · '), maxWidth - 120, 1)
+        .forEach((line) => ctx.fillText(line, x + 48, rowY + 43));
+
+      roundRect(ctx, x + 48, rowY + 50, maxWidth - 92, 8, 999);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+      ctx.fill();
+      roundRect(ctx, x + 48, rowY + 50, Math.max(8, (maxWidth - 92) * ratio), 8, 999);
+      ctx.fillStyle = row.color || layout.accent2;
+      ctx.fill();
+    });
+    return;
+  }
+
+  if (block.type === 'note') {
+    roundRect(ctx, x, y + 4, maxWidth, block.height - 8, 14);
+    ctx.fillStyle = 'rgba(251, 191, 36, 0.1)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(251, 191, 36, 0.22)';
+    ctx.stroke();
+    ctx.fillStyle = '#fde68a';
+    ctx.font = '700 19px "PingFang SC", sans-serif';
+    block.lines.forEach((line, index) => ctx.fillText(line, x + 18, y + 32 + index * 28));
+    return;
+  }
+
+  ctx.fillStyle = '#d5dce7';
+  ctx.font = getLongPosterFont('body');
+  block.lines.forEach((line, index) => {
+    ctx.fillText(line, x, y + 28 + index * 40);
+  });
+}
+
+export function drawLongPosterTemplate(ctx, config = {}, layout) {
+  const currentLayout = layout || measureLongPosterLayout(ctx, config);
+  const { width, height, padding, maxWidth, accent, accent2 } = currentLayout;
+
+  drawLongPosterBackground(ctx, currentLayout);
+
+  ctx.save();
+  roundRect(ctx, padding, 34, width - padding * 2, 84, 22);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.055)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+  ctx.stroke();
+
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(padding + 31, 76, 22, 0.25 * Math.PI, 1.8 * Math.PI);
+  ctx.stroke();
+  ctx.fillStyle = '#eaf2ff';
+  ctx.font = '900 19px "DIN Alternate", "PingFang SC", sans-serif';
+  ctx.fillText('IB', padding + 19, 83);
+
+  ctx.fillStyle = '#f8fafc';
+  ctx.font = getLongPosterFont('brand');
+  ctx.fillText(config.brand || SHARE_BRAND, padding + 68, 70);
+  ctx.fillStyle = 'rgba(203, 213, 225, 0.62)';
+  ctx.font = getLongPosterFont('brandSub');
+  ctx.fillText(config.brandSubtitle || '交易记录与分析 Agent', padding + 68, 96);
+
+  const chipText = cleanLongPosterLine(config.typeLabel || '长图');
+  ctx.font = getLongPosterFont('chip');
+  const chipWidth = Math.min(196, Math.max(92, ctx.measureText(chipText).width + 34));
+  roundRect(ctx, width - padding - chipWidth, 58, chipWidth, 38, 999);
+  ctx.fillStyle = `${accent}24`;
+  ctx.fill();
+  ctx.strokeStyle = `${accent}70`;
+  ctx.stroke();
+  ctx.fillStyle = '#dbeafe';
+  ctx.textAlign = 'center';
+  ctx.fillText(chipText, width - padding - chipWidth / 2, 83);
+  ctx.textAlign = 'left';
+  ctx.restore();
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = getLongPosterFont('title');
+  currentLayout.titleLines.forEach((line, index) => {
+    ctx.fillText(line, padding, currentLayout.titleY + 44 + index * 56);
+  });
+
+  if (currentLayout.subtitleLines.length) {
+    ctx.fillStyle = 'rgba(203, 213, 225, 0.7)';
+    ctx.font = getLongPosterFont('subtitle');
+    currentLayout.subtitleLines.forEach((line, index) => {
+      ctx.fillText(line, padding, currentLayout.subtitleY + 20 + index * 30);
+    });
+  }
+
+  currentLayout.metricCards.forEach((card, index) => drawLongPosterMetricCard(ctx, card, currentLayout, index));
+
+  if (currentLayout.summaryBlock) {
+    const block = currentLayout.summaryBlock;
+    roundRect(ctx, block.x, block.y, block.width, block.height, 22);
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.56)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+    ctx.stroke();
+    roundRect(ctx, block.x + 18, block.y + 22, 6, block.height - 44, 999);
+    ctx.fillStyle = accent2;
+    ctx.fill();
+    ctx.fillStyle = '#bfdbfe';
+    ctx.font = getLongPosterFont('summaryTitle');
+    ctx.fillText(config.summaryTitle || '核心摘要', block.x + 44, block.y + 42);
+    ctx.fillStyle = '#edf3fb';
+    ctx.font = getLongPosterFont('summary');
+    block.lines.forEach((line, index) => {
+      ctx.fillText(line, block.x + 44, block.y + 82 + index * 38);
+    });
+  }
+
+  currentLayout.bodyBlocks.forEach((block) => drawLongPosterBlock(ctx, block, currentLayout));
+
+  const footerY = currentLayout.footerY;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(148, 163, 184, 0.14)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(padding, footerY + 12);
+  ctx.lineTo(width - padding, footerY + 12);
+  ctx.stroke();
+
+  const qrSize = 118;
+  const qrX = width - padding - qrSize - 8;
+  const qrY = footerY + 54;
+  drawShareQr(ctx, config, qrX, qrY, qrSize, {
+    background: '#f8fafc',
+    module: '#0f172a',
+    border: 'rgba(255, 255, 255, 0.18)',
+    labelColor: 'rgba(226, 232, 240, 0.76)',
+    labelSize: 16,
+    labelOffset: 22,
+    label: '扫码进入网站',
+  });
+
+  const footerTextWidth = qrX - padding - 34;
+  ctx.fillStyle = '#f8fafc';
+  ctx.font = '900 24px "PingFang SC", sans-serif';
+  ctx.fillText(config.footerTitle || 'InvestBrain', padding, footerY + 58);
+  ctx.fillStyle = 'rgba(203, 213, 225, 0.68)';
+  ctx.font = getLongPosterFont('footer');
+  wrapLongPosterText(ctx, config.sourceLabel || config.footer || '本地优先的交易记录与分析系统', footerTextWidth, 2)
+    .forEach((line, index) => ctx.fillText(line, padding, footerY + 92 + index * 28));
+  ctx.fillStyle = 'rgba(148, 163, 184, 0.62)';
+  wrapLongPosterText(ctx, config.disclaimer || '内容仅供复盘参考，不构成投资建议。请结合个人风险承受能力独立判断。', footerTextWidth, 3)
+    .forEach((line, index) => ctx.fillText(line, padding, footerY + 154 + index * 26));
+  ctx.restore();
+
+  const barY = currentLayout.bottomBarY;
+  const bar = ctx.createLinearGradient(0, barY, width, height);
+  bar.addColorStop(0, '#2563eb');
+  bar.addColorStop(1, '#1d4ed8');
+  ctx.fillStyle = bar;
+  ctx.fillRect(0, barY, width, LONG_POSTER_BOTTOM_BAR_HEIGHT);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+  ctx.font = '800 19px "PingFang SC", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(config.bottomLabel || `${SHARE_BRAND} · 本地优先的交易记录与分析系统`, width / 2, barY + 43);
+  ctx.textAlign = 'left';
+}
+
+function createLongPosterCanvas(config = {}) {
+  const scale = Number(config.scale) > 0 ? Number(config.scale) : LONG_POSTER_EXPORT_SCALE;
+  const measureCanvas = document.createElement('canvas');
+  measureCanvas.width = LONG_POSTER_WIDTH;
+  measureCanvas.height = LONG_POSTER_MIN_HEIGHT;
+  const measureCtx = measureCanvas.getContext('2d');
+  const layout = measureLongPosterLayout(measureCtx, config);
+
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(layout.width * scale);
+  canvas.height = Math.round(layout.height * scale);
+  canvas.style.width = `${layout.width}px`;
+  canvas.style.height = `${layout.height}px`;
+
+  const ctx = canvas.getContext('2d');
+  ctx.scale(scale, scale);
+  drawLongPosterTemplate(ctx, config, layout);
+  return { canvas, layout };
+}
+
 function createPosterCanvas(config = {}) {
   const scale = getCanvasScale();
   const canvas = document.createElement('canvas');
@@ -1123,6 +1892,22 @@ export function createSharePoster(config = {}) {
   };
 }
 
+export function createLongSharePoster(config = {}) {
+  if (typeof document === 'undefined') {
+    throw new Error('当前环境不支持生成长图');
+  }
+  const { canvas, layout } = createLongPosterCanvas(config);
+  const blob = dataUrlToBlob(canvas.toDataURL('image/png', 0.96));
+  if (!blob) throw new Error('长图生成失败');
+  return {
+    blob,
+    fileName: config.fileName || `investbrain-long-${Date.now()}.png`,
+    width: layout.width,
+    height: layout.height,
+    truncated: layout.truncated,
+  };
+}
+
 export async function sharePoster(config = {}) {
   const background = config.skipBackgroundPicker
     ? config.background
@@ -1156,6 +1941,29 @@ export async function sharePoster(config = {}) {
 
   downloadBlob(blob, fileName);
   return { mode: 'download' };
+}
+
+export async function shareLongPoster(config = {}) {
+  const { blob, fileName, width, height, truncated } = createLongSharePoster(config);
+  const file = new File([blob], fileName, { type: 'image/png' });
+
+  if (navigator.canShare?.({ files: [file] }) && navigator.share) {
+    try {
+      await navigator.share({
+        title: config.title || 'InvestBrain 长图',
+        text: config.shareText || config.subtitle || 'InvestBrain 长图',
+        files: [file],
+      });
+      return { mode: 'native', width, height, truncated };
+    } catch (error) {
+      if (error?.name === 'AbortError') throw error;
+      downloadBlob(blob, fileName);
+      return { mode: 'download', width, height, truncated };
+    }
+  }
+
+  downloadBlob(blob, fileName);
+  return { mode: 'download', width, height, truncated };
 }
 
 export const FREE_IMAGE_MODEL_RECOMMENDATIONS = [

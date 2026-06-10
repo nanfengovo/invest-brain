@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Toast } from 'antd-mobile';
+import { Button, Toast } from 'antd-mobile';
+import { PicturesOutline } from 'antd-mobile-icons';
 import { useTradeStore } from '../stores/useTradeStore';
 import { useAppStore } from '../stores/useAppStore';
 import { db } from '../db/database';
@@ -13,7 +14,10 @@ import { buildOptionHoldingMetrics, buildOptionRealtimeSummary } from '../utils/
 import { syncCloudAlerts } from '../utils/cloudAlerts';
 import { buildApiCacheKey, fetchJsonWithCache } from '../utils/apiCache';
 import { getReadableAssetName } from '../utils/displayText';
+import { shareLongPoster } from '../utils/sharePoster';
 import './HoldingsPage.css';
+
+const SHARE_BASE_URL = 'https://invest-brain.vercel.app';
 
 const formatCurrency = (num) => {
   const val = Number(num) || 0;
@@ -973,15 +977,119 @@ export default function HoldingsPage() {
     ? `${optionRealtimeSummary.quoted}/${optionRealtimeSummary.count}`
     : '0/0';
 
+  const handleShareHoldingsLongPoster = async () => {
+    if (!holdings.length) {
+      Toast.show({ content: '暂无持仓可生成长图' });
+      return;
+    }
+
+    const shareUrl = new URL('/holdings', SHARE_BASE_URL).toString();
+    const topAllocation = allocation.rows.slice(0, 10);
+    const holdingItems = holdingGroups.groups.slice(0, 14).map((group) => {
+      const lines = [
+        `${group.symbol} · ${group.name}`,
+        `市值 $${formatCurrency(group.value)} · 占组合 ${(group.percent * 100).toFixed(1)}% · ${group.typeSummary || '持仓'}`,
+        ...group.typeBreakdown.map((typeItem) => `${typeItem.label} $${formatCurrency(typeItem.value)} · ${(typeItem.groupPercent * 100).toFixed(0)}%`),
+      ];
+      return lines.join(' · ');
+    });
+    const optionSummaryLine = hasOptionRealtimeSummary
+      ? `期权 Mark 估值 $${formatCurrency(optionRealtimeSummary.marketValue)}，未实现盈亏 ${formatSignedCurrency(optionRealtimeSummary.unrealizedPnl)}，今日收益 ${formatSignedCurrency(optionRealtimeSummary.dayPnl)}，报价覆盖 ${optionRealtimeCoverage}。`
+      : '';
+    const summaryLine = [
+      `组合类型：${portfolioInsights.typeLabel}`,
+      `实时估值 $${formatCurrency(realtimeSummary.marketValue)}`,
+      `未实现盈亏 ${formatSignedCurrency(realtimeSummary.unrealizedPnl)}${realtimePnlPct !== null ? ` (${formatPercentValue(realtimePnlPct)})` : ''}`,
+      `行情覆盖 ${realtimeCoverage}`,
+    ].join(' · ');
+
+    const bodyBlocks = [
+      { type: 'heading', text: 'AI 组合判断' },
+      {
+        type: 'list',
+        items: portfolioInsights.insights.map((item) => `${item.label}：${item.value} · ${item.detail}`),
+      },
+      topAllocation.length ? {
+        type: 'allocation',
+        title: '持仓占比分布',
+        summary: `${topAllocation.length} 个主要标的 · 总估值 $${formatCurrency(allocation.total)}`,
+        rows: topAllocation.map((row) => ({
+          symbol: row.symbol,
+          name: row.name,
+          value: `$${formatCurrency(row.value)}`,
+          percent: `${(row.percent * 100).toFixed(1)}%`,
+          typeLabel: row.typeLabel,
+          color: row.color,
+        })),
+      } : null,
+      holdingItems.length ? { type: 'heading', text: '分组持仓明细' } : null,
+      holdingItems.length ? { type: 'list', items: holdingItems } : null,
+      optionSummaryLine ? { type: 'heading', text: '期权实时收益' } : null,
+      optionSummaryLine || null,
+      holdings.length > holdingItems.length
+        ? { type: 'quote', text: `还有 ${holdings.length - holdingItems.length} 个活跃持仓未在长图展开，完整明细请进入系统查看。` }
+        : null,
+    ].filter(Boolean);
+
+    const loadingToast = Toast.show({ icon: 'loading', content: '正在生成持仓长图...', duration: 0 });
+    try {
+      const result = await shareLongPoster({
+        typeLabel: '持仓长图',
+        title: portfolioLabel,
+        subtitle: `${portfolioModeLabel} · ${new Date().toLocaleString('zh-CN')}`,
+        summaryTitle: '组合摘要',
+        summary: summaryLine,
+        content: bodyBlocks,
+        metrics: [
+          { label: '实时估值', value: `$${formatCurrency(realtimeSummary.marketValue)}` },
+          { label: '未实现盈亏', value: formatSignedCurrency(realtimeSummary.unrealizedPnl), tone: realtimePnlClass },
+          { label: '今日变动', value: formatSignedCurrency(realtimeSummary.dayPnl), tone: realtimeDayClass },
+          { label: '行情覆盖', value: realtimeCoverage, hint: `${realtimeSummary.quoted}/${realtimeSummary.count} 个仓位` },
+        ],
+        sourceLabel: `组合入口：${shareUrl}`,
+        footerTitle: '下载 InvestBrain',
+        footer: '本地优先 · 交易记录与分析 Agent',
+        disclaimer: '组合长图基于当前本地交易记录与行情源返回值生成，仅供复盘参考，不构成投资建议。',
+        shareUrl,
+        qrUrl: shareUrl,
+        accent: '#3b82f6',
+        accent2: '#2dd4bf',
+        fileName: `investbrain-holdings-long-${Date.now()}.png`,
+      });
+      Toast.show({
+        icon: 'success',
+        content: `${result.mode === 'native' ? '持仓长图已发送' : '持仓长图已下载'}${result.truncated ? '，内容较长已截断' : ''}`,
+      });
+    } catch (error) {
+      if (error?.name === 'AbortError') return;
+      Toast.show({ icon: 'fail', content: error.message || '持仓长图生成失败' });
+    } finally {
+      loadingToast.close();
+    }
+  };
+
   return (
     <div className="holdings-page">
       {/* ── Header ── */}
       <div className="holdings-page__section">
         <div className="holdings-page__header">
-          <h1 className="holdings-page__title">持仓总览</h1>
-          <p className="holdings-page__subtitle">
-            {isTeamWorkspace ? '团队镜像数据聚合计算' : '基于我的交易记录自动计算'}
-          </p>
+          <div className="holdings-page__header-main">
+            <div>
+              <h1 className="holdings-page__title">持仓总览</h1>
+              <p className="holdings-page__subtitle">
+                {isTeamWorkspace ? '团队镜像数据聚合计算' : '基于我的交易记录自动计算'}
+              </p>
+            </div>
+            <Button
+              size="small"
+              fill="outline"
+              className="holdings-page__long-poster-btn"
+              onClick={handleShareHoldingsLongPoster}
+            >
+              <PicturesOutline />
+              长图
+            </Button>
+          </div>
         </div>
       </div>
 

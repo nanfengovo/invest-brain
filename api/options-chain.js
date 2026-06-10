@@ -100,6 +100,20 @@ function getArrayValue(payload, key, index) {
   return Array.isArray(value) ? value[index] : value;
 }
 
+export function normalizeOptionContractKey(value) {
+  const text = String(value || '')
+    .replace(/^OPTION_/i, '')
+    .replace(/^O:/i, '')
+    .replace(/\.US$/i, '')
+    .replace(/\s+/g, '')
+    .trim()
+    .toUpperCase();
+  const match = text.match(/^([A-Z.]+)(\d{6})([CP])(\d{6,8})$/);
+  if (!match) return text;
+  const [, underlying, yymmdd, side, strikeRaw] = match;
+  return `${underlying}${yymmdd}${side}${String(Number(strikeRaw)).padStart(8, '0')}`;
+}
+
 function parseOCCSymbol(value) {
   const text = normalizeOptionContractKey(value);
   const match = text.match(/^([A-Z.]+)(\d{6})([CP])(\d{8})$/);
@@ -112,15 +126,6 @@ function parseOCCSymbol(value) {
     type: side === 'P' ? 'PUT' : 'CALL',
     strike: Number(strikeRaw) / 1000,
   };
-}
-
-export function normalizeOptionContractKey(value) {
-  return String(value || '')
-    .replace(/^OPTION_/i, '')
-    .replace(/^O:/i, '')
-    .replace(/\s+/g, '')
-    .trim()
-    .toUpperCase();
 }
 
 export function filterOptionPayloadByContract(payload, contract) {
@@ -402,7 +407,7 @@ async function fetchMarketDataApp(symbol, expiration, token, filters = {}) {
     Accept: 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
-  const contractSymbol = String(filters.contract || '').replace(/^OPTION_/i, '').trim().toUpperCase();
+  const contractSymbol = normalizeOptionContractKey(filters.contract);
   const contractDetails = parseOCCSymbol(contractSymbol);
 
   if (contractSymbol) {
@@ -633,7 +638,7 @@ async function fetchPolygon(symbol, expiration, token) {
 }
 
 async function fetchLongbridge(symbol, expiration, credentials, filters = {}) {
-  const contractSymbol = String(filters.contract || '').replace(/^OPTION_/i, '').trim().toUpperCase();
+  const contractSymbol = normalizeOptionContractKey(filters.contract);
   if (!contractSymbol) {
     return {
       expirations: expiration ? [expiration] : [],
@@ -730,7 +735,7 @@ export default async function handler(req, res) {
     const provider = searchParams.get('provider') || 'auto';
     const strike = searchParams.get('strike') || '';
     const side = searchParams.get('side') || '';
-    const contract = searchParams.get('contract') || '';
+    const contract = normalizeOptionContractKey(searchParams.get('contract') || '');
     const includePrevious = ['1', 'true', 'yes'].includes(
       String(searchParams.get('includePrevious') || '').toLowerCase()
     );

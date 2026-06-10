@@ -1042,7 +1042,7 @@ export async function sharePoster(config = {}) {
 export const FREE_IMAGE_MODEL_RECOMMENDATIONS = [
   {
     name: 'Qwen-Image',
-    fit: '中文语义、海报构图、NVIDIA Build 可试用/下载',
+    fit: '当前默认分享背景模型，中文语义和海报构图更稳',
     caveat: '分享图关键文字仍建议由本地 Canvas 绘制',
   },
   {
@@ -1061,8 +1061,8 @@ export const FREE_IMAGE_MODEL_RECOMMENDATIONS = [
     caveat: '更适合作背景，不适合承载收益数字',
   },
   {
-    name: 'Stable Diffusion 3.5 Medium',
-    fit: '开源生态成熟，适合自部署装饰图',
-    caveat: '商用/规模化需核对 Stability 许可条款',
+    name: 'Stable Diffusion 3.5 Large',
+    fit: 'NVIDIA Visual GenAI 直接 NIM 端点，适合封面级背景',
+    caveat: '生成更重，失败时会自动回退到其他背景模型',
   },
 ];

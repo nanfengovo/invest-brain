@@ -1,31 +1,100 @@
 const ALLOWED_MODELS = [
-  'qwen-image-2512',
   'qwen-image',
+  'qwen-image-2512',
   'flux.2-klein-4b',
+  'flux.1-schnell',
   'stabilityai/stable-diffusion-3.5-large',
 ];
 
 const MODEL_ENDPOINTS = {
-  'flux.1-schnell': 'https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-schnell',
-  'black-forest-labs/flux.1-schnell': 'https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-schnell',
-  'flux.2-klein-4b': 'https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.2-klein-4b',
-  'black-forest-labs/flux.2-klein-4b': 'https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.2-klein-4b',
+  'qwen-image': {
+    model: 'qwen-image',
+    endpoint: 'https://ai.api.nvidia.com/v1/genai/qwen/qwen-image',
+    family: 'qwen',
+  },
+  'qwen/qwen-image': {
+    model: 'qwen-image',
+    endpoint: 'https://ai.api.nvidia.com/v1/genai/qwen/qwen-image',
+    family: 'qwen',
+  },
+  'flux.1-schnell': {
+    model: 'flux.1-schnell',
+    endpoint: 'https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-schnell',
+    family: 'flux1',
+  },
+  'black-forest-labs/flux.1-schnell': {
+    model: 'flux.1-schnell',
+    endpoint: 'https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-schnell',
+    family: 'flux1',
+  },
+  'flux.2-klein-4b': {
+    model: 'flux.2-klein-4b',
+    endpoint: 'https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.2-klein-4b',
+    family: 'flux2',
+  },
+  'black-forest-labs/flux.2-klein-4b': {
+    model: 'flux.2-klein-4b',
+    endpoint: 'https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.2-klein-4b',
+    family: 'flux2',
+  },
+  'stabilityai/stable-diffusion-3.5-large': {
+    model: 'stabilityai/stable-diffusion-3.5-large',
+    endpoint: 'https://ai.api.nvidia.com/v1/genai/stabilityai/stable-diffusion-3.5-large',
+    family: 'sd35',
+  },
+  'stable-diffusion-3.5-large': {
+    model: 'stabilityai/stable-diffusion-3.5-large',
+    endpoint: 'https://ai.api.nvidia.com/v1/genai/stabilityai/stable-diffusion-3.5-large',
+    family: 'sd35',
+  },
 };
 
-const DEFAULT_MODEL = 'qwen-image-2512';
+const DEFAULT_MODEL = 'qwen-image';
+const FALLBACK_MODELS = [
+  'qwen-image',
+  'qwen-image-2512',
+  'flux.2-klein-4b',
+  'flux.1-schnell',
+  'stabilityai/stable-diffusion-3.5-large',
+];
 const NIM_SIZE_STEPS = [768, 832, 896, 960, 1024, 1088, 1152, 1216, 1280, 1344];
+const QWEN_SIZE_STEPS = Array.from({ length: 73 }, (_, index) => 512 + index * 16);
+const FLUX2_SIZE_STEPS = Array.from({ length: 67 }, (_, index) => 512 + index * 16);
 const DEFAULT_OPENAI_IMAGE_BASE_URL = 'https://integrate.api.nvidia.com/v1';
 
-function nearestNimSize(value, fallback) {
+function nearestSize(value, fallback, steps = NIM_SIZE_STEPS) {
   const numeric = Number(value) || fallback;
-  return NIM_SIZE_STEPS.reduce((best, item) => (
+  return steps.reduce((best, item) => (
     Math.abs(item - numeric) < Math.abs(best - numeric) ? item : best
-  ), NIM_SIZE_STEPS[0]);
+  ), steps[0]);
 }
 
 function normalizeModel(model) {
   const value = String(model || '').trim();
-  return ALLOWED_MODELS.includes(value) || MODEL_ENDPOINTS[value] ? value : DEFAULT_MODEL;
+  if (MODEL_ENDPOINTS[value]) return MODEL_ENDPOINTS[value].model;
+  return ALLOWED_MODELS.includes(value) ? value : DEFAULT_MODEL;
+}
+
+function getAttemptModels(requestedModel) {
+  const first = normalizeModel(requestedModel);
+  return [first, ...FALLBACK_MODELS].filter((model, index, list) => (
+    model && list.indexOf(model) === index
+  ));
+}
+
+function getResponseError(payload, status) {
+  return payload?.error?.message || payload?.error || `NVIDIA 图像接口请求失败（HTTP ${status}）`;
+}
+
+async function readJsonResponse(response) {
+  const responseText = await response.text();
+  return responseText ? (() => {
+    try {
+      return JSON.parse(responseText);
+    } catch {
+      return { error: responseText };
+    }
+  })() : {};
 }
 
 async function normalizeImageValue(value) {
@@ -78,33 +147,30 @@ async function callOpenAiCompatibleImageApi({ apiKey, model, prompt, width, heig
     }),
   });
 
-  const responseText = await response.text();
-  const payload = responseText ? (() => {
-    try {
-      return JSON.parse(responseText);
-    } catch {
-      return { error: responseText };
-    }
-  })() : {};
+  const payload = await readJsonResponse(response);
   if (!response.ok) {
-    throw new Error(payload?.error?.message || payload?.error || `NVIDIA 图像接口请求失败（HTTP ${response.status}）`);
+    const error = new Error(getResponseError(payload, response.status));
+    error.status = response.status;
+    error.model = model;
+    throw error;
   }
   return payload;
 }
 
 async function callDirectModelEndpoint({ apiKey, model, prompt, width, height }) {
-  const isFlux2 = model.includes('flux.2');
-  const body = {
-    prompt,
-    mode: isFlux2 ? 'Image Generation' : 'base',
-    width: nearestNimSize(width, 1024),
-    height: nearestNimSize(height, 1344),
-    samples: 1,
-    seed: 0,
-  };
-  if (isFlux2) body.steps = 4;
+  const endpointConfig = MODEL_ENDPOINTS[model];
+  if (!endpointConfig) {
+    throw new Error(`NVIDIA 模型未配置直接端点：${model}`);
+  }
 
-  const response = await fetch(MODEL_ENDPOINTS[model], {
+  const body = buildDirectModelBody({
+    family: endpointConfig.family,
+    prompt,
+    width,
+    height,
+  });
+
+  const response = await fetch(endpointConfig.endpoint, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -113,18 +179,72 @@ async function callDirectModelEndpoint({ apiKey, model, prompt, width, height })
     body: JSON.stringify(body),
   });
 
-  const responseText = await response.text();
-  const payload = responseText ? (() => {
-    try {
-      return JSON.parse(responseText);
-    } catch {
-      return { error: responseText };
-    }
-  })() : {};
+  const payload = await readJsonResponse(response);
   if (!response.ok) {
-    throw new Error(payload?.error?.message || payload?.error || `NVIDIA 图像接口请求失败（HTTP ${response.status}）`);
+    const error = new Error(getResponseError(payload, response.status));
+    error.status = response.status;
+    error.model = endpointConfig.model;
+    throw error;
   }
   return payload;
+}
+
+function buildDirectModelBody({ family, prompt, width, height }) {
+  if (family === 'qwen') {
+    return {
+      prompt,
+      width: nearestSize(width, 1088, QWEN_SIZE_STEPS),
+      height: nearestSize(height, 1440, QWEN_SIZE_STEPS),
+      samples: 1,
+      seed: 0,
+      steps: 30,
+      cfg_scale: 4,
+      negative_prompt: 'text, numbers, logo, watermark, blurry, low quality',
+    };
+  }
+
+  if (family === 'flux2') {
+    return {
+      prompt,
+      mode: 'Image Generation',
+      width: nearestSize(width, 1088, FLUX2_SIZE_STEPS),
+      height: nearestSize(height, 1440, FLUX2_SIZE_STEPS),
+      samples: 1,
+      seed: 0,
+      steps: 4,
+      cfg_scale: 1,
+    };
+  }
+
+  if (family === 'sd35') {
+    return {
+      prompt,
+      mode: 'base',
+      width: nearestSize(width, 1088),
+      height: nearestSize(height, 1344),
+      samples: 1,
+      seed: 0,
+      steps: 40,
+      cfg_scale: 3.5,
+    };
+  }
+
+  return {
+    prompt,
+    mode: 'base',
+    width: nearestSize(width, 1024),
+    height: nearestSize(height, 1344),
+    samples: 1,
+    seed: 0,
+    steps: 4,
+    cfg_scale: 0,
+  };
+}
+
+function shouldTryNextModel(error) {
+  const status = Number(error?.status);
+  if (!Number.isFinite(status)) return true;
+  return [400, 404, 422, 429, 500, 502, 503, 504].includes(status);
 }
 
 export async function generateShareBackground({ apiKey, prompt, requestedModel, requestedWidth = 1080, requestedHeight = 1440 }) {
@@ -137,21 +257,48 @@ export async function generateShareBackground({ apiKey, prompt, requestedModel, 
     throw new Error('请先输入背景提示词');
   }
 
-  const model = normalizeModel(requestedModel);
   const width = Math.min(1536, Math.max(512, Number(requestedWidth) || 1080));
   const height = Math.min(1536, Math.max(512, Number(requestedHeight) || 1440));
-  const payload = MODEL_ENDPOINTS[model]
-    ? await callDirectModelEndpoint({ apiKey, model, prompt: safePrompt, width, height })
-    : await callOpenAiCompatibleImageApi({ apiKey, model, prompt: safePrompt, width, height });
-  const image = await extractImageFromNvidiaPayload(payload);
+  const errors = [];
 
-  if (!image) {
-    throw new Error('NVIDIA 返回中未找到图片数据');
+  for (const model of getAttemptModels(requestedModel)) {
+    const calls = model === 'qwen-image' || model === 'qwen-image-2512' || model === 'flux.2-klein-4b'
+      ? [
+          () => callOpenAiCompatibleImageApi({ apiKey, model, prompt: safePrompt, width, height }),
+          ...(MODEL_ENDPOINTS[model] ? [() => callDirectModelEndpoint({ apiKey, model, prompt: safePrompt, width, height })] : []),
+        ]
+      : [() => callDirectModelEndpoint({ apiKey, model, prompt: safePrompt, width, height })];
+
+    for (const call of calls) {
+      try {
+        const payload = await call();
+        const image = await extractImageFromNvidiaPayload(payload);
+
+        if (!image) {
+          throw Object.assign(new Error('NVIDIA 返回中未找到图片数据'), { status: 502, model });
+        }
+
+        return {
+          image,
+          model,
+          provider: 'nvidia',
+          fallbackModelsTried: errors.map((item) => item.model).filter(Boolean),
+        };
+      } catch (error) {
+        errors.push({
+          model,
+          message: error.message || '未知错误',
+          status: error.status || null,
+        });
+        if (!shouldTryNextModel(error)) {
+          throw error;
+        }
+      }
+    }
   }
 
-  return {
-    image,
-    model,
-    provider: 'nvidia',
-  };
+  const summary = errors
+    .map((item) => `${item.model}${item.status ? ` HTTP ${item.status}` : ''}: ${item.message}`)
+    .join('；');
+  throw new Error(summary || 'NVIDIA 图像模型均生成失败');
 }

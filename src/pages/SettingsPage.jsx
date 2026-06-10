@@ -1121,12 +1121,13 @@ function SettingsPage() {
             />
             <Selector
               options={[
-                { label: 'Qwen Image 2512', value: 'qwen-image-2512' },
                 { label: 'Qwen Image', value: 'qwen-image' },
+                { label: 'Qwen Image 2512', value: 'qwen-image-2512' },
                 { label: 'FLUX.2 Klein 4B', value: 'flux.2-klein-4b' },
+                { label: 'FLUX.1 Schnell', value: 'flux.1-schnell' },
                 { label: 'SD 3.5 Large', value: 'stabilityai/stable-diffusion-3.5-large' },
               ]}
-              value={[shareBackgroundInput.defaultModel || 'qwen-image-2512']}
+              value={[shareBackgroundInput.defaultModel || 'qwen-image']}
               onChange={(value) => {
                 if (!value.length) return;
                 setShareBackgroundInput((current) => ({ ...current, defaultModel: value[0] }));

@@ -14,11 +14,11 @@
 
 ## NVIDIA Build 模型备选
 
-- Qwen-Image：中文和海报语义能力较强，适合作为高质量背景/封面模型。关键交易文字仍必须由本地模板绘制。
-- qwen-image-2512：作为当前 NVIDIA AI 背景默认模型，用于 OpenAI-compatible 图像生成接口。
-- flux.2-klein-4b：更轻量，适合快速生成抽象金融科技背景。
-- FLUX.1-schnell：Apache 2.0，速度快，适合生成抽象金融背景和视觉氛围；当前保留直接模型端点兼容。
-- Stable Diffusion 3.5 Medium：生态成熟，可用于自部署装饰图，但上线前需要按使用规模核对 Stability 许可。
+- Qwen-Image / qwen-image：当前 NVIDIA AI 背景默认模型，中文和海报语义能力较强；优先走 OpenAI-compatible 图像接口，失败后自动切到直接 NIM 端点。
+- qwen-image-2512：OpenAI-compatible 图像接口模型名，作为 Qwen 备用模型保留。
+- flux.2-klein-4b：轻量且质感均衡，适合快速生成抽象金融科技背景。
+- FLUX.1-schnell：速度快，适合生成抽象金融背景和视觉氛围；通过直接 NIM 端点兜底。
+- Stable Diffusion 3.5 Large：画面质感优先，适合封面级背景；通过直接 NIM 端点兜底。
 
 ## 接入边界
 
@@ -26,7 +26,7 @@
 - AI 生成内容只能进入背景层、插画层或可选封面层。
 - 默认不依赖第三方生图 API，避免免费额度耗尽导致分享功能不可用。
 - NVIDIA API Key 不在前端硬编码：可在设置页本地保存，或通过服务端 `NVIDIA_API_KEY` 环境变量提供。
-- OpenAI-compatible 图像接口默认使用 `https://integrate.api.nvidia.com/v1`；如自托管 Qwen-Image NIM，可用 `NVIDIA_IMAGE_BASE_URL` 覆盖到自己的 `/v1` 地址。
+- OpenAI-compatible 图像接口默认使用 `https://integrate.api.nvidia.com/v1`；如账号对某个模型返回 404/不可用，服务端会按 Qwen、FLUX、Stable Diffusion 顺序自动尝试备用模型。
 - `/api/share-background` 只代理背景生成请求，返回 base64 图片给本地 Canvas 合成。
 
 ## 分享交互

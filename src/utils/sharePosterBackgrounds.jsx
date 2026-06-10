@@ -4,24 +4,29 @@ import { db } from '../db/database';
 
 const NVIDIA_MODELS = [
   {
-    label: 'Qwen Image 2512',
-    value: 'qwen-image-2512',
-    description: '中文语义和海报构图优先，适合分享背景',
-  },
-  {
     label: 'Qwen Image',
     value: 'qwen-image',
-    description: 'NVIDIA Build 可用的通用图像模型',
+    description: '默认推荐，中文语义和海报构图更稳',
+  },
+  {
+    label: 'Qwen Image 2512',
+    value: 'qwen-image-2512',
+    description: 'OpenAI-compatible 图像接口模型名，失败会自动兜底',
   },
   {
     label: 'FLUX.2 Klein 4B',
     value: 'flux.2-klein-4b',
-    description: '速度优先，适合抽象金融氛围图',
+    description: '速度与质感均衡，适合金融科技背景',
+  },
+  {
+    label: 'FLUX.1 Schnell',
+    value: 'flux.1-schnell',
+    description: '生成速度优先，适合抽象背景快速出图',
   },
   {
     label: 'Stable Diffusion 3.5 Large',
     value: 'stabilityai/stable-diffusion-3.5-large',
-    description: '画面质感更强，但生成成本通常更高',
+    description: '画面质感优先，适合封面级背景',
   },
 ];
 
@@ -208,7 +213,7 @@ function showAiPromptDialog({ prompt, model }) {
             <input
               className="share-background-dialog__input"
               defaultValue={nextModel}
-              placeholder="qwen-image-2512"
+              placeholder="qwen-image"
               onChange={(event) => {
                 nextModel = event.target.value;
               }}
@@ -260,7 +265,7 @@ async function chooseAiModel(config) {
       key: item.value,
       text: item.label,
       description: item.description,
-      bold: item.value === (config.defaultModel || 'qwen-image-2512'),
+      bold: item.value === (config.defaultModel || 'qwen-image'),
     })),
   });
   return action?.key || null;

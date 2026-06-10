@@ -29,7 +29,7 @@ const DEFAULT_MARKET_DATA_CONFIG = {
 const DEFAULT_SHARE_BACKGROUND_CONFIG = {
   provider: 'local',
   nvidiaApiKey: '',
-  defaultModel: 'qwen-image-2512',
+  defaultModel: 'qwen-image',
 };
 
 const normalizeMarketWatchItem = (item) => {

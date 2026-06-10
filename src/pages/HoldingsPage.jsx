@@ -130,6 +130,22 @@ const getAllocationColor = (index) => [
   '#94a3b8',
 ][index % 8];
 
+const ALLOCATION_TYPE_ORDER = {
+  STOCK: 0,
+  ETF: 1,
+  OPTION: 2,
+};
+
+const getHoldingTypeLabel = (assetType) => (
+  assetType === 'OPTION'
+    ? '期权'
+    : assetType === 'ETF'
+      ? 'ETF'
+      : assetType === 'STOCK'
+        ? '股票'
+        : assetType
+);
+
 function buildPortfolioRealtimeSummary(liveHoldings = []) {
   return liveHoldings.reduce((summary, holding) => {
     const metrics = holding.liveMetrics || {};
@@ -178,25 +194,70 @@ function buildAllocationModel(liveHoldings = []) {
     };
   }
 
+  const groupedHoldings = positiveHoldings.reduce((map, item) => {
+    const symbol = getHoldingSymbol(item.holding) || String(item.holding.symbol || item.holding.asset_id || 'UNKNOWN').trim().toUpperCase();
+    if (!map.has(symbol)) {
+      map.set(symbol, {
+        symbol,
+        value: 0,
+        holdings: [],
+        typeTotals: new Map(),
+      });
+    }
+
+    const group = map.get(symbol);
+    const assetType = getHoldingAssetType(item.holding);
+    const typeTotal = group.typeTotals.get(assetType) || {
+      type: assetType,
+      label: getHoldingTypeLabel(assetType),
+      value: 0,
+      holdings: [],
+    };
+    group.value += item.value;
+    group.holdings.push(item);
+    typeTotal.value += item.value;
+    typeTotal.holdings.push(item);
+    group.typeTotals.set(assetType, typeTotal);
+    return map;
+  }, new Map());
+
+  const allocationGroups = Array.from(groupedHoldings.values())
+    .sort((a, b) => b.value - a.value);
+
   let cursor = 0;
-  const rows = positiveHoldings.map((item, index) => {
-    const percent = item.value / total;
+  const rows = allocationGroups.map((group, index) => {
+    const percent = group.value / total;
     const start = cursor;
     const end = cursor + percent * 360;
     cursor = end;
-    const assetType = getHoldingAssetType(item.holding);
+    const preferredNameHolding = group.holdings.find((item) => getHoldingAssetType(item.holding) !== 'OPTION')?.holding
+      || group.holdings[0]?.holding
+      || {};
+    const typeBreakdown = Array.from(group.typeTotals.values())
+      .sort((a, b) => (ALLOCATION_TYPE_ORDER[a.type] ?? 9) - (ALLOCATION_TYPE_ORDER[b.type] ?? 9))
+      .map((typeItem, typeIndex) => ({
+        ...typeItem,
+        count: typeItem.holdings.length,
+        percent: typeItem.value / total,
+        groupPercent: typeItem.value / group.value,
+        color: getAllocationColor(index + typeIndex + 1),
+      }));
+    const typeLabel = typeBreakdown.map((typeItem) => typeItem.label).join(' / ');
     return {
-      id: `${item.holding.asset_id}-${item.holding.broker || ''}-${item.holding.author || '未标记'}`,
-      symbol: item.holding.symbol,
-      name: getHoldingDisplayName(item.holding),
-      type: assetType,
-      typeLabel: assetType === 'OPTION' ? '期权' : assetType === 'ETF' ? 'ETF' : assetType === 'STOCK' ? '股票' : assetType,
-      value: item.value,
+      id: `symbol-${group.symbol}`,
+      symbol: group.symbol,
+      name: getHoldingDisplayName(preferredNameHolding),
+      type: typeBreakdown[0]?.type || 'STOCK',
+      typeLabel,
+      holdingCount: group.holdings.length,
+      value: group.value,
       percent,
       color: getAllocationColor(index),
       start,
       end,
-      holding: item.holding,
+      holding: preferredNameHolding,
+      holdings: group.holdings.map((item) => item.holding),
+      typeBreakdown,
     };
   });
   const conic = rows
@@ -204,6 +265,76 @@ function buildAllocationModel(liveHoldings = []) {
     .join(', ');
 
   return { total, rows, conic };
+}
+
+function buildHoldingGroups(liveHoldings = []) {
+  const total = liveHoldings.reduce((sum, holding) => (
+    sum + Math.max(Number(holding.liveMetrics?.positionValue) || 0, 0)
+  ), 0);
+  const groupedHoldings = liveHoldings.reduce((map, holding) => {
+    const symbol = getHoldingSymbol(holding) || String(holding.symbol || holding.asset_id || 'UNKNOWN').trim().toUpperCase();
+    if (!map.has(symbol)) {
+      map.set(symbol, {
+        id: `holding-group-${symbol}`,
+        symbol,
+        value: 0,
+        holdings: [],
+        typeTotals: new Map(),
+      });
+    }
+
+    const group = map.get(symbol);
+    const assetType = getHoldingAssetType(holding);
+    const value = Math.max(Number(holding.liveMetrics?.positionValue) || 0, 0);
+    const typeTotal = group.typeTotals.get(assetType) || {
+      type: assetType,
+      label: getHoldingTypeLabel(assetType),
+      value: 0,
+      count: 0,
+    };
+
+    group.value += value;
+    group.holdings.push(holding);
+    typeTotal.value += value;
+    typeTotal.count += 1;
+    group.typeTotals.set(assetType, typeTotal);
+    return map;
+  }, new Map());
+
+  const groups = Array.from(groupedHoldings.values())
+    .map((group, index) => {
+      const preferredNameHolding = group.holdings.find((holding) => getHoldingAssetType(holding) !== 'OPTION')
+        || group.holdings[0]
+        || {};
+      const typeBreakdown = Array.from(group.typeTotals.values())
+        .sort((a, b) => (ALLOCATION_TYPE_ORDER[a.type] ?? 9) - (ALLOCATION_TYPE_ORDER[b.type] ?? 9))
+        .map((typeItem, typeIndex) => ({
+          ...typeItem,
+          groupPercent: group.value > 0 ? typeItem.value / group.value : 0,
+          color: getAllocationColor(index + typeIndex),
+        }));
+      const sortedHoldings = [...group.holdings].sort((a, b) => {
+        const typeDiff = (ALLOCATION_TYPE_ORDER[getHoldingAssetType(a)] ?? 9) - (ALLOCATION_TYPE_ORDER[getHoldingAssetType(b)] ?? 9);
+        if (typeDiff !== 0) return typeDiff;
+        return (Number(b.liveMetrics?.positionValue) || 0) - (Number(a.liveMetrics?.positionValue) || 0);
+      });
+      const typeSummary = typeBreakdown
+        .map((item) => `${item.label}${item.count > 1 ? `×${item.count}` : ''}`)
+        .join(' / ');
+
+      return {
+        ...group,
+        name: getHoldingDisplayName(preferredNameHolding),
+        holdingCount: group.holdings.length,
+        holdings: sortedHoldings,
+        percent: total > 0 ? group.value / total : 0,
+        typeBreakdown,
+        typeSummary,
+      };
+    })
+    .sort((a, b) => b.value - a.value);
+
+  return { total, groups };
 }
 
 function buildPortfolioInsights(liveHoldings = [], realtimeSummary = {}, allocation = {}) {
@@ -776,6 +907,7 @@ export default function HoldingsPage() {
 
   const realtimeSummary = useMemo(() => buildPortfolioRealtimeSummary(liveHoldings), [liveHoldings]);
   const allocation = useMemo(() => buildAllocationModel(liveHoldings), [liveHoldings]);
+  const holdingGroups = useMemo(() => buildHoldingGroups(liveHoldings), [liveHoldings]);
   const selectedAllocation = useMemo(() => {
     if (!allocation.rows.length) return null;
     return allocation.rows.find((row) => row.id === selectedAllocationId) || allocation.rows[0];
@@ -955,9 +1087,13 @@ export default function HoldingsPage() {
                     aria-pressed={selectedAllocation?.id === row.id}
                   >
                     <span />
-                    <div>
+                    <div className="holdings-page__allocation-row-main">
                       <strong>{row.symbol}</strong>
-                      <em>{row.typeLabel} · {row.name}</em>
+                      <em>{row.name}</em>
+                      <small>
+                        {row.typeLabel}
+                        {row.holdingCount > 1 ? ` · ${row.holdingCount} 个仓位` : ''}
+                      </small>
                     </div>
                     <b className="text-mono">{(row.percent * 100).toFixed(1)}%</b>
                   </button>
@@ -973,6 +1109,16 @@ export default function HoldingsPage() {
                   <em>
                     市值 ${formatCurrency(selectedAllocation.value)} · 占组合 {(selectedAllocation.percent * 100).toFixed(1)}% · {selectedAllocation.typeLabel}
                   </em>
+                  <div className="holdings-page__allocation-breakdown">
+                    {selectedAllocation.typeBreakdown.map((typeItem) => (
+                      <span key={typeItem.type}>
+                        <i style={{ '--row-color': typeItem.color }} />
+                        {typeItem.label} ${formatCurrency(typeItem.value)}
+                        {' · '}
+                        {(typeItem.groupPercent * 100).toFixed(0)}%
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
@@ -1122,31 +1268,60 @@ export default function HoldingsPage() {
           </div>
         ) : holdings.length > 0 ? (
             <div className="holdings-page__list">
-            {liveHoldings.map((holding, idx) => {
-              const holdingKey = `${holding.asset_id}-${holding.broker || ''}-${holding.author || '未标记'}`;
-              const isExpanded = expandedId === holdingKey;
-              const symbol = getHoldingSymbol(holding);
-              const underlyingPrice = getQuotePrice(marketQuotes[symbol]);
+            {holdingGroups.groups.map((group, groupIndex) => (
+              <div key={group.id} className="holdings-page__holding-group">
+                <div className="holdings-page__holding-group-head">
+                  <div className="holdings-page__holding-group-copy">
+                    <strong>{group.symbol}</strong>
+                    <span>{group.name}</span>
+                  </div>
+                  <div className="holdings-page__holding-group-stat">
+                    <strong className="text-mono">${formatCurrency(group.value)}</strong>
+                    <span className="text-mono">{(group.percent * 100).toFixed(1)}%</span>
+                  </div>
+                </div>
+                <div className="holdings-page__holding-group-types">
+                  {group.typeBreakdown.map((typeItem) => (
+                    <span key={typeItem.type} style={{ '--row-color': typeItem.color }}>
+                      <i />
+                      {typeItem.label}
+                      {typeItem.count > 1 ? `×${typeItem.count}` : ''}
+                      {' · '}
+                      {`$${formatCurrency(typeItem.value)}`}
+                      {' · '}
+                      {(typeItem.groupPercent * 100).toFixed(0)}%
+                    </span>
+                  ))}
+                </div>
+                <div className="holdings-page__holding-group-list">
+                  {group.holdings.map((holding, holdingIndex) => {
+                    const holdingKey = `${holding.asset_id}-${holding.broker || ''}-${holding.author || '未标记'}`;
+                    const isExpanded = expandedId === holdingKey;
+                    const symbol = getHoldingSymbol(holding);
+                    const underlyingPrice = getQuotePrice(marketQuotes[symbol]);
 
-              return (
-                <HoldingCard
-                  key={holdingKey}
-                  holding={holding}
-                  underlyingPrice={underlyingPrice}
-                  marketQuote={marketQuotes[symbol]}
-                  optionQuote={optionQuotes[holdingKey]}
-                  liveMetrics={holding.liveMetrics}
-                  index={idx}
-                  viewMode={viewMode}
-                  isExpanded={isExpanded}
-                  selectedAuthor={selectedAuthor}
-                  expandedTrades={isExpanded ? expandedTrades : []}
-                  tradesLoading={tradesLoading}
-                  onToggle={handleToggle}
-                  onAddOptionAlert={!isTeamWorkspace ? handleAddOptionAlert : null}
-                />
-              );
-            })}
+                    return (
+                      <HoldingCard
+                        key={holdingKey}
+                        holding={holding}
+                        underlyingPrice={underlyingPrice}
+                        marketQuote={marketQuotes[symbol]}
+                        optionQuote={optionQuotes[holdingKey]}
+                        liveMetrics={holding.liveMetrics}
+                        index={groupIndex + holdingIndex}
+                        viewMode={viewMode}
+                        isExpanded={isExpanded}
+                        selectedAuthor={selectedAuthor}
+                        expandedTrades={isExpanded ? expandedTrades : []}
+                        tradesLoading={tradesLoading}
+                        onToggle={handleToggle}
+                        onAddOptionAlert={!isTeamWorkspace ? handleAddOptionAlert : null}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         ) : (
           <EmptyState

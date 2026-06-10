@@ -17,6 +17,7 @@ import {
   buildAutoOptionProviderPlan,
   filterOptionPayloadByContract,
   getPreviousUsTradingDate,
+  normalizeOptionContractKey,
 } from '../api/options-chain.js';
 import {
   toLongbridgeCliOptionSymbol,
@@ -76,6 +77,13 @@ test('normalizes symbols for Longbridge stock and option APIs', () => {
   assert.equal(toLongbridgeCliOptionSymbol('OPTION_NVDA260618C00100000'), 'NVDA260618C100000');
   assert.equal(toLongbridgeCliOptionSymbol('NVDA260618C100000.US'), 'NVDA260618C100000');
   assert.equal(toLongbridgeCliOptionSymbol('AAPL240119C190000'), 'AAPL240119C190000');
+});
+
+test('normalizes provider option contract keys to standard OCC format', () => {
+  assert.equal(normalizeOptionContractKey('OPTION_BB260821C013000'), 'BB260821C00013000');
+  assert.equal(normalizeOptionContractKey('NVDA260618C100000.US'), 'NVDA260618C00100000');
+  assert.equal(normalizeOptionContractKey('O:AAPL240119C190000'), 'AAPL240119C00190000');
+  assert.equal(normalizeOptionContractKey('TSLA260618P00350000'), 'TSLA260618P00350000');
 });
 
 test('normalizes loose option trade records', () => {
@@ -215,7 +223,7 @@ test('filters option-chain payload to the requested contract before holdings use
     dataSource: {
       optionCount: 2,
     },
-  }, 'OPTION_NVDA260618C00110000');
+  }, 'OPTION_NVDA260618C110000');
 
   assert.equal(payload.options.length, 1);
   assert.equal(payload.options[0].contractSymbol, 'NVDA260618C00110000');
